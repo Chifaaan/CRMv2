@@ -34,11 +34,19 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
   },
-  // Hindari infer root ke induk (ada package-lock di repo) — tanpa ini PORT di frontend/.env sering diabaikan.
-  turbopack: {
-    root: appDir,
-  },
-  outputFileTracingRoot: appDir,
+  // Di Vercel, Root Directory sudah menentukan root project. Override tracing
+  // root di sini membuat langkah packaging Vercel mencari
+  // `/vercel/path0/.next` (satu level di atas) dan gagal dengan ENOENT
+  // routes-manifest-deterministic.json.
+  ...(process.env.VERCEL
+    ? {}
+    : {
+        // Hindari infer root ke induk saat development lokal.
+        turbopack: {
+          root: appDir,
+        },
+        outputFileTracingRoot: appDir,
+      }),
   async rewrites() {
     return [
       {
