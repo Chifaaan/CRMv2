@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -41,7 +46,6 @@ import {
   evaluateGate,
   formatCurrency,
   formatDate,
-  formatDateTime,
   formFor,
   formsFor,
   pitchingsFor,
@@ -70,6 +74,7 @@ import {
 } from "../ui";
 import { PitchingDialog, ProjectDialog } from "../dialogs";
 import { FinanceFormDialog, RabFormDialog } from "../forms";
+import { ProjectStepHistory } from "./project-history";
 
 type StepTone = "done" | "active" | "attention" | "empty";
 
@@ -122,6 +127,7 @@ function getStepStatus(
   step: { key: StepKey; status: string },
   data: { completedData: boolean; needsAttention: boolean },
 ): StepTone {
+  if (step.status === "skipped") return "empty";
   if (step.status === "completed" || data.completedData) return "done";
   if (step.status === "active") {
     return data.needsAttention ? "attention" : "active";
@@ -131,10 +137,14 @@ function getStepStatus(
 
 function ProjectStepper({
   projectId,
+  selectedStepKey,
   onStepClick,
+  panelId,
 }: {
   projectId: string;
+  selectedStepKey: StepKey;
   onStepClick?: (stepKey: StepKey) => void;
+  panelId: string;
 }) {
   const store = usePrototypeStore();
   const steps = store.steps
@@ -210,6 +220,31 @@ function ProjectStepper({
   };
 
   const activePhase = steps.find((step) => step.status === "active")?.phase;
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const moveFocus = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    let nextIndex = index;
+    if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % steps.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + steps.length) % steps.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = steps.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    const nextStep = steps[nextIndex];
+    tabRefs.current[nextStep.key]?.focus();
+    if (nextStep.status !== "pending") {
+      onStepClick?.(nextStep.key);
+    }
+  };
 
   return (
     <div className="overflow-x-auto pb-2">
@@ -242,7 +277,11 @@ function ProjectStepper({
           })}
         </div>
 
-        <div className="relative grid grid-cols-6">
+        <div
+          role="tablist"
+          aria-label="Journey proyek"
+          className="relative grid grid-cols-6"
+        >
           {steps.slice(0, -1).map((step, index) => (
             <span
               key={`connector-${step.id}`}
@@ -258,10 +297,20 @@ function ProjectStepper({
             />
           ))}
 
-          {steps.map((step) => {
-            const summary = summaryFor(step.key);
+          {steps.map((step, index) => {
             const done = step.status === "completed";
             const active = step.status === "active";
+            const skipped = step.status === "skipped";
+            const pending = step.status === "pending";
+            const selected = selectedStepKey === step.key;
+            const summary = skipped
+              ? {
+                  full: "Dilewati",
+                  emptyValue: false,
+                  completedData: false,
+                  needsAttention: false,
+                }
+              : summaryFor(step.key);
             const tone = getStepStatus(step, {
               completedData: summary.completedData,
               needsAttention:
@@ -280,12 +329,32 @@ function ProjectStepper({
             return (
               <button
                 key={step.id}
+                ref={(node) => {
+                  tabRefs.current[step.key] = node;
+                }}
                 type="button"
-                onClick={() => onStepClick?.(step.key)}
+                id={`step-tab-${step.key}`}
+                role="tab"
+                aria-selected={selected}
+                aria-controls={panelId}
+                aria-disabled={pending || undefined}
                 aria-current={active ? "step" : undefined}
-                aria-label={`${STEP_LABEL[step.key]} — ${summary.full}`}
-                title={summary.full}
-                className="group relative z-10 flex w-full min-w-0 cursor-pointer flex-col items-center gap-1 rounded-lg px-1 pb-1 text-center transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none"
+                tabIndex={selected ? 0 : -1}
+                onClick={() => {
+                  if (!pending) onStepClick?.(step.key);
+                }}
+                onKeyDown={(event) => moveFocus(event, index)}
+                aria-label={
+                  pending
+                    ? `${STEP_LABEL[step.key]} — Belum dimulai`
+                    : `${STEP_LABEL[step.key]} — ${summary.full}`
+                }
+                title={pending ? "Belum dimulai" : summary.full}
+                className={cn(
+                  "group relative z-10 flex w-full min-w-0 flex-col items-center gap-1 rounded-lg px-1 pb-1 text-center transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none",
+                  pending ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+                  selected && "bg-white/10",
+                )}
               >
                 <span
                   className={cn(
@@ -294,10 +363,18 @@ function ProjectStepper({
                       ? "bg-white text-primary"
                       : active
                         ? "bg-white text-primary ring-4 ring-white/25"
-                        : "border border-white/40 bg-white/10 text-white/70",
+                        : skipped
+                          ? "border border-dashed border-white/60 bg-white/10 text-white/80"
+                          : "border border-white/40 bg-white/10 text-white/70",
                   )}
                 >
-                  {done ? <Check className="size-3.5" /> : step.order}
+                  {done ? (
+                    <Check className="size-3.5" />
+                  ) : skipped ? (
+                    <span className="text-[10px]">–</span>
+                  ) : (
+                    step.order
+                  )}
                 </span>
 
                 <span
@@ -307,7 +384,9 @@ function ProjectStepper({
                       ? "font-semibold text-white"
                       : done
                         ? "text-white/85"
-                        : "text-white/65",
+                        : pending
+                          ? "text-white/55"
+                          : "text-white/70",
                   )}
                 >
                   {STEP_LABEL[step.key]}
@@ -451,7 +530,13 @@ function AssignControl({
   );
 }
 
-function PitchingStep({ project }: { project: Project }) {
+function PitchingStep({
+  project,
+  readOnly = false,
+}: {
+  project: Project;
+  readOnly?: boolean;
+}) {
   const store = usePrototypeStore();
   const router = useRouter();
   const currentUser = userById(store, store.currentUserId);
@@ -498,7 +583,7 @@ function PitchingStep({ project }: { project: Project }) {
           </p>
         </div>
         <div className="flex gap-2">
-          {canManage ? (
+          {canManage && !readOnly ? (
             <Button
               size="sm"
               onClick={() => {
@@ -566,7 +651,7 @@ function PitchingStep({ project }: { project: Project }) {
                       {pitching.description || "Tanpa deskripsi."}
                     </p>
                   </div>
-                  {canManage && pitching.status === "draft" ? (
+                  {canManage && !readOnly && pitching.status === "draft" ? (
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -622,7 +707,7 @@ function PitchingStep({ project }: { project: Project }) {
                   })}
                 </div>
 
-                {canManage && pitching.status === "draft" ? (
+                {canManage && !readOnly && pitching.status === "draft" ? (
                   <div className="mt-3 flex gap-2 border-t pt-3">
                     <Button
                       size="sm"
@@ -693,11 +778,13 @@ function PitchingStep({ project }: { project: Project }) {
         </div>
       ) : null}
 
-      <GatePanel
-        projectId={project.id}
-        stepKey="pitching"
-        onComplete={() => store.completeStep(project.id, "pitching")}
-      />
+      {!readOnly ? (
+        <GatePanel
+          projectId={project.id}
+          stepKey="pitching"
+          onComplete={() => store.completeStep(project.id, "pitching")}
+        />
+      ) : null}
 
       <PitchingDialog
         open={dialogOpen}
@@ -709,7 +796,13 @@ function PitchingStep({ project }: { project: Project }) {
   );
 }
 
-function SurveyStep({ project }: { project: Project }) {
+function SurveyStep({
+  project,
+  readOnly = false,
+}: {
+  project: Project;
+  readOnly?: boolean;
+}) {
   const store = usePrototypeStore();
   const form = formFor(store, project.id, "survey");
   if (!form) return null;
@@ -725,7 +818,9 @@ function SurveyStep({ project }: { project: Project }) {
         }
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <AssignControl form={form} label="Assignee" />
+          {!readOnly ? (
+            <AssignControl form={form} label="Assignee" />
+          ) : null}
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground">Status:</span>
             <FormStatusBadge status={form.status} />
@@ -741,16 +836,24 @@ function SurveyStep({ project }: { project: Project }) {
           </p>
         ) : null}
       </SectionCard>
-      <GatePanel
-        projectId={project.id}
-        stepKey="survey"
-        onComplete={() => store.completeStep(project.id, "survey")}
-      />
+      {!readOnly ? (
+        <GatePanel
+          projectId={project.id}
+          stepKey="survey"
+          onComplete={() => store.completeStep(project.id, "survey")}
+        />
+      ) : null}
     </div>
   );
 }
 
-function RabStep({ project }: { project: Project }) {
+function RabStep({
+  project,
+  readOnly = false,
+}: {
+  project: Project;
+  readOnly?: boolean;
+}) {
   const store = usePrototypeStore();
   const form = formFor(store, project.id, "rab");
   const currentUser = userById(store, store.currentUserId);
@@ -775,7 +878,7 @@ function RabStep({ project }: { project: Project }) {
         }
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <AssignControl form={form} label="Finance" />
+          {!readOnly ? <AssignControl form={form} label="Finance" /> : null}
           <div className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground">Status:</span>
             <FormStatusBadge status={form.status} />
@@ -789,17 +892,25 @@ function RabStep({ project }: { project: Project }) {
           </p>
         ) : null}
       </SectionCard>
-      <GatePanel
-        projectId={project.id}
-        stepKey="rab"
-        onComplete={() => store.completeStep(project.id, "rab")}
-      />
+      {!readOnly ? (
+        <GatePanel
+          projectId={project.id}
+          stepKey="rab"
+          onComplete={() => store.completeStep(project.id, "rab")}
+        />
+      ) : null}
       <RabFormDialog open={open} onOpenChange={setOpen} formId={form.id} />
     </div>
   );
 }
 
-function RunningStep({ project }: { project: Project }) {
+function RunningStep({
+  project,
+  readOnly = false,
+}: {
+  project: Project;
+  readOnly?: boolean;
+}) {
   const store = usePrototypeStore();
   const tasks = tasksForStep(store, project.id, "running");
   const active = tasks.filter((task) => task.status !== "completed");
@@ -837,11 +948,13 @@ function RunningStep({ project }: { project: Project }) {
           )}
         </div>
       </SectionCard>
-      <GatePanel
-        projectId={project.id}
-        stepKey="running"
-        onComplete={() => store.completeStep(project.id, "running")}
-      />
+      {!readOnly ? (
+        <GatePanel
+          projectId={project.id}
+          stepKey="running"
+          onComplete={() => store.completeStep(project.id, "running")}
+        />
+      ) : null}
     </div>
   );
 }
@@ -849,9 +962,11 @@ function RunningStep({ project }: { project: Project }) {
 function FinanceFormCard({
   project,
   keyName,
+  readOnly = false,
 }: {
   project: Project;
   keyName: "bast" | "invoice";
+  readOnly?: boolean;
 }) {
   const store = usePrototypeStore();
   const form = formFor(store, project.id, keyName);
@@ -890,7 +1005,12 @@ function FinanceFormCard({
         <DataRow label="Submitted" value={formatDate(form.submittedAt)} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <AssignControl form={form} label={keyName === "bast" ? "Finance BAST" : "Finance Invoice"} />
+        {!readOnly ? (
+          <AssignControl
+            form={form}
+            label={keyName === "bast" ? "Finance BAST" : "Finance Invoice"}
+          />
+        ) : null}
         <Button size="sm" variant={editable ? "default" : "outline"} onClick={() => setOpen(true)}>
           {editable ? "Isi / Edit" : "Lihat"}
         </Button>
@@ -900,7 +1020,15 @@ function FinanceFormCard({
   );
 }
 
-function FinanceStep({ project }: { project: Project }) {
+function FinanceStep({
+  project,
+  stepKey,
+  readOnly = false,
+}: {
+  project: Project;
+  stepKey: "bast" | "invoice";
+  readOnly?: boolean;
+}) {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
   const bast = formFor(store, project.id, "bast");
@@ -918,44 +1046,43 @@ function FinanceStep({ project }: { project: Project }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-2">
-        <FinanceFormCard project={project} keyName="bast" />
-        <FinanceFormCard project={project} keyName="invoice" />
-      </div>
-      <div className="rounded-xl border bg-muted/20 p-3">
-        <div className="mb-2 flex items-center gap-2 text-xs font-semibold">
-          <ShieldCheck className="size-4" /> Kelengkapan Finance
+      <FinanceFormCard project={project} keyName={stepKey} readOnly={readOnly} />
+      {!readOnly ? (
+        <div className="rounded-xl border bg-muted/20 p-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold">
+            <ShieldCheck className="size-4" /> Kelengkapan Finance
+          </div>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex items-center gap-2">
+              {bast?.status === "submitted" ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : <Circle className="text-muted-foreground size-3.5" />}
+              BAST submitted
+            </div>
+            <div className="flex items-center gap-2">
+              {invoice?.status === "submitted" ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : <Circle className="text-muted-foreground size-3.5" />}
+              Invoice submitted
+            </div>
+            <div className="flex items-center gap-2">
+              {nonFinanceDone ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : <Circle className="text-muted-foreground size-3.5" />}
+              Step sebelumnya selesai
+            </div>
+          </div>
+          {canComplete ? (
+            <Button
+              className="mt-3"
+              size="sm"
+              disabled={!ready}
+              onClick={() => {
+                store.completeProject(project.id);
+                toast.success("Proyek ditandai selesai.");
+              }}
+            >
+              <CheckCircle2 className="size-3.5" /> Selesaikan proyek
+            </Button>
+          ) : (
+            <p className="text-muted-foreground mt-2 text-xs">Hanya PM/Admin yang dapat menutup proyek.</p>
+          )}
         </div>
-        <div className="space-y-1.5 text-xs">
-          <div className="flex items-center gap-2">
-            {bast?.status === "submitted" ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : <Circle className="text-muted-foreground size-3.5" />}
-            BAST submitted
-          </div>
-          <div className="flex items-center gap-2">
-            {invoice?.status === "submitted" ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : <Circle className="text-muted-foreground size-3.5" />}
-            Invoice submitted
-          </div>
-          <div className="flex items-center gap-2">
-            {nonFinanceDone ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : <Circle className="text-muted-foreground size-3.5" />}
-            Step sebelumnya selesai
-          </div>
-        </div>
-        {canComplete ? (
-          <Button
-            className="mt-3"
-            size="sm"
-            disabled={!ready}
-            onClick={() => {
-              store.completeProject(project.id);
-              toast.success("Proyek ditandai selesai.");
-            }}
-          >
-            <CheckCircle2 className="size-3.5" /> Selesaikan proyek
-          </Button>
-        ) : (
-          <p className="text-muted-foreground mt-2 text-xs">Hanya PM/Admin yang dapat menutup proyek.</p>
-        )}
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -983,9 +1110,28 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const store = usePrototypeStore();
   const project = store.projects.find((item) => item.id === projectId);
   const currentUser = userById(store, store.currentUserId);
+  const projectSteps = store.steps
+    .filter((step) => step.projectId === projectId)
+    .sort((a, b) => a.order - b.order);
+  const activeStep = projectSteps.find((step) => step.status === "active");
+  const fallbackStep = activeStep ?? projectSteps[projectSteps.length - 1];
   const [editOpen, setEditOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [selectedStepKey, setSelectedStepKey] = useState<StepKey | null>(null);
+
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get(
+      "step",
+    ) as StepKey | null;
+    const valid = projectSteps.find(
+      (step) => step.key === fromUrl && step.status !== "pending",
+    );
+    setSelectedStepKey(valid?.key ?? fallbackStep?.key ?? null);
+    // Only initialize when the project changes; later store updates must not
+    // reset the user's selected step.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   if (!project || !currentUser) {
     return <EmptyState icon={FolderKanban} title="Proyek tidak ditemukan" description="Proyek mungkin tidak ada atau bukan milik Anda." />;
@@ -996,7 +1142,6 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   }
 
   const active = activeSteps(store, project.id);
-  const activeKeys = new Set(active.map((step) => step.key));
   const journey = calculateJourneyProgress(store, project.id);
   const work = workProgressForProject(store, project.id);
   const phase = active[0]?.phase;
@@ -1005,24 +1150,52 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     : undefined;
   const canManage = canManageProject(currentUser, project);
   const canCancel = canCancelProject(currentUser, project);
+  const selectedStep =
+    projectSteps.find((step) => step.key === selectedStepKey) ?? fallbackStep;
+  const selectedKey = selectedStep?.key;
+  const readOnly = project.status !== "active" || selectedStep?.status !== "active";
+
+  const selectStep = (stepKey: StepKey) => {
+    const next = projectSteps.find((step) => step.key === stepKey);
+    if (!next || next.status === "pending") return;
+    setSelectedStepKey(stepKey);
+    const url = new URL(window.location.href);
+    url.searchParams.set("step", stepKey);
+    window.history.replaceState(null, "", url);
+  };
 
   const stepContent = (() => {
-    if (project.status === "completed") return <CompletedSummary project={project} />;
-    if (project.status === "cancelled") {
+    if (!selectedStep) {
+      return <EmptyState icon={Clock3} title="Tidak ada step" />;
+    }
+    if (selectedStep.status === "pending") {
       return (
-        <SectionCard title="Proyek dibatalkan" description={project.cancelReason}>
-          <EmptyState icon={XCircle} title="Proyek dihentikan" description="Tidak ada aksi lanjutan untuk proyek cancelled." />
-        </SectionCard>
+        <EmptyState
+          icon={Clock3}
+          title="Belum dimulai"
+          description="Step ini belum dapat dibuka."
+        />
       );
     }
-    if (activeKeys.has("bast") || activeKeys.has("invoice")) {
-      return <FinanceStep project={project} />;
+    if (selectedStep.key === "pitching") {
+      return <PitchingStep project={project} readOnly={readOnly} />;
     }
-    if (activeKeys.has("pitching")) return <PitchingStep project={project} />;
-    if (activeKeys.has("survey")) return <SurveyStep project={project} />;
-    if (activeKeys.has("rab")) return <RabStep project={project} />;
-    if (activeKeys.has("running")) return <RunningStep project={project} />;
-    return <EmptyState icon={Clock3} title="Tidak ada step aktif" />;
+    if (selectedStep.key === "survey") {
+      return <SurveyStep project={project} readOnly={readOnly} />;
+    }
+    if (selectedStep.key === "rab") {
+      return <RabStep project={project} readOnly={readOnly} />;
+    }
+    if (selectedStep.key === "running") {
+      return <RunningStep project={project} readOnly={readOnly} />;
+    }
+    return (
+      <FinanceStep
+        project={project}
+        stepKey={selectedStep.key}
+        readOnly={readOnly}
+      />
+    );
   })();
 
   return (
@@ -1104,36 +1277,55 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           </div>
 
           <div className="mt-5 border-t border-white/15 pt-4">
-            <ProjectStepper projectId={project.id} />
+            <ProjectStepper
+              projectId={project.id}
+              selectedStepKey={selectedKey ?? "pitching"}
+              onStepClick={selectStep}
+              panelId="project-step-panel"
+            />
           </div>
         </div>
       </div>
 
-      {stepContent}
+      {project.status === "completed" ? (
+        <CompletedSummary project={project} />
+      ) : null}
 
-      <SectionCard title="Activity log" description="Riwayat perubahan pada proyek ini.">
-        <div className="space-y-2">
-          {store.activityLogs
-            .filter((entry) => entry.projectId === project.id)
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-            .slice(0, 8)
-            .map((entry) => (
-              <div key={entry.id} className="flex gap-2 text-xs">
-                <span className="bg-primary mt-1 size-1.5 shrink-0 rounded-full" />
-                <span>
-                  {entry.message}{" "}
-                  <span className="text-muted-foreground">
-                    · {formatDateTime(entry.createdAt)} ·{" "}
-                    {userById(store, entry.actorId)?.name ?? "User"}
-                  </span>
-                </span>
-              </div>
-            ))}
-          {store.activityLogs.filter((entry) => entry.projectId === project.id).length === 0 ? (
-            <p className="text-muted-foreground text-xs">Belum ada aktivitas.</p>
-          ) : null}
+      {project.status === "cancelled" ? (
+        <SectionCard title="Proyek dibatalkan" description={project.cancelReason}>
+          <p className="text-muted-foreground text-xs">
+            Riwayat tetap dapat dilihat. Tidak ada aksi lanjutan untuk proyek
+            cancelled.
+          </p>
+        </SectionCard>
+      ) : null}
+
+      {activeStep && selectedStep && selectedStep.status !== "active" ? (
+        <div>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto px-0"
+            onClick={() => selectStep(activeStep.key)}
+          >
+            Kembali ke step aktif
+          </Button>
         </div>
-      </SectionCard>
+      ) : null}
+
+      <div
+        role="tabpanel"
+        id="project-step-panel"
+        aria-labelledby={
+          selectedKey ? `step-tab-${selectedKey}` : undefined
+        }
+        className="space-y-4"
+      >
+        {stepContent}
+        {selectedKey ? (
+          <ProjectStepHistory projectId={project.id} stepKey={selectedKey} />
+        ) : null}
+      </div>
 
       <ProjectDialog open={editOpen} onOpenChange={setEditOpen} project={project} />
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>

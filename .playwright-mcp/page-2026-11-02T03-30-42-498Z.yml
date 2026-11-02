@@ -1,0 +1,171 @@
+- generic [active] [ref=f13e1]:
+  - generic [ref=f13e3]:
+    - complementary [ref=f13e4]:
+      - generic [ref=f13e5]:
+        - generic [ref=f13e6]: S
+        - generic [ref=f13e7]:
+          - generic [ref=f13e8]: SIMPRO
+          - generic [ref=f13e9]: CRM Prototype
+      - navigation [ref=f13e10]:
+        - generic [ref=f13e11]:
+          - generic [ref=f13e12]: SIMPRO
+          - link "Dashboard" [ref=f13e13] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Projects" [ref=f13e20] [cursor=pointer]:
+            - /url: /projects
+          - link "My tasks" [ref=f13e24] [cursor=pointer]:
+            - /url: /my-tasks
+          - link "Forms" [ref=f13e29] [cursor=pointer]:
+            - /url: /forms
+        - generic [ref=f13e34]:
+          - generic [ref=f13e35]: CRM
+          - link "Dashboard" [ref=f13e36] [cursor=pointer]:
+            - /url: /crm
+          - link "Projects" [ref=f13e43] [cursor=pointer]:
+            - /url: /crm/projects
+          - link "Groups" [ref=f13e47] [cursor=pointer]:
+            - /url: /crm/groups
+          - link "Workload" [ref=f13e54] [cursor=pointer]:
+            - /url: /crm/workload
+      - generic [ref=f13e60]:
+        - generic "Rina Prameswari" [ref=f13e62]: RP
+        - generic [ref=f13e63]:
+          - generic [ref=f13e64]: Rina Prameswari
+          - generic [ref=f13e65]: manager
+        - button "Reset data demo" [ref=f13e66]
+    - generic [ref=f13e67]:
+      - banner [ref=f13e68]:
+        - heading "Detail Proyek" [level=1] [ref=f13e70]
+        - generic [ref=f13e71]:
+          - button "CRM" [ref=f13e73]
+          - button "Notifikasi" [ref=f13e76]:
+            - generic [ref=f13e77]: "1"
+          - combobox [ref=f13e79]:
+            - option "Admin Utama · admin"
+            - option "Rina Prameswari · manager" [selected]
+            - option "Nur Irfan · pm"
+            - option "Yohan Kinata · pm"
+            - option "Eugene · assignee"
+            - option "Sigit Wijayanto · assignee"
+            - option "Andi Jamero · assignee"
+            - option "Maya Sari · finance"
+          - generic "Rina Prameswari" [ref=f13e81]: RP
+      - main [ref=f13e82]:
+        - generic [ref=f13e83]:
+          - link "Kembali ke projects" [ref=f13e84] [cursor=pointer]:
+            - /url: /crm/projects
+          - generic [ref=f13e88]:
+            - generic [ref=f13e89]:
+              - generic [ref=f13e90]:
+                - generic [ref=f13e91]:
+                  - generic [ref=f13e92]: LEMMIC
+                  - generic [ref=f13e93]: active
+                  - generic [ref=f13e94]: planning
+                  - generic [ref=f13e95]: High
+                - heading "Connector Member System" [level=1] [ref=f13e96]
+                - paragraph [ref=f13e97]: LEMMIC · PM Nur Irfan
+                - paragraph [ref=f13e98]: DnD Group
+              - button "Batalkan" [ref=f13e102]
+            - generic [ref=f13e103]:
+              - generic [ref=f13e105]:
+                - generic [ref=f13e106]: Journey
+                - generic [ref=f13e107]: 0%
+              - generic [ref=f13e110]:
+                - generic [ref=f13e111]: Work step aktif
+                - generic [ref=f13e112]: 33%
+            - generic [ref=f13e115]:
+              - generic [ref=f13e116]: 1 Okt 2026 → 15 Des 2026
+              - generic [ref=f13e119]: Group DnD Group
+            - generic [ref=f13e127]:
+              - generic [ref=f13e128]:
+                - generic [ref=f13e129]: Planning
+                - generic [ref=f13e132]: Running
+                - generic [ref=f13e135]: Finishing
+              - tablist "Journey proyek" [ref=f13e138]:
+                - tab "Pitching — 2 winner" [selected] [ref=f13e144] [cursor=pointer]:
+                  - generic [ref=f13e145]: "1"
+                  - generic [ref=f13e146]: Pitching
+                  - generic "2 winner" [ref=f13e147]
+                - tab "Survey — Belum dimulai" [disabled] [ref=f13e150]:
+                  - generic [ref=f13e151]: "2"
+                  - generic [ref=f13e152]: Survey
+                  - generic "Belum ada PIC" [ref=f13e153]
+                - tab "RAB — Belum dimulai" [disabled] [ref=f13e156]:
+                  - generic [ref=f13e157]: "3"
+                  - generic [ref=f13e158]: RAB
+                  - generic "Rp 0" [ref=f13e159]
+                - tab "Running — Belum dimulai" [disabled] [ref=f13e162]:
+                  - generic [ref=f13e163]: "4"
+                  - generic [ref=f13e164]: Running
+                  - generic "0 aktif" [ref=f13e165]
+                - tab "BAST — Belum dimulai" [disabled] [ref=f13e168]:
+                  - generic [ref=f13e169]: "5"
+                  - generic [ref=f13e170]: BAST
+                  - generic "Belum ada PIC" [ref=f13e171]
+                - tab "Invoice — Belum dimulai" [disabled] [ref=f13e174]:
+                  - generic [ref=f13e175]: "6"
+                  - generic [ref=f13e176]: Invoice
+                  - generic "Belum ada PIC" [ref=f13e177]
+          - tabpanel "Pitching — 2 winner" [ref=f13e180]:
+            - generic [ref=f13e181]:
+              - generic [ref=f13e182]:
+                - generic [ref=f13e183]:
+                  - heading "Pitching" [level=3] [ref=f13e184]
+                  - paragraph [ref=f13e185]: Jumlah bebas, multiple winners. Yang kalah masuk riwayat.
+                - button "Riwayat (3)" [ref=f13e187]
+              - generic [ref=f13e188]:
+                - button "Konsep Portal Member Won Portal member dengan loyalty dan dashboard poin. E Pembuat PPT In Progress LEMMIC-001 SW Presenter Awaiting Approval LEMMIC-002 AJ Riset Kompetitor Completed LEMMIC-003" [ref=f13e189] [cursor=pointer]:
+                  - generic [ref=f13e191]:
+                    - generic [ref=f13e192]:
+                      - heading "Konsep Portal Member" [level=4] [ref=f13e193]
+                      - generic [ref=f13e194]: Won
+                    - paragraph [ref=f13e195]: Portal member dengan loyalty dan dashboard poin.
+                  - generic [ref=f13e196]:
+                    - generic [ref=f13e197]:
+                      - generic "Eugene" [ref=f13e199]: E
+                      - generic [ref=f13e200]: Pembuat PPT
+                      - generic [ref=f13e201]: In Progress
+                      - link "LEMMIC-001" [ref=f13e202]:
+                        - /url: /projects/p-lemmic/board?task=task-lem-001
+                    - generic [ref=f13e203]:
+                      - generic "Sigit Wijayanto" [ref=f13e205]: SW
+                      - generic [ref=f13e206]: Presenter
+                      - generic [ref=f13e207]: Awaiting Approval
+                      - link "LEMMIC-002" [ref=f13e208]:
+                        - /url: /projects/p-lemmic/board?task=task-lem-002
+                    - generic [ref=f13e209]:
+                      - generic "Andi Jamero" [ref=f13e211]: AJ
+                      - generic [ref=f13e212]: Riset Kompetitor
+                      - generic [ref=f13e213]: Completed
+                      - link "LEMMIC-003" [ref=f13e214]:
+                        - /url: /projects/p-lemmic/board?task=task-lem-003
+                - button "Dashboard Engagement Won Dashboard aktivitas dan kampanye member. E Pembuat PPT Completed LEMMIC-004 AJ Presenter To Do LEMMIC-005" [ref=f13e215] [cursor=pointer]:
+                  - generic [ref=f13e217]:
+                    - generic [ref=f13e218]:
+                      - heading "Dashboard Engagement" [level=4] [ref=f13e219]
+                      - generic [ref=f13e220]: Won
+                    - paragraph [ref=f13e221]: Dashboard aktivitas dan kampanye member.
+                  - generic [ref=f13e222]:
+                    - generic [ref=f13e223]:
+                      - generic "Eugene" [ref=f13e225]: E
+                      - generic [ref=f13e226]: Pembuat PPT
+                      - generic [ref=f13e227]: Completed
+                      - link "LEMMIC-004" [ref=f13e228]:
+                        - /url: /projects/p-lemmic/board?task=task-lem-004
+                    - generic [ref=f13e229]:
+                      - generic "Andi Jamero" [ref=f13e231]: AJ
+                      - generic [ref=f13e232]: Presenter
+                      - generic [ref=f13e233]: To Do
+                      - link "LEMMIC-005" [ref=f13e234]:
+                        - /url: /projects/p-lemmic/board?task=task-lem-005
+              - generic [ref=f13e235]:
+                - generic [ref=f13e236]: Syarat menyelesaikan step
+                - generic [ref=f13e240]:
+                  - generic [ref=f13e241]: Semua pitching sudah diputuskan
+                  - generic [ref=f13e246]: Minimal ada 1 pitching menang
+                  - generic [ref=f13e251]: Semua task pitching pemenang selesai
+                  - generic [ref=f13e257]: Tidak ada task Pitching yang aktif
+                - paragraph [ref=f13e263]: Hanya PM pemilik proyek atau Admin yang dapat menyelesaikan step.
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f13e274] [cursor=pointer]
+  - alert [ref=f13e278]

@@ -69,6 +69,7 @@ MVP dianggap selesai jika:
 - Groups: list, create/edit, members, rollup, completion.
 - Workload: active task count per assignee.
 - Notifications + activity log.
+- Riwayat proyek: audit trail append-only + stepper tab + timeline per step + backfill.
 
 **SIMPRO**
 
@@ -115,7 +116,7 @@ MVP dianggap selesai jika:
 - Portal klien.
 - Email/WhatsApp/push.
 - PDF BAST/Invoice, e-signature, payment tracking.
-- Audit trail formal.
+- Audit trail produksi berbasis DB/immutable storage.
 - Mobile app.
 - Multi-currency dan otomatisasi pajak.
 

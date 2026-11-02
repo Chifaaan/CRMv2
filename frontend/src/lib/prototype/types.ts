@@ -16,7 +16,7 @@ export type StepKey =
 
 export type FormStepKey = "survey" | "rab" | "bast" | "invoice";
 
-export type StepStatus = "pending" | "active" | "completed";
+export type StepStatus = "pending" | "active" | "completed" | "skipped";
 
 export type TaskStatus =
   | "backlog"
@@ -235,6 +235,18 @@ export type ActivityLog = {
   createdAt: string;
 };
 
+export type ProjectEvent = {
+  id: string;
+  projectId: string;
+  step: StepKey | null;
+  eventType: string;
+  actorId: string;
+  occurredAt: string;
+  summary: string;
+  metadata: Record<string, unknown>;
+  groupId?: string;
+};
+
 export type AppState = {
   seedVersion: number;
   currentUserId: string;
@@ -248,6 +260,7 @@ export type AppState = {
   groups: ProjectGroup[];
   notifications: Notification[];
   activityLogs: ActivityLog[];
+  projectEvents: ProjectEvent[];
 };
 
 export type GateRequirement = {

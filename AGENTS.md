@@ -27,6 +27,8 @@ npm test
 ## Where the prototype lives
 
 - Domain rules, gates, progress, permissions: `frontend/src/lib/prototype/domain.ts`
+- Project audit trail (`project_events`, backfill, read/pagination): `frontend/src/lib/prototype/events.ts`
+- Step history UI: `frontend/src/components/prototype/crm/project-history.tsx`
 - Seed/demo data: `frontend/src/lib/prototype/seed.ts`
 - Zustand store + persistence: `frontend/src/lib/prototype/store.ts`
 - IndexedDB file storage: `frontend/src/lib/prototype/files.ts`

@@ -1,3 +1,4 @@
+import { backfillProjectEvents } from "./events";
 import { STEP_META, type AppState, type FormStepKey, type StepForm, type StepKey } from "./types";
 
 function iso(date: string): string {
@@ -1037,7 +1038,7 @@ export function createSeedState(): AppState {
     },
   ];
 
-  return {
+  const baseState: AppState = {
     seedVersion: 1,
     currentUserId: "u-pm1",
     users,
@@ -1054,5 +1055,11 @@ export function createSeedState(): AppState {
     groups: [group],
     notifications,
     activityLogs,
+    projectEvents: [],
+  };
+
+  return {
+    ...baseState,
+    projectEvents: backfillProjectEvents(baseState),
   };
 }

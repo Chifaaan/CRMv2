@@ -3,6 +3,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { activeSteps, evaluateGate, groupCompleted, userById } from "./domain";
+import {
+  backfillProjectEvents,
+  recordProjectEvent,
+  type ProjectEventInput,
+} from "./events";
 import { createSeedState } from "./seed";
 import {
   FORM_STEP_KEYS,
@@ -13,6 +18,7 @@ import {
   type Pitching,
   type Priority,
   type Project,
+  type ProjectEvent,
   type ProjectStep,
   TASK_STATUS_LABEL,
   type StepForm,
@@ -45,6 +51,7 @@ type PrototypeActions = {
   hydrated: boolean;
   setHydrated: (value: boolean) => void;
   setCurrentUser: (userId: string) => void;
+  setProjectEvents: (events: ProjectEvent[]) => void;
   reset: () => void;
 
   createProject: (input: ProjectInput) => string;
@@ -175,6 +182,75 @@ function notify(
   };
 }
 
+function projectEvent(
+  state: AppState,
+  input: Omit<ProjectEventInput, "actorId">,
+): ProjectEvent[] {
+  return recordProjectEvent(state.projectEvents, {
+    ...input,
+    actorId: state.currentUserId,
+  });
+}
+
+function formSnapshot(form: StepForm): Record<string, unknown> {
+  const base = {
+    status: form.status,
+    assigneeId: form.assigneeId ?? null,
+  };
+  if (form.type === "rab") {
+    const payload = form.payload as { items?: { qty: number; unitPrice: number }[] };
+    return {
+      ...base,
+      total: (payload.items ?? []).reduce(
+        (sum, item) => sum + item.qty * item.unitPrice,
+        0,
+      ),
+      itemCount: payload.items?.length ?? 0,
+    };
+  }
+  if (form.type === "bast") {
+    const payload = form.payload as {
+      number?: string;
+      date?: string;
+      documentUrl?: string;
+    };
+    return {
+      ...base,
+      number: payload.number ?? "",
+      date: payload.date ?? "",
+      documentUrl: payload.documentUrl ?? "",
+    };
+  }
+  if (form.type === "invoice") {
+    const payload = form.payload as {
+      number?: string;
+      date?: string;
+      amount?: number;
+      taxAmount?: number;
+      documentUrl?: string;
+    };
+    return {
+      ...base,
+      number: payload.number ?? "",
+      date: payload.date ?? "",
+      amount: payload.amount ?? 0,
+      taxAmount: payload.taxAmount ?? 0,
+      documentUrl: payload.documentUrl ?? "",
+    };
+  }
+  const payload = form.payload as {
+    surveyDate?: string;
+    location?: string;
+    findings?: string;
+  };
+  return {
+    ...base,
+    surveyDate: payload.surveyDate ?? "",
+    location: payload.location ?? "",
+    findings: payload.findings ?? "",
+  };
+}
+
 function makeSteps(projectId: string): ProjectStep[] {
   return STEP_META.map((meta, index) => ({
     id: `step-${projectId}-${meta.key}-${index}`,
@@ -280,6 +356,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
       hydrated: false,
       setHydrated: (value) => set({ hydrated: value }),
       setCurrentUser: (userId) => set({ currentUserId: userId }),
+      setProjectEvents: (events) => set({ projectEvents: events }),
       reset: () => set({ ...createSeedState(), hydrated: true }),
 
       createProject: (input) => {
@@ -300,6 +377,32 @@ export const usePrototypeStore = create<PrototypeStore>()(
           createdAt: now(),
         };
         const forms = FORM_STEP_KEYS.map((key) => defaultForm(projectId, key));
+        let events = projectEvent(state, {
+          projectId,
+          step: null,
+          eventType: "project.created",
+          summary: `Proyek ${project.name} dibuat.`,
+          metadata: {
+            before: null,
+            after: {
+              name: project.name,
+              client: project.client,
+              priority: project.priority,
+              status: project.status,
+            },
+          },
+        });
+        events = recordProjectEvent(events, {
+          projectId,
+          step: "pitching",
+          eventType: "project.step_changed",
+          actorId: state.currentUserId,
+          summary: "Step Pitching aktif.",
+          metadata: {
+            before: { status: "pending" },
+            after: { status: "active" },
+          },
+        });
         set({
           projects: [...state.projects, project],
           steps: [...state.steps, ...makeSteps(projectId)],
@@ -313,15 +416,27 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Proyek ${project.name} dibuat.`,
             }),
           ],
+          projectEvents: events,
         });
         return projectId;
       },
 
       updateProject: (projectId, input) => {
         const state = get();
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!project) return;
+        const before = {
+          name: project.name,
+          client: project.client,
+          description: project.description,
+          priority: project.priority,
+          startDate: project.startDate,
+          targetEndDate: project.targetEndDate,
+        };
+        const after = { ...before, ...input };
         set({
-          projects: state.projects.map((project) =>
-            project.id === projectId ? { ...project, ...input } : project,
+          projects: state.projects.map((item) =>
+            item.id === projectId ? { ...item, ...input } : item,
           ),
           activityLogs: [
             ...state.activityLogs,
@@ -332,6 +447,13 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: "Data proyek diperbarui.",
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: null,
+            eventType: "project.updated",
+            summary: "Data proyek diperbarui.",
+            metadata: { before, after },
+          }),
         });
       },
 
@@ -354,6 +476,16 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Proyek dibatalkan: ${reason}`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: null,
+            eventType: "project.cancelled",
+            summary: `Proyek dibatalkan: ${reason}`,
+            metadata: {
+              before: { status: project.status },
+              after: { status: "cancelled", reason },
+            },
+          }),
           notifications: [
             ...state.notifications,
             notify(state, {
@@ -397,6 +529,19 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Pitching ${pitching.title} dibuat.`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: "pitching",
+            eventType: "pitching.created",
+            summary: `Pitching ${pitching.title} dibuat.`,
+            metadata: {
+              after: {
+                title: pitching.title,
+                description: pitching.description,
+                roles: roles.length,
+              },
+            },
+          }),
         });
       },
 
@@ -450,6 +595,24 @@ export const usePrototypeStore = create<PrototypeStore>()(
           ),
           pitchingRoles: [...stateWithoutOldTasks.pitchingRoles, ...roles],
           tasks,
+          projectEvents: projectEvent(state, {
+            projectId: pitching.projectId,
+            step: "pitching",
+            eventType: "pitching.updated",
+            summary: `Pitching ${nextPitching.title} diperbarui.`,
+            metadata: {
+              before: {
+                title: pitching.title,
+                description: pitching.description,
+                roles: oldRoles.length,
+              },
+              after: {
+                title: nextPitching.title,
+                description: nextPitching.description,
+                roles: roles.length,
+              },
+            },
+          }),
         });
       },
 
@@ -486,6 +649,22 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Pitching ${pitching.title} ${decision === "won" ? "menang" : "kalah"}.`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId: pitching.projectId,
+            step: "pitching",
+            eventType: decision === "won" ? "pitching.won" : "pitching.lost",
+            summary: `Pitching ${pitching.title} ${decision === "won" ? "menang" : "kalah"}.`,
+            metadata: {
+              before: { status: pitching.status },
+              after: { status: decision },
+              archivedTaskIds:
+                decision === "lost"
+                  ? state.tasks
+                      .filter((task) => task.pitchingId === pitchingId)
+                      .map((task) => task.id)
+                  : [],
+            },
+          }),
         });
       },
 
@@ -521,6 +700,16 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `${form.type.toUpperCase()} di-assign ke ${user?.name ?? "user"}.`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId: form.projectId,
+            step: form.stepKey,
+            eventType: `${form.type}.assigned`,
+            summary: `${form.type.toUpperCase()} di-assign ke ${user?.name ?? "user"}.`,
+            metadata: {
+              before: { assigneeId: form.assigneeId ?? null, status: form.status },
+              after: { assigneeId: userId, status: "assigned" },
+            },
+          }),
         });
       },
 
@@ -528,18 +717,20 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const state = get();
         const form = state.forms.find((item) => item.id === formId);
         if (!form) return;
+        const nextStatus =
+          form.status === "unassigned" ||
+          form.status === "assigned" ||
+          form.status === "submitted" ||
+          form.status === "approved"
+            ? "draft"
+            : form.status;
         set({
           forms: state.forms.map((item) =>
             item.id === formId
               ? {
                   ...item,
                   payload,
-                  status:
-                    item.status === "unassigned" || item.status === "assigned"
-                      ? "draft"
-                      : item.status === "submitted" || item.status === "approved"
-                        ? "draft"
-                        : item.status,
+                  status: nextStatus,
                   submittedAt: undefined,
                   reviewedAt: undefined,
                   reviewedById: undefined,
@@ -556,6 +747,16 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `${form.type.toUpperCase()} disimpan sebagai draft.`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId: form.projectId,
+            step: form.stepKey,
+            eventType: `${form.type}.updated`,
+            summary: `${form.type.toUpperCase()} diperbarui.`,
+            metadata: {
+              before: formSnapshot(form),
+              after: formSnapshot({ ...form, payload, status: nextStatus }),
+            },
+          }),
         });
       },
 
@@ -596,6 +797,16 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `${form.type.toUpperCase()} disubmit.`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId: form.projectId,
+            step: form.stepKey,
+            eventType: `${form.type}.submitted`,
+            summary: `${form.type.toUpperCase()} disubmit.`,
+            metadata: {
+              before: { status: form.status },
+              after: { status: "submitted" },
+            },
+          }),
         });
       },
 
@@ -643,22 +854,48 @@ export const usePrototypeStore = create<PrototypeStore>()(
                   : `${form.type.toUpperCase()} dikembalikan untuk revisi.`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId: form.projectId,
+            step: form.stepKey,
+            eventType: `${form.type}.${decision === "approved" ? "approved" : "need_revision"}`,
+            summary:
+              decision === "approved"
+                ? `${form.type.toUpperCase()} disetujui.`
+                : `${form.type.toUpperCase()} perlu revisi.`,
+            metadata: {
+              before: { status: form.status },
+              after: { status: decision },
+              reviewComment: comment,
+            },
+          }),
         });
       },
 
       addFormPhoto: (formId, photo) => {
         const state = get();
+        const form = state.forms.find((item) => item.id === formId);
+        if (!form) return;
         set({
           forms: state.forms.map((item) =>
             item.id === formId
               ? { ...item, photos: [...(item.photos ?? []), photo] }
               : item,
           ),
+          projectEvents: projectEvent(state, {
+            projectId: form.projectId,
+            step: form.stepKey,
+            eventType: `${form.type}.photo_added`,
+            summary: `Foto ${photo.fileName} ditambahkan.`,
+            metadata: { fileName: photo.fileName, photoId: photo.id },
+          }),
         });
       },
 
       removeFormPhoto: (formId, photoId) => {
         const state = get();
+        const form = state.forms.find((item) => item.id === formId);
+        if (!form) return;
+        const photo = form.photos?.find((item) => item.id === photoId);
         set({
           forms: state.forms.map((item) =>
             item.id === formId
@@ -668,6 +905,13 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 }
               : item,
           ),
+          projectEvents: projectEvent(state, {
+            projectId: form.projectId,
+            step: form.stepKey,
+            eventType: `${form.type}.photo_removed`,
+            summary: `Foto ${photo?.fileName ?? photoId} dihapus.`,
+            metadata: { fileName: photo?.fileName ?? photoId, photoId },
+          }),
         });
       },
 
@@ -705,6 +949,20 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Task ${task.code} dibuat.`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: step.key,
+            eventType: "task.created",
+            summary: `Task ${task.code} dibuat.`,
+            metadata: {
+              taskId,
+              after: {
+                title: task.title,
+                priority: task.priority,
+                status: task.status,
+              },
+            },
+          }),
         });
         return taskId;
       },
@@ -742,6 +1000,17 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Task di-assign ke ${user?.name ?? "user"}.`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId: task.projectId,
+            step: task.stepKey,
+            eventType: "task.assigned",
+            summary: `Task ${task.code} di-assign ke ${user?.name ?? "user"}.`,
+            metadata: {
+              taskId,
+              before: { assigneeId: task.assigneeId ?? null, status: task.status },
+              after: { assigneeId: userId, status: "todo" },
+            },
+          }),
         });
       },
 
@@ -789,6 +1058,18 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Status task menjadi ${TASK_STATUS_LABEL[to]}.`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId: task.projectId,
+            step: task.stepKey,
+            eventType:
+              to === "completed" ? "task.completed" : "task.status_changed",
+            summary: `Task ${task.code} menjadi ${TASK_STATUS_LABEL[to]}.`,
+            metadata: {
+              taskId,
+              before: { status: task.status },
+              after: { status: to },
+            },
+          }),
         });
       },
 
@@ -812,6 +1093,17 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Task dihapus: ${reason}`,
             }),
           ],
+          projectEvents: projectEvent(state, {
+            projectId: task.projectId,
+            step: task.stepKey,
+            eventType: "task.deleted",
+            summary: `Task ${task.code} dihapus: ${reason}`,
+            metadata: {
+              taskId,
+              before: { status: task.status, title: task.title },
+              after: { archived: true, reason },
+            },
+          }),
         });
       },
 
@@ -836,11 +1128,20 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 }
               : item,
           ),
+          projectEvents: projectEvent(state, {
+            projectId: task.projectId,
+            step: task.stepKey,
+            eventType: "task.commented",
+            summary: `Komentar baru pada ${task.code}.`,
+            metadata: { taskId, comment: body.slice(0, 500) },
+          }),
         });
       },
 
       addChecklistItem: (taskId, text) => {
         const state = get();
+        const task = state.tasks.find((item) => item.id === taskId);
+        if (!task) return;
         set({
           tasks: state.tasks.map((item) =>
             item.id === taskId
@@ -853,51 +1154,91 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 }
               : item,
           ),
+          projectEvents: projectEvent(state, {
+            projectId: task.projectId,
+            step: task.stepKey,
+            eventType: "task.checklist_updated",
+            summary: `Checklist ${task.code} ditambah: ${text}.`,
+            metadata: { taskId, after: { item: text, done: false } },
+          }),
         });
       },
 
       toggleChecklistItem: (taskId, itemId) => {
         const state = get();
+        const task = state.tasks.find((item) => item.id === taskId);
+        if (!task) return;
+        const item = task.checklist.find((check) => check.id === itemId);
         set({
-          tasks: state.tasks.map((item) =>
-            item.id === taskId
+          tasks: state.tasks.map((row) =>
+            row.id === taskId
               ? {
-                  ...item,
-                  checklist: item.checklist.map((check) =>
+                  ...row,
+                  checklist: row.checklist.map((check) =>
                     check.id === itemId
                       ? { ...check, done: !check.done }
                       : check,
                   ),
                 }
-              : item,
+              : row,
           ),
+          projectEvents: projectEvent(state, {
+            projectId: task.projectId,
+            step: task.stepKey,
+            eventType: "task.checklist_updated",
+            summary: `Checklist ${task.code} diperbarui.`,
+            metadata: {
+              taskId,
+              before: { item: item?.text ?? itemId, done: item?.done ?? false },
+              after: { item: item?.text ?? itemId, done: !(item?.done ?? false) },
+            },
+          }),
         });
       },
 
       addAttachment: (taskId, attachment) => {
         const state = get();
+        const task = state.tasks.find((item) => item.id === taskId);
+        if (!task) return;
         set({
           tasks: state.tasks.map((item) =>
             item.id === taskId
               ? { ...item, attachments: [...item.attachments, attachment] }
               : item,
           ),
+          projectEvents: projectEvent(state, {
+            projectId: task.projectId,
+            step: task.stepKey,
+            eventType: "task.attachment_added",
+            summary: `Lampiran ${attachment.fileName} ditambahkan ke ${task.code}.`,
+            metadata: { taskId, fileName: attachment.fileName, attachmentId: attachment.id },
+          }),
         });
       },
 
       removeAttachment: (taskId, attachmentId) => {
         const state = get();
+        const task = state.tasks.find((item) => item.id === taskId);
+        if (!task) return;
+        const attachment = task.attachments.find((item) => item.id === attachmentId);
         set({
           tasks: state.tasks.map((item) =>
             item.id === taskId
               ? {
                   ...item,
                   attachments: item.attachments.filter(
-                    (attachment) => attachment.id !== attachmentId,
+                    (item) => item.id !== attachmentId,
                   ),
                 }
               : item,
           ),
+          projectEvents: projectEvent(state, {
+            projectId: task.projectId,
+            step: task.stepKey,
+            eventType: "task.attachment_removed",
+            summary: `Lampiran ${attachment?.fileName ?? attachmentId} dihapus dari ${task.code}.`,
+            metadata: { taskId, fileName: attachment?.fileName ?? attachmentId, attachmentId },
+          }),
         });
       },
 
@@ -949,6 +1290,37 @@ export const usePrototypeStore = create<PrototypeStore>()(
             : step,
         );
 
+        const stepLabel =
+          STEP_META.find((meta) => meta.key === stepKey)?.label ?? stepKey;
+        const completedAt = now();
+        let events = projectEvent(state, {
+          projectId,
+          step: stepKey,
+          eventType: "project.step_changed",
+          summary: `Step ${stepLabel} selesai.`,
+          metadata: {
+            before: { status: "active" },
+            after: { status: "completed" },
+            startedAt: current.startedAt ?? null,
+            completedAt,
+          },
+        });
+        for (const key of activatedKeys) {
+          const label = STEP_META.find((meta) => meta.key === key)?.label ?? key;
+          events = recordProjectEvent(events, {
+            projectId,
+            step: key,
+            eventType: "project.step_changed",
+            actorId: state.currentUserId,
+            summary: `Step ${label} aktif.`,
+            metadata: {
+              before: { status: "pending" },
+              after: { status: "active" },
+              startedAt: completedAt,
+            },
+          });
+        }
+
         set({
           steps,
           activityLogs: [
@@ -960,6 +1332,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Step ${stepKey} selesai.`,
             }),
           ],
+          projectEvents: events,
           notifications: project
             ? [
                 ...state.notifications,
@@ -1021,6 +1394,33 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 : item,
             )
           : state.groups;
+        const completedAt = now();
+        let events = state.projectEvents;
+        for (const key of ["bast", "invoice"] as StepKey[]) {
+          events = recordProjectEvent(events, {
+            projectId,
+            step: key,
+            eventType: "project.step_changed",
+            actorId: state.currentUserId,
+            summary: `Step ${key === "bast" ? "BAST" : "Invoice"} selesai.`,
+            metadata: {
+              before: { status: "active" },
+              after: { status: "completed" },
+              completedAt,
+            },
+          });
+        }
+        events = recordProjectEvent(events, {
+          projectId,
+          step: null,
+          eventType: "project.completed",
+          actorId: state.currentUserId,
+          summary: `Proyek ${project.name} selesai.`,
+          metadata: {
+            before: { status: project.status },
+            after: { status: "completed", actualEndDate: completedAt },
+          },
+        });
         set({
           projects: nextProjects,
           steps: nextSteps,
@@ -1034,6 +1434,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Proyek ${project.name} selesai.`,
             }),
           ],
+          projectEvents: events,
           notifications: [
             ...state.notifications,
             notify(state, {
@@ -1072,29 +1473,80 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
       addProjectToGroup: (groupId, projectId) => {
         const state = get();
+        const project = state.projects.find((item) => item.id === projectId);
+        const group = state.groups.find((item) => item.id === groupId);
+        if (!project) return;
         set({
-          projects: state.projects.map((project) =>
-            project.id === projectId ? { ...project, groupId } : project,
+          projects: state.projects.map((item) =>
+            item.id === projectId ? { ...item, groupId } : item,
           ),
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: null,
+            eventType: "project.group_joined",
+            groupId,
+            summary: `Proyek masuk group ${group?.name ?? groupId}.`,
+            metadata: {
+              before: { groupId: project.groupId ?? null },
+              after: { groupId },
+            },
+          }),
         });
       },
 
       removeProjectFromGroup: (projectId) => {
         const state = get();
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!project) return;
+        const group = project.groupId
+          ? state.groups.find((item) => item.id === project.groupId)
+          : undefined;
         set({
-          projects: state.projects.map((project) =>
-            project.id === projectId ? { ...project, groupId: undefined } : project,
+          projects: state.projects.map((item) =>
+            item.id === projectId ? { ...item, groupId: undefined } : item,
           ),
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: null,
+            eventType: "project.group_left",
+            groupId: project.groupId,
+            summary: `Proyek keluar dari group ${group?.name ?? project.groupId ?? ""}.`,
+            metadata: {
+              before: { groupId: project.groupId ?? null },
+              after: { groupId: null },
+            },
+          }),
         });
       },
 
       disbandGroup: (groupId) => {
         const state = get();
+        const group = state.groups.find((item) => item.id === groupId);
+        const members = state.projects.filter(
+          (project) => project.groupId === groupId,
+        );
+        let events = state.projectEvents;
+        for (const project of members) {
+          events = recordProjectEvent(events, {
+            projectId: project.id,
+            step: null,
+            eventType: "project.group_left",
+            actorId: state.currentUserId,
+            groupId,
+            summary: `Group ${group?.name ?? groupId} dibubarkan; proyek keluar dari group.`,
+            metadata: {
+              before: { groupId },
+              after: { groupId: null },
+              reason: "disbanded",
+            },
+          });
+        }
         set({
-          groups: state.groups.filter((group) => group.id !== groupId),
+          groups: state.groups.filter((item) => item.id !== groupId),
           projects: state.projects.map((project) =>
             project.groupId === groupId ? { ...project, groupId: undefined } : project,
           ),
+          projectEvents: events,
         });
       },
 
@@ -1136,12 +1588,21 @@ export const usePrototypeStore = create<PrototypeStore>()(
         groups: state.groups,
         notifications: state.notifications,
         activityLogs: state.activityLogs,
+        projectEvents: state.projectEvents,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         if (state.seedVersion !== createSeedState().seedVersion) {
           state.reset();
           return;
+        }
+        if (!state.projectEvents?.length) {
+          state.setProjectEvents(
+            backfillProjectEvents({
+              ...state,
+              projectEvents: state.projectEvents ?? [],
+            }),
+          );
         }
         state.setHydrated(true);
       },

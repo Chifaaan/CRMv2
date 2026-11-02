@@ -663,6 +663,17 @@ Event minimum:
 - Ditampilkan di card dialog dan project detail.
 - Read-only.
 
+#### 8.12.3 Riwayat proyek (audit trail prototype)
+
+- `project_events` append-only di lapisan data prototype: `projectId`, `step` nullable, `eventType`, `actorId`, `occurredAt`, `summary`, `metadata`, `groupId`.
+- Event ditulis dari store mutation yang sama dengan perubahan data; tidak ada update/delete event.
+- `project.step_changed` mencatat transisi step dan menjadi sumber kebenaran status step.
+- Backfill idempotent dari `activityLogs`; proyek tanpa riwayat mendapat event `project.backfill`.
+- Endpoint-like read: filter step, urutan waktu menurun, cursor pagination, permission proyek, dan masking metadata untuk Assignee.
+- Stepper menjadi tab: step selesai/aktif/dilewati dapat dibuka; step pending `aria-disabled`; step terpilih disimpan di `?step=`.
+- Panel menampilkan ringkasan step, timeline per tanggal, before/after, dokumen/foto, loading/empty/error, dan Muat lebih banyak.
+- Ini bukan audit trail produksi; table/index DB nyata tetap di luar scope prototype.
+
 ### 8.13 SIMPRO screens
 
 SIMPRO memakai tampilan, komponen, dan route yang sudah ada di `frontend/src`. Jangan membuat layout SIMPRO baru; adaptasi yang diizinkan hanya menghapus ketergantungan auth/API, menyembunyikan menu/tab yang tidak dipakai, dan menyesuaikan board ke 6 status.
@@ -1179,7 +1190,7 @@ Fase:
 | Reset | Tombol reset mengembalikan seed dan menghapus IndexedDB. |
 | Error handling | Validasi form + toast. |
 | Data | Hanya data demo, bukan data produksi. |
-| Audit | Activity log in-app, bukan audit trail formal. |
+| Audit | `project_events` + activity log in-app; bukan audit trail produksi/DB formal. |
 
 ---
 
