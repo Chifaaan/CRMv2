@@ -1,0 +1,6 @@
+// Assets — fitur belum diaktifkan, redirect ke dashboard
+import { redirect } from "next/navigation";
+
+export default function AssetsPage() {
+  redirect("/dashboard");
+}

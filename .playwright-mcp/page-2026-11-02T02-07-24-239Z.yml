@@ -1,0 +1,140 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e3]:
+    - complementary [ref=f4e4]:
+      - generic [ref=f4e5]:
+        - generic [ref=f4e6]: S
+        - generic [ref=f4e7]:
+          - generic [ref=f4e8]: SIMPRO
+          - generic [ref=f4e9]: CRM Prototype
+      - navigation [ref=f4e10]:
+        - generic [ref=f4e11]:
+          - generic [ref=f4e12]: SIMPRO
+          - link "Dashboard" [ref=f4e13] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Projects" [ref=f4e20] [cursor=pointer]:
+            - /url: /projects
+          - link "My tasks" [ref=f4e24] [cursor=pointer]:
+            - /url: /my-tasks
+          - link "Forms" [ref=f4e29] [cursor=pointer]:
+            - /url: /forms
+        - generic [ref=f4e34]:
+          - generic [ref=f4e35]: CRM
+          - link "Dashboard" [ref=f4e36] [cursor=pointer]:
+            - /url: /crm
+          - link "Projects" [ref=f4e43] [cursor=pointer]:
+            - /url: /crm/projects
+          - link "Groups" [ref=f4e47] [cursor=pointer]:
+            - /url: /crm/groups
+          - link "Workload" [ref=f4e54] [cursor=pointer]:
+            - /url: /crm/workload
+      - generic [ref=f4e60]:
+        - generic "Rina Prameswari" [ref=f4e62]: RP
+        - generic [ref=f4e63]:
+          - generic [ref=f4e64]: Rina Prameswari
+          - generic [ref=f4e65]: manager
+        - button "Reset data demo" [ref=f4e66]
+    - generic [ref=f4e67]:
+      - banner [ref=f4e68]:
+        - heading "Detail Proyek" [level=1] [ref=f4e70]
+        - generic [ref=f4e71]:
+          - button "CRM" [ref=f4e73]
+          - button "Notifikasi" [ref=f4e76]:
+            - generic [ref=f4e77]: "1"
+          - combobox [ref=f4e79]:
+            - option "Admin Utama · admin"
+            - option "Rina Prameswari · manager" [selected]
+            - option "Nur Irfan · pm"
+            - option "Yohan Kinata · pm"
+            - option "Eugene · assignee"
+            - option "Sigit Wijayanto · assignee"
+            - option "Andi Jamero · assignee"
+            - option "Maya Sari · finance"
+          - generic "Rina Prameswari" [ref=f4e81]: RP
+      - main [ref=f4e82]:
+        - generic [ref=f4e83]:
+          - link "Kembali ke projects" [ref=f4e84] [cursor=pointer]:
+            - /url: /crm/projects
+          - generic [ref=f4e88]:
+            - generic [ref=f4e89]:
+              - generic [ref=f4e90]:
+                - generic [ref=f4e91]:
+                  - generic [ref=f4e92]: CDNv2
+                  - generic [ref=f4e93]: active
+                  - generic [ref=f4e94]: planning
+                  - generic [ref=f4e95]: High
+                - heading "CDNv2 Automation" [level=1] [ref=f4e96]
+                - paragraph [ref=f4e97]: Spectrum · PM Nur Irfan
+                - paragraph [ref=f4e98]: Q4 Enterprise
+              - button "Batalkan" [ref=f4e102]
+            - generic [ref=f4e103]:
+              - generic [ref=f4e105]:
+                - generic [ref=f4e106]: Journey
+                - generic [ref=f4e107]: 40%
+              - generic [ref=f4e111]:
+                - generic [ref=f4e112]: Work step aktif
+                - generic [ref=f4e113]: 50%
+            - generic [ref=f4e116]:
+              - generic [ref=f4e117]: 2 Okt 2026 → 5 Des 2026
+              - generic [ref=f4e120]: Group Q4 Enterprise
+            - generic [ref=f4e128]:
+              - generic [ref=f4e129]:
+                - generic [ref=f4e130]: Planning
+                - generic [ref=f4e133]: Running
+                - generic [ref=f4e136]: Finishing
+              - generic [ref=f4e139]:
+                - button "Pitching — 1 winner" [ref=f4e145] [cursor=pointer]:
+                  - generic [ref=f4e149]: Pitching
+                  - generic "1 winner" [ref=f4e150]
+                - button "Survey — Approved" [ref=f4e153] [cursor=pointer]:
+                  - generic [ref=f4e157]: Survey
+                  - generic "Approved" [ref=f4e158]
+                - button "RAB — Rp 125.000.000" [ref=f4e161] [cursor=pointer]:
+                  - generic [ref=f4e162]: "3"
+                  - generic [ref=f4e163]: RAB
+                  - generic "Rp 125.000.000" [ref=f4e164]
+                - button "Running — 0 aktif" [ref=f4e167] [cursor=pointer]:
+                  - generic [ref=f4e168]: "4"
+                  - generic [ref=f4e169]: Running
+                  - generic "0 aktif" [ref=f4e170]
+                - button "BAST — Belum ada PIC" [ref=f4e173] [cursor=pointer]:
+                  - generic [ref=f4e174]: "5"
+                  - generic [ref=f4e175]: BAST
+                  - generic "Belum ada PIC" [ref=f4e176]
+                - button "Invoice — Belum ada PIC" [ref=f4e179] [cursor=pointer]:
+                  - generic [ref=f4e180]: "6"
+                  - generic [ref=f4e181]: Invoice
+                  - generic "Belum ada PIC" [ref=f4e182]
+          - generic [ref=f4e185]:
+            - generic [ref=f4e186]:
+              - generic [ref=f4e187]:
+                - generic [ref=f4e188]:
+                  - heading "Form RAB" [level=3] [ref=f4e189]
+                  - paragraph [ref=f4e190]: Diisi Finance di CRM. PM review sebelum step selesai.
+                - button "Lihat RAB" [ref=f4e192]
+              - generic [ref=f4e194]:
+                - generic [ref=f4e195]:
+                  - generic [ref=f4e196]: "Finance:"
+                  - generic [ref=f4e197]:
+                    - generic "Maya Sari" [ref=f4e198]: MS
+                    - generic [ref=f4e199]: Maya Sari
+                - generic [ref=f4e200]:
+                  - generic [ref=f4e201]: "Status:"
+                  - generic [ref=f4e202]: Submitted
+                - generic [ref=f4e203]:
+                  - generic [ref=f4e204]: Jumlah item
+                  - generic [ref=f4e205]: 2 item
+                - generic [ref=f4e206]:
+                  - generic [ref=f4e207]: Total RAB
+                  - generic [ref=f4e208]: Rp 125.000.000
+            - generic [ref=f4e209]:
+              - generic [ref=f4e210]: Syarat menyelesaikan step
+              - generic [ref=f4e214]: Form RAB sudah approved
+              - paragraph [ref=f4e221]: Hanya PM pemilik proyek atau Admin yang dapat menyelesaikan step.
+          - generic [ref=f4e222]:
+            - generic [ref=f4e224]:
+              - heading "Activity log" [level=3] [ref=f4e225]
+              - paragraph [ref=f4e226]: Riwayat perubahan pada proyek ini.
+            - paragraph [ref=f4e229]: Belum ada aktivitas.
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f4e235] [cursor=pointer]
+  - alert [ref=f4e239]

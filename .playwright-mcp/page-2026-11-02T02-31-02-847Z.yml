@@ -1,0 +1,200 @@
+- generic [active] [ref=f6e1]:
+  - generic [ref=f6e3]:
+    - complementary [ref=f6e4]:
+      - generic [ref=f6e5]:
+        - generic [ref=f6e6]: S
+        - generic [ref=f6e7]:
+          - generic [ref=f6e8]: SIMPRO
+          - generic [ref=f6e9]: CRM Prototype
+      - navigation [ref=f6e10]:
+        - generic [ref=f6e11]:
+          - generic [ref=f6e12]: SIMPRO
+          - link "Dashboard" [ref=f6e13] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Projects" [ref=f6e20] [cursor=pointer]:
+            - /url: /projects
+          - link "My tasks" [ref=f6e24] [cursor=pointer]:
+            - /url: /my-tasks
+          - link "Forms" [ref=f6e29] [cursor=pointer]:
+            - /url: /forms
+        - generic [ref=f6e34]:
+          - generic [ref=f6e35]: CRM
+          - link "Dashboard" [ref=f6e36] [cursor=pointer]:
+            - /url: /crm
+          - link "Projects" [ref=f6e43] [cursor=pointer]:
+            - /url: /crm/projects
+          - link "Groups" [ref=f6e47] [cursor=pointer]:
+            - /url: /crm/groups
+          - link "Workload" [ref=f6e54] [cursor=pointer]:
+            - /url: /crm/workload
+      - generic [ref=f6e60]:
+        - generic "Rina Prameswari" [ref=f6e62]: RP
+        - generic [ref=f6e63]:
+          - generic [ref=f6e64]: Rina Prameswari
+          - generic [ref=f6e65]: manager
+        - button "Reset data demo" [ref=f6e66]
+    - generic [ref=f6e67]:
+      - banner [ref=f6e68]:
+        - heading "Projects" [level=1] [ref=f6e70]
+        - generic [ref=f6e71]:
+          - button "CRM" [ref=f6e73]
+          - button "Notifikasi" [ref=f6e76]:
+            - generic [ref=f6e77]: "1"
+          - combobox [ref=f6e79]:
+            - option "Admin Utama · admin"
+            - option "Rina Prameswari · manager" [selected]
+            - option "Nur Irfan · pm"
+            - option "Yohan Kinata · pm"
+            - option "Eugene · assignee"
+            - option "Sigit Wijayanto · assignee"
+            - option "Andi Jamero · assignee"
+            - option "Maya Sari · finance"
+          - generic "Rina Prameswari" [ref=f6e81]: RP
+      - main [ref=f6e82]:
+        - generic [ref=f6e83]:
+          - generic [ref=f6e85]:
+            - heading "Projects" [level=1] [ref=f6e86]
+            - paragraph [ref=f6e87]: Semua proyek yang dapat Anda akses. Tarik kartu proyek ke kartu lain untuk membuat group.
+          - generic [ref=f6e88]:
+            - textbox "Cari nama, kode, atau klien…" [ref=f6e93]
+            - combobox [ref=f6e94]:
+              - option "Semua fase" [selected]
+              - option "Planning"
+              - option "Running"
+              - option "Finance"
+            - combobox [ref=f6e95]:
+              - option "Semua status" [selected]
+              - option "Active"
+              - option "Completed"
+              - option "Cancelled"
+            - combobox [ref=f6e96]:
+              - option "Semua prioritas" [selected]
+              - option "Low"
+              - option "Medium"
+              - option "High"
+              - option "Critical"
+          - generic [ref=f6e97]:
+            - generic [ref=f6e98]:
+              - generic [ref=f6e103]:
+                - generic [ref=f6e104]:
+                  - generic [ref=f6e105]: Group
+                  - generic [ref=f6e106]: 3 proyek
+                - heading "Q4 Enterprise" [level=3] [ref=f6e107]
+                - paragraph [ref=f6e108]: Program enterprise kuartal keempat.
+                - generic [ref=f6e109]: 0 dari 3 selesai
+              - button "Lihat daftar proyek" [ref=f6e112]
+            - generic [ref=f6e116]:
+              - link "Planning High LEMMIC Connector Member System LEMMIC Journey 0% Work 33% 15 Des 2026 4 anggota NI E SW +1 Planning" [ref=f6e117] [cursor=pointer]:
+                - /url: /crm/projects/p-lemmic
+                - generic [ref=f6e118]:
+                  - generic [ref=f6e119]:
+                    - generic [ref=f6e120]: Planning
+                    - generic [ref=f6e121]: High
+                  - generic [ref=f6e122]: LEMMIC
+                - generic [ref=f6e123]:
+                  - generic [ref=f6e124]:
+                    - heading "Connector Member System" [level=3] [ref=f6e125]
+                    - paragraph [ref=f6e126]: LEMMIC
+                  - generic [ref=f6e127]:
+                    - generic [ref=f6e128]:
+                      - generic [ref=f6e129]: Journey
+                      - generic [ref=f6e130]: 0%
+                    - generic [ref=f6e132]:
+                      - generic [ref=f6e133]: Work
+                      - generic [ref=f6e134]: 33%
+                  - generic [ref=f6e137]:
+                    - generic [ref=f6e138]: 15 Des 2026
+                    - generic [ref=f6e141]: 4 anggota
+                  - generic [ref=f6e147]:
+                    - generic [ref=f6e148]:
+                      - generic "Nur Irfan" [ref=f6e151]: NI
+                      - generic "Eugene" [ref=f6e154]: E
+                      - generic "Sigit Wijayanto" [ref=f6e157]: SW
+                      - generic [ref=f6e158]: "+1"
+                    - generic [ref=f6e159]: Planning
+              - button "Gabungkan Connector Member System ke group" [ref=f6e160]
+            - generic [ref=f6e161]:
+              - link "Finance Medium POSRV POS Revamp Retail Nusantara Journey 90% Work 50% 31 Okt 2026 3 anggota YK E MS Finance" [ref=f6e162] [cursor=pointer]:
+                - /url: /crm/projects/p-posrv
+                - generic [ref=f6e163]:
+                  - generic [ref=f6e164]:
+                    - generic [ref=f6e165]: Finance
+                    - generic [ref=f6e166]: Medium
+                  - generic [ref=f6e167]: POSRV
+                - generic [ref=f6e168]:
+                  - generic [ref=f6e169]:
+                    - heading "POS Revamp" [level=3] [ref=f6e170]
+                    - paragraph [ref=f6e171]: Retail Nusantara
+                  - generic [ref=f6e172]:
+                    - generic [ref=f6e173]:
+                      - generic [ref=f6e174]: Journey
+                      - generic [ref=f6e175]: 90%
+                    - generic [ref=f6e178]:
+                      - generic [ref=f6e179]: Work
+                      - generic [ref=f6e180]: 50%
+                  - generic [ref=f6e183]:
+                    - generic [ref=f6e184]: 31 Okt 2026
+                    - generic [ref=f6e187]: 3 anggota
+                  - generic [ref=f6e193]:
+                    - generic [ref=f6e194]:
+                      - generic "Yohan Kinata" [ref=f6e197]: YK
+                      - generic "Eugene" [ref=f6e200]: E
+                      - generic "Maya Sari" [ref=f6e203]: MS
+                    - generic [ref=f6e204]: Finance
+              - button "Gabungkan POS Revamp ke group" [ref=f6e205]
+            - generic [ref=f6e206]:
+              - link "Completed Low SIMPLE SIMPRO Mobile Internal Journey 100% Work 100% 30 Sep 2026 3 anggota YK SW MS Completed" [ref=f6e207] [cursor=pointer]:
+                - /url: /crm/projects/p-simple
+                - generic [ref=f6e208]:
+                  - generic [ref=f6e209]:
+                    - generic [ref=f6e210]: Completed
+                    - generic [ref=f6e211]: Low
+                  - generic [ref=f6e212]: SIMPLE
+                - generic [ref=f6e213]:
+                  - generic [ref=f6e214]:
+                    - heading "SIMPRO Mobile" [level=3] [ref=f6e215]
+                    - paragraph [ref=f6e216]: Internal
+                  - generic [ref=f6e217]:
+                    - generic [ref=f6e218]:
+                      - generic [ref=f6e219]: Journey
+                      - generic [ref=f6e220]: 100%
+                    - generic [ref=f6e223]:
+                      - generic [ref=f6e224]: Work
+                      - generic [ref=f6e225]: 100%
+                  - generic [ref=f6e228]:
+                    - generic [ref=f6e229]: 30 Sep 2026
+                    - generic [ref=f6e232]: 3 anggota
+                  - generic [ref=f6e238]:
+                    - generic [ref=f6e239]:
+                      - generic "Yohan Kinata" [ref=f6e242]: YK
+                      - generic "Sigit Wijayanto" [ref=f6e245]: SW
+                      - generic "Maya Sari" [ref=f6e248]: MS
+                    - generic [ref=f6e249]: Completed
+              - button "Gabungkan SIMPRO Mobile ke group" [ref=f6e250]
+            - link "Cancelled Low OLDPRO Legacy Portal Legacy Co Journey 0% Work 0% 31 Agu 2026 1 anggota NI Cancelled" [ref=f6e252] [cursor=pointer]:
+              - /url: /crm/projects/p-oldpro
+              - generic [ref=f6e253]:
+                - generic [ref=f6e254]:
+                  - generic [ref=f6e255]: Cancelled
+                  - generic [ref=f6e256]: Low
+                - generic [ref=f6e257]: OLDPRO
+              - generic [ref=f6e258]:
+                - generic [ref=f6e259]:
+                  - heading "Legacy Portal" [level=3] [ref=f6e260]
+                  - paragraph [ref=f6e261]: Legacy Co
+                - generic [ref=f6e262]:
+                  - generic [ref=f6e263]:
+                    - generic [ref=f6e264]: Journey
+                    - generic [ref=f6e265]: 0%
+                  - generic [ref=f6e267]:
+                    - generic [ref=f6e268]: Work
+                    - generic [ref=f6e269]: 0%
+                - generic [ref=f6e271]:
+                  - generic [ref=f6e272]: 31 Agu 2026
+                  - generic [ref=f6e275]: 1 anggota
+                - generic [ref=f6e281]:
+                  - generic "Nur Irfan" [ref=f6e285]: NI
+                  - generic [ref=f6e286]: Cancelled
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f6e292] [cursor=pointer]
+  - alert [ref=f6e296]
