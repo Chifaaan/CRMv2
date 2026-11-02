@@ -8,7 +8,7 @@
 | PRD | [`docs/PRD.md`](./PRD.md) |
 | Referensi visual | `References/` |
 
-> Implementasi ada di `frontend/src`. Lihat `AGENTS.md` untuk perintah dan struktur file. Catatan: `npm run lint` di-scope ke kode prototype; `npm run lint:all` masih memuat layar legacy SIMPRO yang disembunyikan.
+> Implementasi ada di `src`. Lihat `AGENTS.md` untuk perintah dan struktur file. Catatan: `npm run lint` di-scope ke kode prototype; `npm run lint:all` masih memuat layar legacy SIMPRO yang disembunyikan.
 
 ---
 
@@ -48,7 +48,7 @@ MVP dianggap selesai jika:
 
 **Fondasi**
 
-- Memakai `frontend/` yang sudah ada sebagai basis: Next.js 16, React 18, TypeScript, Tailwind 4, shadcn base-nova.
+- Memakai root repo yang sudah ada sebagai basis: Next.js 16, React 18, TypeScript, Tailwind 4, shadcn base-nova.
 - Reuse shell: `Sidebar`, `Topbar`, `MobileNav`, `NotificationBell`, komponen `src/components/ui`.
 - App shell: module switcher CRM | SIMPRO, role switcher lokal, notification bell.
 - Seed data + reset.
@@ -283,7 +283,7 @@ Acceptance:
 
 ## 5. Screen inventory dan route
 
-Gunakan route SIMPRO yang sudah ada di `frontend/src/app/(main)`. Jangan membuat prefix `/simpro`.
+Gunakan route SIMPRO yang sudah ada di `src/app/(main)`. Jangan membuat prefix `/simpro`.
 
 | Modul | Screen | Route | Role utama |
 |---|---|---|---|
@@ -401,7 +401,7 @@ Minimal mencakup:
 
 ### 7.1 Stack
 
-Gunakan stack yang sudah terpasang di `frontend/`:
+Gunakan stack yang sudah terpasang di root repo:
 
 | Kebutuhan | Pilihan |
 |---|---|
@@ -418,7 +418,7 @@ Gunakan stack yang sudah terpasang di `frontend/`:
 | Test | Vitest (ditambahkan di M1) |
 | Package manager | npm |
 
-**Aturan adaptasi:** jangan scaffold aplikasi baru. Mulai dari `frontend/`, pertahankan visual dan komponennya, lalu:
+**Aturan adaptasi:** jangan scaffold aplikasi baru. Mulai dari root repo, pertahankan visual dan komponennya, lalu:
 - ganti auth/session server dengan role switcher lokal;
 - ganti panggilan API/react-query dengan adapter ke store prototype;
 - konfigurasi board menjadi 6 status, bukan 8 + parking lot;
@@ -427,10 +427,10 @@ Gunakan stack yang sudah terpasang di `frontend/`:
 
 ### 7.2 Struktur folder
 
-Basis: `frontend/src`.
+Basis: `src`.
 
 ```
-frontend/src/app/
+src/app/
   layout.tsx                  # font Inter + provider (dipertahankan)
   (main)/
     layout.tsx                # shell; auth diganti role switcher
@@ -451,7 +451,7 @@ frontend/src/app/
         [id]/page.tsx
       groups/page.tsx
       workload/page.tsx
-frontend/src/components/
+src/components/
   layout/                     # Sidebar, Topbar, MobileNav, NotificationBell
   ui/                         # shadcn base-nova
   features/
@@ -459,13 +459,13 @@ frontend/src/components/
     tasks/                    # task sheets/dialog
     projects/                 # project form/modal
     crm/                      # baru: pitching, forms, groups, workload
-frontend/src/lib/
+src/lib/
   domain/                     # baru: permissions, gates, progress, transitions
   store/                      # baru: prototype store + seed + persistence
   files.ts                    # baru: IndexedDB
   excel.ts                    # baru: BAST/Invoice import
   types.ts                    # baru/shared
-frontend/tests/               # Vitest, ditambahkan di M1
+tests/               # Vitest, ditambahkan di M1
 ```
 
 ### 7.3 State
@@ -553,8 +553,8 @@ Fungsi murni yang wajib diuji:
 ### 7.8 UI
 
 - Ikuti design token dan layout di PRD §12.
-- Gunakan komponen `frontend/src/components/ui` (shadcn base-nova) dan shell `frontend/src/components/layout`; jangan membuat design system kedua.
-- Reuse dashboard, projects, project detail, board, backlog, RAB, dan my-tasks dari `frontend/`.
+- Gunakan komponen `src/components/ui` (shadcn base-nova) dan shell `src/components/layout`; jangan membuat design system kedua.
+- Reuse dashboard, projects, project detail, board, backlog, RAB, dan my-tasks dari root repo.
 - Chart dashboard memakai komponen/recharts yang sudah ada atau SVG/CSS sederhana; jangan menambah library chart baru.
 - Modal lebar untuk card dialog dan form.
 - Semua aksi destruktif memakai konfirmasi.
@@ -573,9 +573,9 @@ Fungsi murni yang wajib diuji:
 
 Setiap milestone harus meninggalkan aplikasi dalam keadaan bisa dijalankan.
 
-### M0 — Adaptasi `frontend/` dan shell
+### M0 — Adaptasi root repo dan shell
 
-- Jalankan `frontend/` sebagai basis; jangan scaffold aplikasi baru.
+- Jalankan root repo sebagai basis; jangan scaffold aplikasi baru.
 - Ganti auth/session server dengan role switcher lokal. Pertahankan bentuk `useSession`/`authClient` lewat shim demo agar komponen frontend yang sudah ada tidak perlu ditulis ulang.
 - Ganti panggilan `@/lib/api/client`/react-query pada layar SIMPRO yang dipakai dengan adapter store lokal (boleh bertahap per layar).
 - Pertahankan `Sidebar`, `Topbar`, `MobileNav`, `NotificationBell`, dan komponen `src/components/ui`.
@@ -683,7 +683,7 @@ Setiap milestone harus meninggalkan aplikasi dalam keadaan bisa dijalankan.
 
 ### 9.1 Automated
 
-Jalankan dari folder `frontend/`:
+Jalankan dari root repo:
 
 ```bash
 npm install
@@ -691,7 +691,7 @@ npm run build
 npm run lint
 ```
 
-`frontend/package.json` saat ini belum punya script `test`. Setelah Vitest ditambahkan di M1, tambahkan `npm test` ke script dan ke `AGENTS.md`.
+`package.json` saat ini belum punya script `test`. Setelah Vitest ditambahkan di M1, tambahkan `npm test` ke script dan ke `AGENTS.md`.
 
 Test domain minimum (setelah Vitest tersedia):
 

@@ -175,7 +175,7 @@ Tidak ada status `on_hold` di MVP.
 
 ### 8.1 App shell dan navigasi
 
-- Basis aplikasi adalah folder `frontend/` yang sudah ada. SIMPRO memakai route dan komponen visual yang sudah ada di sana; CRM ditambahkan sebagai route group baru di `/crm`.
+- Basis aplikasi adalah root repo yang sudah ada. SIMPRO memakai route dan komponen visual yang sudah ada di sana; CRM ditambahkan sebagai route group baru di `/crm`.
 - Route SIMPRO yang dipakai ulang: `/dashboard`, `/projects`, `/projects/[id]`, `/projects/[id]/board`, `/projects/[id]/backlog`, `/projects/[id]/rab`, `/projects/[id]/forms`, `/my-tasks`, dan `/forms`.
 - Route CRM: `/crm`, `/crm/projects`, `/crm/projects/[id]`, `/crm/groups`, `/crm/workload`.
 - Sidebar berisi menu sesuai modul dan role. Menu frontend yang tidak dipakai prototype (Meetings, Personal Notes, Daftar Surat, Budget, Clients, Members) disembunyikan.
@@ -189,7 +189,7 @@ Tidak ada status `on_hold` di MVP.
   - Assignee → `/my-tasks`
 - Jika role tidak punya akses ke modul, route modul tersebut menampilkan 403/redirect.
 - Tombol **Reset data demo** tersedia di sidebar dengan konfirmasi.
-- Komponen UI memakai `frontend/src/components/ui` (shadcn base-nova) dan token dari `frontend/src/app/globals.css`; tidak membuat design system kedua.
+- Komponen UI memakai `src/components/ui` (shadcn base-nova) dan token dari `src/app/globals.css`; tidak membuat design system kedua.
 
 ### 8.2 CRM Dashboard
 
@@ -676,7 +676,7 @@ Event minimum:
 
 ### 8.13 SIMPRO screens
 
-SIMPRO memakai tampilan, komponen, dan route yang sudah ada di `frontend/src`. Jangan membuat layout SIMPRO baru; adaptasi yang diizinkan hanya menghapus ketergantungan auth/API, menyembunyikan menu/tab yang tidak dipakai, dan menyesuaikan board ke 6 status.
+SIMPRO memakai tampilan, komponen, dan route yang sudah ada di `src`. Jangan membuat layout SIMPRO baru; adaptasi yang diizinkan hanya menghapus ketergantungan auth/API, menyembunyikan menu/tab yang tidak dipakai, dan menyesuaikan board ke 6 status.
 
 #### 8.13.1 SIMPRO Dashboard
 
@@ -702,7 +702,7 @@ Gantt/timeline penuh tidak termasuk MVP.
 
 #### 8.13.3 Project detail
 
-Gunakan pola sub-route yang sudah ada di `frontend/`:
+Gunakan pola sub-route yang sudah ada di root repo:
 
 - **Overview** — `/projects/[id]`
 - **Board** — `/projects/[id]/board`
@@ -1037,22 +1037,22 @@ type InvoicePayload = {
 
 ### 12.1 Referensi visual
 
-Sumber utama tampilan adalah **kode `frontend/src`**, bukan screenshot. Screenshot di `References/` hanya referensi pendukung untuk kondisi visual yang diinginkan.
+Sumber utama tampilan adalah **kode `src`**, bukan screenshot. Screenshot di `References/` hanya referensi pendukung untuk kondisi visual yang diinginkan.
 
 Komponen dan halaman yang menjadi baseline:
 
-- `frontend/src/app/globals.css` — token Tailwind 4 + shadcn base-nova.
-- `frontend/src/app/layout.tsx` — font Inter, bahasa `id`.
-- `frontend/src/components/layout/Sidebar.tsx`
-- `frontend/src/components/layout/Topbar.tsx`
-- `frontend/src/components/layout/MobileNav.tsx`
-- `frontend/src/components/layout/NotificationBell.tsx`
-- `frontend/src/app/(main)/dashboard/`
-- `frontend/src/app/(main)/projects/`
-- `frontend/src/app/(main)/projects/[id]/`
-- `frontend/src/components/features/board/`
-- `frontend/src/components/features/tasks/`
-- `frontend/src/app/(main)/my-tasks/`
+- `src/app/globals.css` — token Tailwind 4 + shadcn base-nova.
+- `src/app/layout.tsx` — font Inter, bahasa `id`.
+- `src/components/layout/Sidebar.tsx`
+- `src/components/layout/Topbar.tsx`
+- `src/components/layout/MobileNav.tsx`
+- `src/components/layout/NotificationBell.tsx`
+- `src/app/(main)/dashboard/`
+- `src/app/(main)/projects/`
+- `src/app/(main)/projects/[id]/`
+- `src/components/features/board/`
+- `src/components/features/tasks/`
+- `src/app/(main)/my-tasks/`
 
 Screenshot pendukung:
 
@@ -1069,7 +1069,7 @@ Screenshot pendukung:
 
 ### 12.2 Design token
 
-Gunakan token yang sudah ada di `frontend/src/app/globals.css` (Tailwind 4, shadcn `base-nova`, CSS variables). Jangan menambahkan palet kedua.
+Gunakan token yang sudah ada di `src/app/globals.css` (Tailwind 4, shadcn `base-nova`, CSS variables). Jangan menambahkan palet kedua.
 
 | Token | Sumber |
 |---|---|
@@ -1115,11 +1115,11 @@ Fase:
 
 ### 12.3 Layout
 
-- Gunakan shell `frontend/src/app/(main)/layout.tsx`: sidebar + topbar + main scroll area.
+- Gunakan shell `src/app/(main)/layout.tsx`: sidebar + topbar + main scroll area.
 - Sidebar: 240px saat terbuka, 68px saat collapsed; mobile memakai sheet.
 - Topbar: 56px (`h-14`), judul halaman, notification bell, avatar/user menu.
 - Konten: padding `p-4` / `md:p-6`.
-- Card, badge, button, dialog, sheet, select, tabs, table memakai `frontend/src/components/ui`.
+- Card, badge, button, dialog, sheet, select, tabs, table memakai `src/components/ui`.
 - Project detail memakai header berwarna sesuai `coverColor` dan komponen banner yang sudah ada.
 - Modal/dialog lebar untuk card dan form.
 - Empty state informatif, bukan halaman kosong.
@@ -1149,7 +1149,7 @@ Fase:
 
 ### 12.7 Frontend baseline dan adaptasi prototype
 
-**Yang dipakai ulang dari `frontend/`:**
+**Yang dipakai ulang dari root repo:**
 
 - Shell: `Sidebar`, `Topbar`, `MobileNav`, `NotificationBell`.
 - Komponen UI shadcn base-nova di `src/components/ui`.
@@ -1168,7 +1168,7 @@ Fase:
 
 **Yang tidak boleh dilakukan:**
 
-- Membuat shell/sidebar/topbar kedua yang berbeda dari `frontend/`.
+- Membuat shell/sidebar/topbar kedua yang berbeda dari root repo.
 - Menyalin 8 status board atau parking lot ke prototype.
 - Menghidupkan kembali backend/auth hanya untuk prototype.
 
@@ -1179,7 +1179,7 @@ Fase:
 | Aspek | Requirement |
 |---|---|
 | Platform | Browser Chrome/Edge terbaru. |
-| Frontend | `frontend/` — Next.js 16, React 18, Tailwind 4, shadcn base-nova. |
+| Frontend | root repo — Next.js 16, React 18, Tailwind 4, shadcn base-nova. |
 | Penyimpanan data | `localStorage` untuk state JSON. |
 | Penyimpanan file | IndexedDB untuk foto dan attachment. |
 | Backend | Tidak ada. |
@@ -1210,7 +1210,7 @@ Fase:
 12. Tidak ada multi-currency; semua IDR.
 13. Tidak ada client master; klien berupa teks.
 14. Kode proyek dan kode task dibuat otomatis.
-15. Baseline UI adalah `frontend/` (Next.js 16, React 18, Tailwind 4, shadcn base-nova). Prototype memakai komponen dan route SIMPRO yang sudah ada, lalu mengganti auth/API dengan store lokal.
+15. Baseline UI adalah root repo (Next.js 16, React 18, Tailwind 4, shadcn base-nova). Prototype memakai komponen dan route SIMPRO yang sudah ada, lalu mengganti auth/API dengan store lokal.
 
 ---
 
@@ -1267,8 +1267,8 @@ Fase:
 10. Notification bell dan activity log berfungsi.
 11. Semua role hanya melihat data yang diizinkan.
 12. Reset data mengembalikan seed awal.
-13. Tampilan SIMPRO konsisten dengan `frontend/src` dan screenshot di `References/`; tidak ada shell/design system kedua.
-14. `npm run build` dan `npm run lint` lulus di folder `frontend/` setelah implementasi.
+13. Tampilan SIMPRO konsisten dengan `src` dan screenshot di `References/`; tidak ada shell/design system kedua.
+14. `npm run build` dan `npm run lint` lulus di root repo setelah implementasi.
 
 ---
 
@@ -1308,7 +1308,7 @@ Fase:
 | Q30 | Form % | Draft 0; Submitted 50; Approved 100. |
 | Q31 | Workload | Hanya card task aktif; exclude Backlog/Completed/StepForm. |
 | Q32 | Cancel & finance | PM cancel miliknya; Manager/Admin cancel semua; PM tidak reject BAST/Invoice. |
-| Q33 | Baseline tampilan | SIMPRO memakai `frontend/src` yang sudah ada; CRM ditambahkan di `/crm`; auth/API diganti store lokal. |
+| Q33 | Baseline tampilan | SIMPRO memakai `src` yang sudah ada; CRM ditambahkan di `/crm`; auth/API diganti store lokal. |
 
 ### Keputusan turunan
 
@@ -1338,7 +1338,7 @@ Fase:
 | Workload | Poin, kapasitas 10 | Jumlah task aktif; tanpa kapasitas. |
 | Assign | Manager dan PM | Hanya Manager/Admin. |
 | Task status | 8 kolom + parking lot | 6 kolom; tanpa parking lot. |
-| Topologi | Modul di SIMPROv2 | Monolith prototype baru, berbasis UI `frontend/` yang sudah ada. |
+| Topologi | Modul di SIMPROv2 | Monolith prototype baru, berbasis UI root repo yang sudah ada. |
 | Notifikasi | In-app | In-app bell + activity log. |
 | Group | Manager/Admin | Sama; flat. |
 

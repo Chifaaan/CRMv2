@@ -2,17 +2,17 @@
 
 ## Current state
 
-Prototype monolith **CRM × SIMPRO** is implemented in `frontend/`.
+Prototype monolith **CRM × SIMPRO** is implemented at the repository root.
 
 - Product source of truth: `docs/PRD.md`
 - Delivery scope: `docs/MVP.md`
-- Visual/code source of truth: `frontend/src` (primary), `References/*.png` (secondary)
+- Visual/code source of truth: `src` (primary), `References/*.png` (secondary)
 - Prototype data lives in the browser: Zustand + `localStorage` for app state, IndexedDB for uploaded files. No backend, auth, or real SIMPRO integration.
 - Old `D:\Projects\SIMPROv2\CRM-MVP.md` and `BRIEF.md` are historical; do not treat them as current requirements.
 
 ## Commands
 
-Run from `frontend/`:
+Run from the repository root:
 
 ```bash
 npm install
@@ -26,21 +26,21 @@ npm test
 
 ## Where the prototype lives
 
-- Domain rules, gates, progress, permissions: `frontend/src/lib/prototype/domain.ts`
-- Project audit trail (`project_events`, backfill, read/pagination): `frontend/src/lib/prototype/events.ts`
-- Step history UI: `frontend/src/components/prototype/crm/project-history.tsx`
-- Seed/demo data: `frontend/src/lib/prototype/seed.ts`
-- Zustand store + persistence: `frontend/src/lib/prototype/store.ts`
-- IndexedDB file storage: `frontend/src/lib/prototype/files.ts`
-- Excel import/templates: `frontend/src/lib/prototype/excel.ts`
-- Prototype UI: `frontend/src/components/prototype/`
+- Domain rules, gates, progress, permissions: `src/lib/prototype/domain.ts`
+- Project audit trail (`project_events`, backfill, read/pagination): `src/lib/prototype/events.ts`
+- Step history UI: `src/components/prototype/crm/project-history.tsx`
+- Seed/demo data: `src/lib/prototype/seed.ts`
+- Zustand store + persistence: `src/lib/prototype/store.ts`
+- IndexedDB file storage: `src/lib/prototype/files.ts`
+- Excel import/templates: `src/lib/prototype/excel.ts`
+- Prototype UI: `src/components/prototype/`
 - Routes:
   - CRM: `/crm`, `/crm/projects`, `/crm/projects/[id]`, `/crm/groups`, `/crm/workload`
   - SIMPRO: `/dashboard`, `/projects`, `/projects/[id]/*`, `/my-tasks`, `/forms`
 
 ## Frontend baseline
 
-`frontend/` is Next.js 16 + React 18 + Tailwind 4 + shadcn `base-nova`. Reuse its shell, UI primitives, and visual tokens; do not create a second sidebar/topbar/design system.
+The app is Next.js 16 + React 18 + Tailwind 4 + shadcn `base-nova`. Reuse its shell, UI primitives, and visual tokens; do not create a second sidebar/topbar/design system.
 
 Prototype adaptations already made:
 
