@@ -1,19 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useState, type DragEvent } from "react";
 import {
   ChevronDown,
   FolderKanban,
   Plus,
   Search,
+  Settings2,
   Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  calculateJourneyProgress,
   canCreateProject,
   completionStats,
   isGroupableProject,
@@ -33,25 +33,53 @@ import {
   ProgressBar,
 } from "../ui";
 import { ProjectCard } from "../project-card";
+import { GroupMemberRow } from "../group-member-row";
 import { GroupDialog, ProjectDialog } from "../dialogs";
+
+const OPEN_GROUP_KEY = "crm-projects-open-group";
+
+function matchesQuery(project: Project, query: string): boolean {
+  const value = query.trim().toLowerCase();
+  if (!value) return true;
+  return `${project.name} ${project.code} ${project.client}`
+    .toLowerCase()
+    .includes(value);
+}
 
 function ProjectGroupCard({
   groupId,
   members,
+  open,
+  onToggle,
+  canManage,
+  searchQuery,
 }: {
   groupId: string;
   members: Project[];
+  open: boolean;
+  onToggle: () => void;
+  canManage: boolean;
+  searchQuery: string;
 }) {
   const store = usePrototypeStore();
   const group = store.groups.find((item) => item.id === groupId);
-  const [open, setOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const panelId = `project-group-${groupId}`;
+  const searchActive = searchQuery.trim().length > 0;
 
   if (!group) return null;
   const stats = completionStats(members);
+  const displayedMembers =
+    searchActive || showAll ? members : members.slice(0, 6);
 
   return (
-    <div className="bg-card ring-foreground/10 flex flex-col overflow-hidden rounded-xl shadow-sm ring-1">
+    <div
+      style={{ gridColumn: open ? "1 / -1" : undefined }}
+      className={cn(
+        "bg-card ring-foreground/10 flex flex-col overflow-hidden rounded-xl shadow-sm ring-1 transition-all duration-200",
+        open && "shadow-md",
+      )}
+    >
       <div className="flex items-start gap-3 p-4">
         <div className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
           <FolderKanban className="size-5" />
@@ -64,6 +92,14 @@ function ProjectGroupCard({
             <span className="text-muted-foreground text-[10px]">
               {members.length} proyek
             </span>
+            {canManage ? (
+              <Link
+                href={`/crm/groups?group=${groupId}#group-${groupId}`}
+                className="text-primary ml-auto inline-flex items-center gap-1 text-[10px] font-medium hover:underline"
+              >
+                <Settings2 className="size-3" /> Kelola
+              </Link>
+            ) : null}
           </div>
           <h3 className="mt-1 truncate text-sm font-semibold">{group.name}</h3>
           <p className="text-muted-foreground mt-0.5 line-clamp-1 text-xs">
@@ -75,6 +111,31 @@ function ProjectGroupCard({
               {stats.completed} dari {stats.total} selesai
             </span>
           </div>
+
+          {!open && members.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {members.slice(0, 3).map((member) => (
+                <span
+                  key={member.id}
+                  title={member.name}
+                  className="bg-muted text-muted-foreground max-w-24 truncate rounded px-1.5 py-0.5 text-[9px] font-medium"
+                >
+                  {member.code}
+                </span>
+              ))}
+              {members.length > 3 ? (
+                <span
+                  title={members
+                    .slice(3)
+                    .map((member) => member.name)
+                    .join(", ")}
+                  className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[9px] font-medium"
+                >
+                  +{members.length - 3}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -82,7 +143,7 @@ function ProjectGroupCard({
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
-        onClick={() => setOpen((value) => !value)}
+        onClick={onToggle}
         className="hover:bg-muted/50 focus-visible:ring-ring/50 flex items-center justify-between border-t px-4 py-2 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
       >
         <span>{open ? "Tutup daftar proyek" : "Lihat daftar proyek"}</span>
@@ -92,48 +153,32 @@ function ProjectGroupCard({
       </button>
 
       {open ? (
-        <div id={panelId} className="border-t">
-          {members.map((project) => {
-            const journey = calculateJourneyProgress(store, project.id);
-            return (
-              <Link
-                key={project.id}
-                href={`/crm/projects/${project.id}`}
-                className="hover:bg-muted/50 flex items-center gap-2 border-b px-4 py-2 last:border-0"
+        <div
+          id={panelId}
+          className="animate-in fade-in-0 border-t duration-200"
+        >
+          {displayedMembers.map((member) => (
+            <GroupMemberRow
+              key={member.id}
+              project={member}
+              highlighted={searchActive && matchesQuery(member, searchQuery)}
+              muted={searchActive && !matchesQuery(member, searchQuery)}
+            />
+          ))}
+
+          {!searchActive && members.length > 6 ? (
+            <div className="px-3 py-2">
+              <Button
+                variant="link"
+                size="xs"
+                onClick={() => setShowAll((value) => !value)}
               >
-                <span
-                  className="size-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: project.coverColor }}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-xs font-medium">
-                    {project.name}
-                  </span>
-                  <span className="text-muted-foreground text-[10px]">
-                    {project.code}
-                  </span>
-                </span>
-                <span
-                  className={cn(
-                    "rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize",
-                    project.status === "completed"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : project.status === "cancelled"
-                        ? "bg-slate-100 text-slate-600"
-                        : "bg-sky-100 text-sky-700",
-                  )}
-                >
-                  {project.status}
-                </span>
-                <span className="hidden w-16 sm:block">
-                  <ProgressBar value={journey} className="h-1" />
-                </span>
-                <span className="text-muted-foreground w-8 text-right text-[10px]">
-                  {journey}%
-                </span>
-              </Link>
-            );
-          })}
+                {showAll
+                  ? "Tampilkan lebih sedikit"
+                  : `Lihat semua (${members.length})`}
+              </Button>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -145,6 +190,7 @@ export function CrmProjects() {
   const currentUser = userById(store, store.currentUserId);
   const projects = visibleProjects(store);
   const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [phase, setPhase] = useState("");
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
@@ -153,6 +199,29 @@ export function CrmProjects() {
   const [groupInitialProjects, setGroupInitialProjects] = useState<string[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
+  const [searchClosedIds, setSearchClosedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(OPEN_GROUP_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (stored) setOpenGroupId(stored);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (openGroupId) sessionStorage.setItem(OPEN_GROUP_KEY, openGroupId);
+      else sessionStorage.removeItem(OPEN_GROUP_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, [openGroupId]);
+
+  const searchActive = search.trim().length > 0;
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -176,19 +245,52 @@ export function CrmProjects() {
   if (!currentUser) return null;
   const canManageGroups =
     currentUser.role === "admin" || currentUser.role === "manager";
+  const showGroups = typeFilter !== "project";
+  const showProjects = typeFilter !== "group";
 
-  const ungrouped = filtered.filter((project) => !project.groupId);
+  const ungrouped = showProjects
+    ? filtered.filter((project) => !project.groupId)
+    : [];
   const filteredIds = new Set(filtered.map((project) => project.id));
-  const groupCards = store.groups
-    .map((group) => ({
-      group,
-      members: projects.filter((project) => project.groupId === group.id),
-    }))
-    .filter(
-      ({ members }) =>
-        members.length > 0 &&
-        members.some((project) => filteredIds.has(project.id)),
-    );
+  const groupCards = showGroups
+    ? store.groups
+        .map((group) => ({
+          group,
+          members: projects.filter((project) => project.groupId === group.id),
+        }))
+        .filter(
+          ({ members }) =>
+            members.length > 0 &&
+            members.some((project) => filteredIds.has(project.id)),
+        )
+    : [];
+  const matchingGroupIds = groupCards.map(({ group }) => group.id);
+
+  const isGroupOpen = (groupId: string) =>
+    searchActive
+      ? matchingGroupIds.includes(groupId) &&
+        !searchClosedIds.includes(groupId)
+      : openGroupId === groupId;
+
+  const toggleGroup = (groupId: string) => {
+    if (searchActive) {
+      setSearchClosedIds((current) =>
+        current.includes(groupId)
+          ? current.filter((id) => id !== groupId)
+          : [...current, groupId],
+      );
+      return;
+    }
+    setOpenGroupId((current) => (current === groupId ? null : groupId));
+  };
+
+  const closeAllGroups = () => {
+    if (searchActive) {
+      setSearchClosedIds(matchingGroupIds);
+      return;
+    }
+    setOpenGroupId(null);
+  };
 
   const openGroupDialog = (projectIds: string[]) => {
     setGroupInitialProjects(projectIds);
@@ -253,6 +355,10 @@ export function CrmProjects() {
     }
   };
 
+  const hasResults =
+    (showGroups && groupCards.length > 0) ||
+    (showProjects && ungrouped.length > 0);
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -271,16 +377,30 @@ export function CrmProjects() {
         }
       />
 
-      <div className="grid gap-2 md:grid-cols-[1fr_160px_160px_160px]">
-        <div className="relative">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_140px_140px_140px_140px]">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
           <Input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Cari nama, kode, atau klien…"
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setSearchClosedIds([]);
+            }}
+            placeholder="Cari proyek atau anggota group…"
             className="pl-8"
           />
         </div>
+        <NativeSelect
+          value={typeFilter}
+          onChange={(value) => {
+            setTypeFilter(value);
+            setSearchClosedIds([]);
+          }}
+        >
+          <option value="all">Semua tipe</option>
+          <option value="group">Group</option>
+          <option value="project">Project</option>
+        </NativeSelect>
         <NativeSelect value={phase} onChange={setPhase}>
           <option value="">Semua fase</option>
           {Object.entries(PHASE_LABEL).map(([value, label]) => (
@@ -305,62 +425,102 @@ export function CrmProjects() {
         </NativeSelect>
       </div>
 
-      {groupCards.length === 0 && ungrouped.length === 0 ? (
+      {!hasResults ? (
         <EmptyState
           icon={FolderKanban}
-          title="Tidak ada proyek"
-          description="Ubah filter atau buat proyek baru."
+          title={searchActive ? "Tidak ada hasil" : "Tidak ada proyek"}
+          description={
+            searchActive
+              ? "Tidak ada project atau group yang cocok dengan pencarian."
+              : "Ubah filter atau buat proyek baru."
+          }
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {groupCards.map(({ group, members }) => (
-            <ProjectGroupCard
-              key={group.id}
-              groupId={group.id}
-              members={members}
-            />
-          ))}
-
-          {ungrouped.map((project) => (
-            <div
-              key={project.id}
-              className={cn(
-                "group/card relative rounded-xl transition-all",
-                draggingId === project.id && "opacity-50",
-                dragOverId === project.id &&
-                  "ring-primary ring-offset-background ring-2 ring-offset-2",
-              )}
-              draggable={canManageGroups && isGroupableProject(project)}
-              onDragStart={(event) => onDragStart(event, project)}
-              onDragOver={(event) => onDragOver(event, project)}
-              onDragLeave={onDragLeave}
-              onDrop={(event) => onDrop(event, project)}
-              onDragEnd={() => {
-                setDraggingId(null);
-                setDragOverId(null);
-              }}
-            >
-              <ProjectCard
-                project={project}
-                href={`/crm/projects/${project.id}`}
-                showGroup
-                draggable={false}
-              />
-              {canManageGroups && isGroupableProject(project) ? (
+        <div className="space-y-6">
+          {showGroups && groupCards.length > 0 ? (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-muted-foreground text-[11px] font-semibold tracking-[0.08em] uppercase">
+                  Groups
+                </h2>
                 <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon-sm"
-                  title="Gabungkan ke group"
-                  aria-label={`Gabungkan ${project.name} ke group`}
-                  className="absolute top-2 left-2 z-20 opacity-100 shadow-sm transition-opacity focus-visible:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100"
-                  onClick={() => openGroupDialog([project.id])}
+                  variant="ghost"
+                  size="xs"
+                  onClick={closeAllGroups}
+                  disabled={
+                    !groupCards.some(({ group }) => isGroupOpen(group.id))
+                  }
                 >
-                  <Users className="size-3.5" />
+                  Tutup semua
                 </Button>
-              ) : null}
-            </div>
-          ))}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {groupCards.map(({ group, members }) => (
+                  <ProjectGroupCard
+                    key={group.id}
+                    groupId={group.id}
+                    members={members}
+                    open={isGroupOpen(group.id)}
+                    onToggle={() => toggleGroup(group.id)}
+                    canManage={canManageGroups}
+                    searchQuery={search}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {showProjects && ungrouped.length > 0 ? (
+            <section className="space-y-3">
+              <h2 className="text-muted-foreground text-[11px] font-semibold tracking-[0.08em] uppercase">
+                Projects
+              </h2>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {ungrouped.map((project) => (
+                  <div
+                    key={project.id}
+                    className={cn(
+                      "group/card relative rounded-xl transition-all",
+                      draggingId === project.id && "opacity-50",
+                      dragOverId === project.id &&
+                        "ring-primary ring-offset-background ring-2 ring-offset-2",
+                    )}
+                    draggable={
+                      canManageGroups && isGroupableProject(project)
+                    }
+                    onDragStart={(event) => onDragStart(event, project)}
+                    onDragOver={(event) => onDragOver(event, project)}
+                    onDragLeave={onDragLeave}
+                    onDrop={(event) => onDrop(event, project)}
+                    onDragEnd={() => {
+                      setDraggingId(null);
+                      setDragOverId(null);
+                    }}
+                  >
+                    <ProjectCard
+                      project={project}
+                      href={`/crm/projects/${project.id}`}
+                      showGroup
+                      draggable={false}
+                    />
+                    {canManageGroups && isGroupableProject(project) ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon-sm"
+                        title="Gabungkan ke group"
+                        aria-label={`Gabungkan ${project.name} ke group`}
+                        className="absolute top-2 left-2 z-20 opacity-100 shadow-sm transition-opacity focus-visible:opacity-100 sm:opacity-0 sm:group-hover/card:opacity-100"
+                        onClick={() => openGroupDialog([project.id])}
+                      >
+                        <Users className="size-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
         </div>
       )}
 
@@ -376,4 +536,3 @@ export function CrmProjects() {
     </div>
   );
 }
-

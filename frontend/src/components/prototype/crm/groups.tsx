@@ -1,21 +1,20 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
-import { FolderKanban, Plus, Users, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { FolderKanban, Plus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  calculateJourneyProgress,
+  completionStats,
   groupCompleted,
-  groupProgress,
   isGroupableProject,
   userById,
   visibleProjects,
 } from "@/lib/prototype/domain";
 import { EmptyState, NativeSelect, PageHeader, ProgressBar, SectionCard } from "../ui";
 import { GroupDialog } from "../dialogs";
+import { GroupMemberRow } from "../group-member-row";
 
 export function CrmGroups() {
   const store = usePrototypeStore();
@@ -24,6 +23,13 @@ export function CrmGroups() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addProjectId, setAddProjectId] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const groupId = new URLSearchParams(window.location.search).get("group");
+    if (!groupId) return;
+    const target = document.getElementById(`group-${groupId}`);
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   if (!currentUser) return null;
   const canManage = currentUser.role === "admin" || currentUser.role === "manager";
@@ -74,15 +80,19 @@ export function CrmGroups() {
               (project) =>
                 isGroupableProject(project) && !memberIds.has(project.id),
             );
-            const progress = groupProgress(store, group.id);
+            const stats = completionStats(members);
             const completed = groupCompleted(store, group.id);
             const allCancelled =
               members.length > 0 && members.every((project) => project.status === "cancelled");
             const status = allCancelled ? "cancelled" : completed ? "completed" : group.status;
             const owner = userById(store, group.createdById);
             return (
-              <SectionCard
+              <div
                 key={group.id}
+                id={`group-${group.id}`}
+                className="scroll-mt-4"
+              >
+                <SectionCard
                 title={group.name}
                 description={`${members.length} proyek · dibuat oleh ${owner?.name ?? "—"}`}
                 actions={
@@ -127,42 +137,19 @@ export function CrmGroups() {
                 }
               >
                 <div className="mb-3 flex items-center gap-3">
-                  <ProgressBar value={progress} className="flex-1" />
-                  <span className="text-xs font-semibold">{progress}%</span>
+                  <ProgressBar value={stats.percent} className="flex-1" />
+                  <span className="text-xs font-semibold">
+                    {stats.completed} dari {stats.total} selesai
+                  </span>
                 </div>
-                <div className="space-y-2">
-                  {members.map((project) => {
-                    const journey = calculateJourneyProgress(store, project.id);
-                    return (
-                      <div
-                        key={project.id}
-                        className="flex items-center gap-3 rounded-lg border px-3 py-2"
-                      >
-                        <div
-                          className="size-8 shrink-0 rounded-md"
-                          style={{ backgroundColor: project.coverColor }}
-                        />
-                        <Link
-                          href={`/crm/projects/${project.id}`}
-                          className="min-w-0 flex-1"
-                        >
-                          <p className="truncate text-xs font-semibold">{project.name}</p>
-                          <p className="text-muted-foreground text-[10px]">
-                            {project.code} · {project.status}
-                          </p>
-                        </Link>
-                        <div className="w-24">
-                          <ProgressBar value={journey} className="h-1.5" />
-                          <p className="text-muted-foreground mt-1 text-right text-[9px]">
-                            {journey}%
-                          </p>
-                        </div>
-                        {canManage && status === "active" ? (
-                          <Button
-                            variant="ghost"
-                            size="icon-xs"
-                            aria-label="Keluarkan dari group"
-                            onClick={() => {
+                <div className="overflow-hidden rounded-lg border">
+                  {members.map((project) => (
+                    <GroupMemberRow
+                      key={project.id}
+                      project={project}
+                      onRemove={
+                        canManage && status === "active"
+                          ? () => {
                               if (members.length <= 2) {
                                 toast.error(
                                   "Group minimal 2 proyek. Bubarkan group jika ingin mengosongkan.",
@@ -171,14 +158,11 @@ export function CrmGroups() {
                               }
                               store.removeProjectFromGroup(project.id);
                               toast.success("Proyek dikeluarkan dari group.");
-                            }}
-                          >
-                            <X className="size-3.5" />
-                          </Button>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+                            }
+                          : undefined
+                      }
+                    />
+                  ))}
                 </div>
 
                 {canManage && status === "active" && candidates.length > 0 ? (
@@ -208,6 +192,7 @@ export function CrmGroups() {
                   </div>
                 ) : null}
               </SectionCard>
+              </div>
             );
           })}
         </div>

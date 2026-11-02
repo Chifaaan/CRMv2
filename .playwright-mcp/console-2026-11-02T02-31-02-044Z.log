@@ -22,3 +22,476 @@
 [  198585ms] [LOG] [Fast Refresh] done in 317ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
 [  376813ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
 [  376840ms] [LOG] [Fast Refresh] done in 128ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  897732ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  898593ms] [LOG] [Fast Refresh] done in 807ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  909309ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  909426ms] [LOG] [Fast Refresh] done in 203ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  909606ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  909697ms] [LOG] [Fast Refresh] done in 192ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  909898ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  909899ms] [LOG] [Fast Refresh] done in 107ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  910071ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  910120ms] [LOG] [Fast Refresh] done in 157ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  919481ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  919578ms] [LOG] [Fast Refresh] done in 196ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  919764ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  920026ms] [LOG] [Fast Refresh] done in 373ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  930387ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  930465ms] [LOG] [Fast Refresh] done in 178ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  930671ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  930728ms] [LOG] [Fast Refresh] done in 168ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  930843ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  931097ms] [LOG] [Fast Refresh] done in 367ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  940013ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  940851ms] [ERROR] ./src/components/prototype/crm/groups.tsx:226:7
+Expected a semicolon
+  224 |       )}
+  225 |
+> 226 |       <GroupDialog
+      |       ^
+  227 |         open={dialogOpen}
+  228 |         onOpenChange={setDialogOpen}
+  229 |         group={editingId ? store.groups.find((group) => group.id === editingId) : undefined}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  940852ms] [ERROR] ./src/components/prototype/crm/groups.tsx:222:13
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  220 |               </SectionCard>
+  221 |             );
+> 222 |           })}
+      |             ^
+  223 |         </div>
+  224 |       )}
+  225 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  940956ms] [ERROR] ./src/components/prototype/crm/groups.tsx:226:7
+Expected a semicolon
+  224 |       )}
+  225 |
+> 226 |       <GroupDialog
+      |       ^
+  227 |         open={dialogOpen}
+  228 |         onOpenChange={setDialogOpen}
+  229 |         group={editingId ? store.groups.find((group) => group.id === editingId) : undefined}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  940956ms] [ERROR] ./src/components/prototype/crm/groups.tsx:222:13
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  220 |               </SectionCard>
+  221 |             );
+> 222 |           })}
+      |             ^
+  223 |         </div>
+  224 |       )}
+  225 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  941066ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  948482ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/crm/projects?_rsc=h1juc:0
+[  948488ms] [ERROR] ./src/components/prototype/crm/groups.tsx:226:7
+Expected a semicolon
+  224 |       )}
+  225 |
+> 226 |       <GroupDialog
+      |       ^
+  227 |         open={dialogOpen}
+  228 |         onOpenChange={setDialogOpen}
+  229 |         group={editingId ? store.groups.find((group) => group.id === editingId) : undefined}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  948489ms] [ERROR] ./src/components/prototype/crm/groups.tsx:222:13
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  220 |               </SectionCard>
+  221 |             );
+> 222 |           })}
+      |             ^
+  223 |         </div>
+  224 |       )}
+  225 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[  948714ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/crm/projects:0
+[  949423ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_react-dom_cjs_react-dom_development_07i0ttg.js:25055
+[  949566ms] Error: ./src/components/prototype/crm/groups.tsx:226:7
+Expected a semicolon
+  224 |       )}
+  225 |
+> 226 |       <GroupDialog
+      |       ^
+  227 |         open={dialogOpen}
+  228 |         onOpenChange={setDialogOpen}
+  229 |         group={editingId ? store.groups.find((group) => group.id === editingId) : undefined}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+
+    at <unknown> (Error: ./src/components/prototype/crm/groups.tsx:226:7)
+    at Object.getCompilationErrors (file://D:\Projects\CRMv2\frontend\node_modules\next\dist\server\dev\hot-reloader-turbopack.js:1186:59)
+    at DevBundlerService.getCompilationError (file://D:\Projects\CRMv2\frontend\node_modules\next\dist\server\lib\dev-bundler-service.js:44:55)
+    at DevServer.getCompilationError (file://D:\Projects\CRMv2\frontend\node_modules\next\dist\server\dev\next-dev-server.js:719:42)
+    at DevServer.findPageComponents (file://D:\Projects\CRMv2\frontend\node_modules\next\dist\server\dev\next-dev-server.js:689:43)
+    at async DevServer.renderErrorToResponseImpl (file://D:\Projects\CRMv2\frontend\node_modules\next\dist\server\base-server.js:1745:26)
+[  949563ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:1380
+[  949569ms] [ERROR] ./src/components/prototype/crm/groups.tsx:226:7
+Expected a semicolon
+  224 |       )}
+  225 |
+> 226 |       <GroupDialog
+      |       ^
+  227 |         open={dialogOpen}
+  228 |         onOpenChange={setDialogOpen}
+  229 |         group={editingId ? store.groups.find((group) => group.id === editingId) : undefined}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  949569ms] [ERROR] ./src/components/prototype/crm/groups.tsx:222:13
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  220 |               </SectionCard>
+  221 |             );
+> 222 |           })}
+      |             ^
+  223 |         </div>
+  224 |       )}
+  225 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  949691ms] [ERROR] ./src/components/prototype/crm/groups.tsx:226:7
+Expected a semicolon
+  224 |       )}
+  225 |
+> 226 |       <GroupDialog
+      |       ^
+  227 |         open={dialogOpen}
+  228 |         onOpenChange={setDialogOpen}
+  229 |         group={editingId ? store.groups.find((group) => group.id === editingId) : undefined}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  949692ms] [ERROR] ./src/components/prototype/crm/groups.tsx:222:13
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  220 |               </SectionCard>
+  221 |             );
+> 222 |           })}
+      |             ^
+  223 |         </div>
+  224 |       )}
+  225 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  949733ms] [ERROR] ./src/components/prototype/crm/groups.tsx:226:7
+Expected a semicolon
+  224 |       )}
+  225 |
+> 226 |       <GroupDialog
+      |       ^
+  227 |         open={dialogOpen}
+  228 |         onOpenChange={setDialogOpen}
+  229 |         group={editingId ? store.groups.find((group) => group.id === editingId) : undefined}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  949733ms] [ERROR] ./src/components/prototype/crm/groups.tsx:222:13
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  220 |               </SectionCard>
+  221 |             );
+> 222 |           })}
+      |             ^
+  223 |         </div>
+  224 |       )}
+  225 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  949804ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:1380
+[  949968ms] [ERROR] ./src/components/prototype/crm/groups.tsx:226:7
+Expected a semicolon
+  224 |       )}
+  225 |
+> 226 |       <GroupDialog
+      |       ^
+  227 |         open={dialogOpen}
+  228 |         onOpenChange={setDialogOpen}
+  229 |         group={editingId ? store.groups.find((group) => group.id === editingId) : undefined}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  949968ms] [ERROR] ./src/components/prototype/crm/groups.tsx:222:13
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  220 |               </SectionCard>
+  221 |             );
+> 222 |           })}
+      |             ^
+  223 |         </div>
+  224 |       )}
+  225 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  950037ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:1380
+[  950138ms] [ERROR] ./src/components/prototype/crm/groups.tsx:226:7
+Expected a semicolon
+  224 |       )}
+  225 |
+> 226 |       <GroupDialog
+      |       ^
+  227 |         open={dialogOpen}
+  228 |         onOpenChange={setDialogOpen}
+  229 |         group={editingId ? store.groups.find((group) => group.id === editingId) : undefined}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  950139ms] [ERROR] ./src/components/prototype/crm/groups.tsx:222:13
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  220 |               </SectionCard>
+  221 |             );
+> 222 |           })}
+      |             ^
+  223 |         </div>
+  224 |       )}
+  225 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  950200ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:1380
+[  961872ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:1380
+[  961985ms] [ERROR] ./src/components/prototype/crm/groups.tsx:200:7
+Expected a semicolon
+  198 |       )}
+  199 |
+> 200 |       <GroupDialog
+      |       ^
+  201 |         open={dialogOpen}
+  202 |         onOpenChange={setDialogOpen}
+  203 |         group={editingId ? store.groups.find((group) => group.id === editingId) : undefined}
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  961985ms] [ERROR] ./src/components/prototype/crm/groups.tsx:196:13
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+  194 |               </SectionCard>
+  195 |             );
+> 196 |           })}
+      |             ^
+  197 |         </div>
+  198 |       )}
+  199 |
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./src/components/prototype/crm/groups.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component Browser]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/prototype/crm/groups.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Client Component SSR]
+    ./src/app/(main)/crm/groups/page.tsx [Server Component] @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:2099
+[  978716ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:1380
+[  979042ms] [LOG] [Fast Refresh] done in 362ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:1380
+[  979185ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:1380
+[  979674ms] [LOG] [Fast Refresh] done in 593ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:1380
+[  979794ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_13rdevn._.js:1380
+[  980846ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  980917ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1023777ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1024584ms] [LOG] [Fast Refresh] done in 799ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1024748ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1025152ms] [LOG] [Fast Refresh] done in 508ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1025336ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1025337ms] [LOG] [Fast Refresh] done in 108ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1025483ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1025518ms] [LOG] [Fast Refresh] done in 137ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1025746ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1025758ms] [LOG] [Fast Refresh] done in 122ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431

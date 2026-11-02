@@ -414,8 +414,13 @@ export function GroupDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!saving) onOpenChange(next);
+      }}
+    >
+      <DialogContent showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle>{group ? "Edit Group" : "Group Baru"}</DialogTitle>
           <DialogDescription>
