@@ -6,7 +6,7 @@
 | Versi | 1.0 |
 | Tanggal | 30 Oktober 2026 |
 | Sumber keputusan | Sesi grilling 30 Oktober 2026 (Q1–Q32) |
-| Dokumen terkait | [`docs/MVP.md`](./MVP.md), `References/` |
+| Dokumen terkait | [`MVP.md`](./MVP.md), [`References/`](./References/) |
 | Menggantikan | `SIMPROv2/CRM-MVP.md` dan `SIMPROv2/BRIEF.md` untuk lingkup prototype ini |
 
 ---
@@ -22,7 +22,7 @@ Prinsip pemisahnya:
 
 > **CRM memiliki proyek, step, dan form. SIMPRO memiliki task card dan eksekusinya.**
 
-Prototype ini dibuat untuk mendemonstrasikan satu proyek berjalan dari **Planning** sampai **Finance** tanpa kerja manual di luar kedua modul, dengan tampilan yang mengikuti screenshot SIMPRO di folder `References/`.
+Prototype ini dibuat untuk mendemonstrasikan satu proyek berjalan dari **Planning** sampai **Finance** tanpa kerja manual di luar kedua modul, dengan tampilan yang mengikuti screenshot SIMPRO di folder `Docs/References/`.
 
 ---
 
@@ -1037,7 +1037,7 @@ type InvoicePayload = {
 
 ### 12.1 Referensi visual
 
-Sumber utama tampilan adalah **kode `src`**, bukan screenshot. Screenshot di `References/` hanya referensi pendukung untuk kondisi visual yang diinginkan.
+Sumber utama tampilan adalah **kode `src`**, bukan screenshot. Screenshot di `Docs/References/` hanya referensi pendukung untuk kondisi visual yang diinginkan.
 
 Komponen dan halaman yang menjadi baseline:
 
@@ -1267,7 +1267,7 @@ Fase:
 10. Notification bell dan activity log berfungsi.
 11. Semua role hanya melihat data yang diizinkan.
 12. Reset data mengembalikan seed awal.
-13. Tampilan SIMPRO konsisten dengan `src` dan screenshot di `References/`; tidak ada shell/design system kedua.
+13. Tampilan SIMPRO konsisten dengan `src` dan screenshot di `Docs/References/`; tidak ada shell/design system kedua.
 14. `npm run build` dan `npm run lint` lulus di root repo setelah implementasi.
 
 ---
@@ -1277,7 +1277,7 @@ Fase:
 | # | Topik | Keputusan |
 |---|---|---|
 | Q1 | Sumber kebenaran | Prompt terbaru; `CRM-MVP.md`/`BRIEF.md` historis. |
-| Q2 | Topologi | Monolith baru di `CRMv2`; visual mengikuti `References/`. |
+| Q2 | Topologi | Monolith baru di `CRMv2`; visual mengikuti `Docs/References/`. |
 | Q3 | Journey | 6 step tetap, tidak bisa ditambah/diubah. |
 | Q4 | Pitching | Jumlah bebas; multiple winners; yang kalah menjadi history. |
 | Q5 | Survey | Form di SIMPRO. |

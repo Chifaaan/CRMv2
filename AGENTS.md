@@ -4,9 +4,9 @@
 
 Prototype monolith **CRM × SIMPRO** is implemented at the repository root.
 
-- Product source of truth: `docs/PRD.md`
-- Delivery scope: `docs/MVP.md`
-- Visual/code source of truth: `src` (primary), `References/*.png` (secondary)
+- Product source of truth: `Docs/PRD.md`
+- Delivery scope: `Docs/MVP.md`
+- Visual/code source of truth: `src` (primary), `Docs/References/*.png` (secondary)
 - Prototype data lives in the browser: Zustand + `localStorage` for app state, IndexedDB for uploaded files. No backend, auth, or real SIMPRO integration.
 - Old `D:\Projects\SIMPROv2\CRM-MVP.md` and `BRIEF.md` are historical; do not treat them as current requirements.
 

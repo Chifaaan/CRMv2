@@ -5,8 +5,8 @@
 | Status | Implemented (prototype) |
 | Versi | 1.1 |
 | Tanggal | 1 November 2026 |
-| PRD | [`docs/PRD.md`](./PRD.md) |
-| Referensi visual | `References/` |
+| PRD | [`PRD.md`](./PRD.md) |
+| Referensi visual | `Docs/References/` |
 
 > Implementasi ada di `src`. Lihat `AGENTS.md` untuk perintah dan struktur file. Catatan: `npm run lint` di-scope ke kode prototype; `npm run lint:all` masih memuat layar legacy SIMPRO yang disembunyikan.
 
@@ -36,7 +36,7 @@ MVP dianggap selesai jika:
 7. Group dan workload menampilkan rollup yang benar.
 8. Notification bell dan activity log berfungsi.
 9. Semua role hanya melihat dan melakukan aksi yang diizinkan.
-10. Tampilan konsisten dengan screenshot SIMPRO di `References/`.
+10. Tampilan konsisten dengan screenshot SIMPRO di `Docs/References/`.
 11. `npm run build` dan `npm run lint` lulus.
 12. Tombol reset mengembalikan seed data awal.
 
@@ -670,7 +670,7 @@ Setiap milestone harus meninggalkan aplikasi dalam keadaan bisa dijalankan.
 
 ### M10 — Polish + QA
 
-- Visual check terhadap `References/`.
+- Visual check terhadap `Docs/References/`.
 - Empty states, loading, error states.
 - Responsive 1024px.
 - Manual test matrix.
