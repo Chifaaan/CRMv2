@@ -8,6 +8,12 @@ import {
   recordProjectEvent,
   type ProjectEventInput,
 } from "./events";
+import {
+  hasEditConflict,
+  migrateFormVersions,
+  reviewFormVersion,
+  submitFormVersion,
+} from "./form-versions";
 import { createSeedState } from "./seed";
 import {
   FORM_STEP_KEYS,
@@ -52,6 +58,7 @@ type PrototypeActions = {
   setHydrated: (value: boolean) => void;
   setCurrentUser: (userId: string) => void;
   setProjectEvents: (events: ProjectEvent[]) => void;
+  setForms: (forms: StepForm[]) => void;
   reset: () => void;
 
   createProject: (input: ProjectInput) => string;
@@ -63,15 +70,25 @@ type PrototypeActions = {
   decidePitching: (pitchingId: string, decision: "won" | "lost") => void;
 
   assignForm: (formId: string, userId: string) => void;
-  saveForm: (formId: string, payload: StepForm["payload"]) => void;
+  saveForm: (
+    formId: string,
+    payload: StepForm["payload"],
+    options?: { recordEvent?: boolean; expectedUpdatedAt?: string },
+  ) => { ok: boolean; conflict?: boolean };
   submitForm: (formId: string) => void;
   reviewForm: (
     formId: string,
     decision: "approved" | "need_revision",
     comment: string,
+    target?: string,
   ) => void;
   addFormPhoto: (formId: string, photo: NonNullable<StepForm["photos"]>[number]) => void;
   removeFormPhoto: (formId: string, photoId: string) => void;
+  applyInvoiceImport: (
+    formId: string,
+    payload: StepForm["payload"],
+    fileName?: string,
+  ) => void;
 
   createTask: (
     projectId: string,
@@ -271,6 +288,8 @@ function defaultForm(projectId: string, key: FormStepKey): StepForm {
     type: key,
     status: "unassigned" as const,
     createdAt: now(),
+    versions: [] as StepForm["versions"],
+    updatedAt: now(),
   };
   if (key === "survey") {
     return {
@@ -291,7 +310,15 @@ function defaultForm(projectId: string, key: FormStepKey): StepForm {
   if (key === "bast") {
     return {
       ...base,
-      payload: { number: "", date: "", notes: "", documentUrl: "" },
+      payload: {
+        number: "",
+        date: "",
+        picId: "",
+        notes: "",
+        documentUrl: "",
+      },
+      versions: [],
+      updatedAt: now(),
     };
   }
   return {
@@ -299,12 +326,15 @@ function defaultForm(projectId: string, key: FormStepKey): StepForm {
     payload: {
       number: "",
       date: "",
+      dueDate: "",
       amount: 0,
       taxPercent: 11,
       taxAmount: 0,
       notes: "",
       documentUrl: "",
     },
+    versions: [],
+    updatedAt: now(),
   };
 }
 
@@ -357,6 +387,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
       setHydrated: (value) => set({ hydrated: value }),
       setCurrentUser: (userId) => set({ currentUserId: userId }),
       setProjectEvents: (events) => set({ projectEvents: events }),
+      setForms: (forms) => set({ forms }),
       reset: () => set({ ...createSeedState(), hydrated: true }),
 
       createProject: (input) => {
@@ -676,7 +707,13 @@ export const usePrototypeStore = create<PrototypeStore>()(
         set({
           forms: state.forms.map((item) =>
             item.id === formId
-              ? { ...item, assigneeId: userId, status: "assigned" }
+              ? {
+                  ...item,
+                  assigneeId: userId,
+                  status: "assigned",
+                  updatedAt: now(),
+                  updatedById: state.currentUserId,
+                }
               : item,
           ),
           notifications: user
@@ -713,10 +750,15 @@ export const usePrototypeStore = create<PrototypeStore>()(
         });
       },
 
-      saveForm: (formId, payload) => {
+      saveForm: (formId, payload, options) => {
         const state = get();
         const form = state.forms.find((item) => item.id === formId);
-        if (!form) return;
+        if (!form) return { ok: false };
+        if (
+          hasEditConflict(form, options?.expectedUpdatedAt, state.currentUserId)
+        ) {
+          return { ok: false, conflict: true };
+        }
         const nextStatus =
           form.status === "unassigned" ||
           form.status === "assigned" ||
@@ -724,30 +766,12 @@ export const usePrototypeStore = create<PrototypeStore>()(
           form.status === "approved"
             ? "draft"
             : form.status;
-        set({
-          forms: state.forms.map((item) =>
-            item.id === formId
-              ? {
-                  ...item,
-                  payload,
-                  status: nextStatus,
-                  submittedAt: undefined,
-                  reviewedAt: undefined,
-                  reviewedById: undefined,
-                  reviewComment: undefined,
-                }
-              : item,
-          ),
-          activityLogs: [
-            ...state.activityLogs,
-            activity(state, {
-              projectId: form.projectId,
-              actorId: state.currentUserId,
-              action: "form_saved",
-              message: `${form.type.toUpperCase()} disimpan sebagai draft.`,
-            }),
-          ],
-          projectEvents: projectEvent(state, {
+        const keepReview = form.status === "need_revision";
+        const updatedAt = now();
+        const shouldRecord = options?.recordEvent ?? true;
+        let events = state.projectEvents;
+        if (shouldRecord) {
+          events = projectEvent(state, {
             projectId: form.projectId,
             step: form.stepKey,
             eventType: `${form.type}.updated`,
@@ -756,8 +780,39 @@ export const usePrototypeStore = create<PrototypeStore>()(
               before: formSnapshot(form),
               after: formSnapshot({ ...form, payload, status: nextStatus }),
             },
-          }),
+          });
+        }
+        set({
+          forms: state.forms.map((item) =>
+            item.id === formId
+              ? {
+                  ...item,
+                  payload,
+                  status: nextStatus,
+                  submittedAt: keepReview ? item.submittedAt : undefined,
+                  reviewedAt: keepReview ? item.reviewedAt : undefined,
+                  reviewedById: keepReview ? item.reviewedById : undefined,
+                  reviewComment: keepReview ? item.reviewComment : undefined,
+                  reviewTarget: keepReview ? item.reviewTarget : undefined,
+                  updatedAt,
+                  updatedById: state.currentUserId,
+                }
+              : item,
+          ),
+          activityLogs: shouldRecord
+            ? [
+                ...state.activityLogs,
+                activity(state, {
+                  projectId: form.projectId,
+                  actorId: state.currentUserId,
+                  action: "form_saved",
+                  message: `${form.type.toUpperCase()} disimpan sebagai draft.`,
+                }),
+              ]
+            : state.activityLogs,
+          projectEvents: events,
         });
+        return { ok: true };
       },
 
       submitForm: (formId) => {
@@ -765,16 +820,11 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const form = state.forms.find((item) => item.id === formId);
         if (!form) return;
         const project = state.projects.find((item) => item.id === form.projectId);
+        const nextForm = submitFormVersion(form, state.currentUserId);
+        const versionNumber = nextForm.versions?.length ?? 1;
         set({
           forms: state.forms.map((item) =>
-            item.id === formId
-              ? {
-                  ...item,
-                  status: "submitted",
-                  submittedAt: now(),
-                  reviewComment: undefined,
-                }
-              : item,
+            item.id === formId ? nextForm : item,
           ),
           notifications: project
             ? [
@@ -801,30 +851,30 @@ export const usePrototypeStore = create<PrototypeStore>()(
             projectId: form.projectId,
             step: form.stepKey,
             eventType: `${form.type}.submitted`,
-            summary: `${form.type.toUpperCase()} disubmit.`,
+            summary: `${form.type.toUpperCase()} v${versionNumber} disubmit.`,
             metadata: {
-              before: { status: form.status },
-              after: { status: "submitted" },
+              before: formSnapshot(form),
+              after: formSnapshot(nextForm),
+              versionNumber,
             },
           }),
         });
       },
 
-      reviewForm: (formId, decision, comment) => {
+      reviewForm: (formId, decision, comment, target) => {
         const state = get();
         const form = state.forms.find((item) => item.id === formId);
         if (!form) return;
+        const nextForm = reviewFormVersion(
+          form,
+          decision,
+          comment,
+          target,
+          state.currentUserId,
+        );
         set({
           forms: state.forms.map((item) =>
-            item.id === formId
-              ? {
-                  ...item,
-                  status: decision,
-                  reviewedAt: now(),
-                  reviewedById: state.currentUserId,
-                  reviewComment: comment,
-                }
-              : item,
+            item.id === formId ? nextForm : item,
           ),
           notifications:
             form.assigneeId !== undefined
@@ -863,9 +913,10 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 ? `${form.type.toUpperCase()} disetujui.`
                 : `${form.type.toUpperCase()} perlu revisi.`,
             metadata: {
-              before: { status: form.status },
-              after: { status: decision },
+              before: formSnapshot(form),
+              after: formSnapshot(nextForm),
               reviewComment: comment,
+              reviewTarget: target ?? null,
             },
           }),
         });
@@ -878,7 +929,12 @@ export const usePrototypeStore = create<PrototypeStore>()(
         set({
           forms: state.forms.map((item) =>
             item.id === formId
-              ? { ...item, photos: [...(item.photos ?? []), photo] }
+              ? {
+                  ...item,
+                  photos: [...(item.photos ?? []), photo],
+                  updatedAt: now(),
+                  updatedById: state.currentUserId,
+                }
               : item,
           ),
           projectEvents: projectEvent(state, {
@@ -902,6 +958,8 @@ export const usePrototypeStore = create<PrototypeStore>()(
               ? {
                   ...item,
                   photos: (item.photos ?? []).filter((photo) => photo.id !== photoId),
+                  updatedAt: now(),
+                  updatedById: state.currentUserId,
                 }
               : item,
           ),
@@ -911,6 +969,42 @@ export const usePrototypeStore = create<PrototypeStore>()(
             eventType: `${form.type}.photo_removed`,
             summary: `Foto ${photo?.fileName ?? photoId} dihapus.`,
             metadata: { fileName: photo?.fileName ?? photoId, photoId },
+          }),
+        });
+      },
+
+      applyInvoiceImport: (formId, payload, fileName) => {
+        const state = get();
+        const form = state.forms.find((item) => item.id === formId);
+        if (!form || form.type !== "invoice") return;
+        const updatedAt = now();
+        const keepReview = form.status === "need_revision";
+        const nextForm: StepForm = {
+          ...form,
+          payload,
+          status: "draft",
+          submittedAt: keepReview ? form.submittedAt : undefined,
+          reviewedAt: keepReview ? form.reviewedAt : undefined,
+          reviewedById: keepReview ? form.reviewedById : undefined,
+          reviewComment: keepReview ? form.reviewComment : undefined,
+          reviewTarget: keepReview ? form.reviewTarget : undefined,
+          updatedAt,
+          updatedById: state.currentUserId,
+        };
+        set({
+          forms: state.forms.map((item) =>
+            item.id === formId ? nextForm : item,
+          ),
+          projectEvents: projectEvent(state, {
+            projectId: form.projectId,
+            step: "invoice",
+            eventType: "invoice.import_applied",
+            summary: `Import Excel diterapkan${fileName ? ` dari ${fileName}` : ""}.`,
+            metadata: {
+              before: formSnapshot(form),
+              after: formSnapshot(nextForm),
+              fileName: fileName ?? null,
+            },
           }),
         });
       },
@@ -1362,11 +1456,11 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const invoice = state.forms.find(
           (form) => form.projectId === projectId && form.stepKey === "invoice",
         );
-        if (
-          !nonFinanceDone ||
-          bast?.status !== "submitted" ||
-          invoice?.status !== "submitted"
-        ) {
+        const bastReady =
+          bast?.status === "submitted" || bast?.status === "approved";
+        const invoiceReady =
+          invoice?.status === "submitted" || invoice?.status === "approved";
+        if (!nonFinanceDone || !bastReady || !invoiceReady) {
           return;
         }
         const nextSteps = state.steps.map((step) =>
@@ -1604,6 +1698,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             }),
           );
         }
+        state.setForms(migrateFormVersions(state));
         state.setHydrated(true);
       },
     },

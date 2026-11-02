@@ -11,7 +11,7 @@ describe("recordProjectEvent", () => {
   it("appends an append-only event with actor and metadata", () => {
     const state = createSeedState();
     const events = recordProjectEvent(state.projectEvents, {
-      projectId: "p-lemmic",
+      projectId: "p-alpha",
       step: "pitching",
       eventType: "pitching.decided",
       actorId: "u-pm1",
@@ -21,7 +21,7 @@ describe("recordProjectEvent", () => {
 
     expect(events).toHaveLength(state.projectEvents.length + 1);
     const event = events.at(-1)!;
-    expect(event.projectId).toBe("p-lemmic");
+    expect(event.projectId).toBe("p-alpha");
     expect(event.step).toBe("pitching");
     expect(event.actorId).toBe("u-pm1");
     expect(event.metadata).toEqual({
@@ -52,12 +52,12 @@ describe("backfillProjectEvents", () => {
     const state = createSeedState();
     const events = backfillProjectEvents(state);
     const synthetic = events.find(
-      (event) => event.id === "backfill-project-p-resear",
+      (event) => event.id === "backfill-project-p-beta",
     );
 
     expect(synthetic?.eventType).toBe("project.backfill");
     expect(synthetic?.step).toBeNull();
-    expect(synthetic?.projectId).toBe("p-resear");
+    expect(synthetic?.projectId).toBe("p-beta");
   });
 
   it("is idempotent", () => {
@@ -76,20 +76,20 @@ describe("readProjectEvents", () => {
   it("uses project visibility and masks metadata for an assignee", () => {
     const state = createSeedState();
     const pmForbidden = readProjectEvents(state, {
-      projectId: "p-alert",
+      projectId: "p-delta",
       viewerId: "u-pm1",
     });
     expect(pmForbidden.events).toEqual([]);
 
     const assignee = readProjectEvents(state, {
-      projectId: "p-alert",
+      projectId: "p-delta",
       viewerId: "u-assignee1",
     });
     expect(assignee.events.length).toBeGreaterThan(0);
     expect(assignee.events.every((event) => Object.keys(event.metadata).length === 0)).toBe(true);
 
     const manager = readProjectEvents(state, {
-      projectId: "p-alert",
+      projectId: "p-delta",
       viewerId: "u-manager",
     });
     expect(manager.events.length).toBeGreaterThan(0);
@@ -98,7 +98,7 @@ describe("readProjectEvents", () => {
   it("filters by step, includes project-level events, and paginates", () => {
     const state = createSeedState();
     let events = recordProjectEvent(state.projectEvents, {
-      projectId: "p-posrv",
+      projectId: "p-epsilon",
       step: null,
       eventType: "project.updated",
       actorId: "u-pm2",
@@ -106,7 +106,7 @@ describe("readProjectEvents", () => {
       metadata: {},
     });
     events = recordProjectEvent(events, {
-      projectId: "p-posrv",
+      projectId: "p-epsilon",
       step: "invoice",
       eventType: "invoice.updated",
       actorId: "u-finance",
@@ -116,7 +116,7 @@ describe("readProjectEvents", () => {
     const withEvents = { ...state, projectEvents: events };
 
     const page1 = readProjectEvents(withEvents, {
-      projectId: "p-posrv",
+      projectId: "p-epsilon",
       viewerId: "u-pm2",
       step: "invoice",
       includeProjectLevel: true,
@@ -126,7 +126,7 @@ describe("readProjectEvents", () => {
     expect(page1.nextCursor).toBeTruthy();
 
     const page2 = readProjectEvents(withEvents, {
-      projectId: "p-posrv",
+      projectId: "p-epsilon",
       viewerId: "u-pm2",
       step: "invoice",
       includeProjectLevel: true,
@@ -139,7 +139,7 @@ describe("readProjectEvents", () => {
 
   it("masks metadata for assignee viewers", () => {
     const state = createSeedState();
-    const event = state.projectEvents.find((item) => item.projectId === "p-alert");
+    const event = state.projectEvents.find((item) => item.projectId === "p-delta");
     expect(event).toBeDefined();
     const assignee = state.users.find((user) => user.id === "u-assignee1")!;
     expect(maskProjectEventForViewer(event!, assignee).metadata).toEqual({});

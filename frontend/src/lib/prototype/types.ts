@@ -148,6 +148,7 @@ export type SurveyPayload = {
 export type RabItem = {
   id: string;
   description: string;
+  category?: string;
   qty: number;
   unit: string;
   unitPrice: number;
@@ -161,6 +162,7 @@ export type RabPayload = {
 export type BastPayload = {
   number: string;
   date: string;
+  picId: string;
   notes: string;
   documentUrl: string;
 };
@@ -168,6 +170,7 @@ export type BastPayload = {
 export type InvoicePayload = {
   number: string;
   date: string;
+  dueDate: string;
   amount: number;
   taxPercent: number;
   taxAmount: number;
@@ -189,6 +192,18 @@ export type SurveyPhoto = {
   storageKey?: string;
 };
 
+export type FormVersion = {
+  id: string;
+  formId: string;
+  versionNumber: number;
+  status: FormStatus;
+  payload: FormPayload;
+  photos?: SurveyPhoto[];
+  createdAt: string;
+  createdById: string;
+  source: "migration" | "submission";
+};
+
 export type StepForm = {
   id: string;
   projectId: string;
@@ -198,10 +213,14 @@ export type StepForm = {
   assigneeId?: string;
   payload: FormPayload;
   photos?: SurveyPhoto[];
+  versions?: FormVersion[];
   submittedAt?: string;
   reviewedAt?: string;
   reviewedById?: string;
   reviewComment?: string;
+  reviewTarget?: string;
+  updatedAt?: string;
+  updatedById?: string;
   createdAt: string;
 };
 
@@ -352,7 +371,7 @@ export const PRIORITY_LABEL: Record<Priority, string> = {
 };
 
 export const ROLE_LABEL: Record<Role, string> = {
-  admin: "Admin Utama",
+  admin: "Admin",
   manager: "Manager",
   pm: "PM",
   finance: "Finance",

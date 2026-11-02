@@ -18,70 +18,70 @@ import { createSeedState } from "../src/lib/prototype/seed";
 describe("journey progress", () => {
   it("uses four full steps plus finance split 0.5/0.5", () => {
     const state = createSeedState();
-    expect(calculateJourneyProgress(state, "p-lemmic")).toBe(0);
-    expect(calculateJourneyProgress(state, "p-resear")).toBe(20);
-    expect(calculateJourneyProgress(state, "p-cdnv2")).toBe(40);
-    expect(calculateJourneyProgress(state, "p-alert")).toBe(60);
-    expect(calculateJourneyProgress(state, "p-posrv")).toBe(90);
-    expect(calculateJourneyProgress(state, "p-simple")).toBe(100);
+    expect(calculateJourneyProgress(state, "p-alpha")).toBe(0);
+    expect(calculateJourneyProgress(state, "p-beta")).toBe(20);
+    expect(calculateJourneyProgress(state, "p-gamma")).toBe(40);
+    expect(calculateJourneyProgress(state, "p-delta")).toBe(60);
+    expect(calculateJourneyProgress(state, "p-epsilon")).toBe(90);
+    expect(calculateJourneyProgress(state, "p-zeta")).toBe(100);
   });
 });
 
 describe("work progress", () => {
   it("uses task progress for pitching/running and form progress for form steps", () => {
     const state = createSeedState();
-    expect(calculateWorkProgress(state, "p-resear", "survey")).toBe(50);
-    expect(calculateWorkProgress(state, "p-cdnv2", "rab")).toBe(50);
-    expect(calculateWorkProgress(state, "p-posrv", "bast")).toBe(100);
-    expect(calculateWorkProgress(state, "p-posrv", "invoice")).toBe(0);
-    expect(workProgressForProject(state, "p-posrv")).toBe(50);
-    expect(workProgressForProject(state, "p-simple")).toBe(100);
+    expect(calculateWorkProgress(state, "p-beta", "survey")).toBe(50);
+    expect(calculateWorkProgress(state, "p-gamma", "rab")).toBe(50);
+    expect(calculateWorkProgress(state, "p-epsilon", "bast")).toBe(100);
+    expect(calculateWorkProgress(state, "p-epsilon", "invoice")).toBe(0);
+    expect(workProgressForProject(state, "p-epsilon")).toBe(50);
+    expect(workProgressForProject(state, "p-zeta")).toBe(100);
   });
 });
 
 describe("gates", () => {
   it("blocks pitching until winner tasks and all pitching tasks are completed", () => {
     const state = createSeedState();
-    expect(evaluateGate(state, "p-lemmic", "pitching").ready).toBe(false);
+    expect(evaluateGate(state, "p-alpha", "pitching").ready).toBe(false);
     for (const task of state.tasks) {
-      if (task.projectId === "p-lemmic" && !task.archivedAt) {
+      if (task.projectId === "p-alpha" && !task.archivedAt) {
         task.status = "completed";
       }
     }
-    expect(evaluateGate(state, "p-lemmic", "pitching").ready).toBe(true);
+    expect(evaluateGate(state, "p-alpha", "pitching").ready).toBe(true);
   });
 
   it("blocks running while any task is active", () => {
     const state = createSeedState();
-    expect(evaluateGate(state, "p-alert", "running").ready).toBe(false);
+    expect(evaluateGate(state, "p-delta", "running").ready).toBe(false);
     for (const task of state.tasks) {
-      if (task.projectId === "p-alert" && task.stepKey === "running") {
+      if (task.projectId === "p-delta" && task.stepKey === "running") {
         task.status = "completed";
       }
     }
-    expect(evaluateGate(state, "p-alert", "running").ready).toBe(true);
+    expect(evaluateGate(state, "p-delta", "running").ready).toBe(true);
   });
 
   it("requires approved survey and rab", () => {
     const state = createSeedState();
-    expect(evaluateGate(state, "p-resear", "survey").ready).toBe(false);
+    expect(evaluateGate(state, "p-beta", "survey").ready).toBe(false);
     state.forms.find(
-      (form) => form.projectId === "p-resear" && form.stepKey === "survey",
+      (form) => form.projectId === "p-beta" && form.stepKey === "survey",
     )!.status = "approved";
-    expect(evaluateGate(state, "p-resear", "survey").ready).toBe(true);
+    expect(evaluateGate(state, "p-beta", "survey").ready).toBe(true);
   });
 
   it("requires submitted bast and invoice", () => {
     const state = createSeedState();
-    expect(evaluateGate(state, "p-posrv", "bast").ready).toBe(true);
-    expect(evaluateGate(state, "p-posrv", "invoice").ready).toBe(false);
+    expect(evaluateGate(state, "p-epsilon", "bast").ready).toBe(true);
+    expect(evaluateGate(state, "p-epsilon", "invoice").ready).toBe(false);
   });
 });
 
 describe("task transitions", () => {
   it("only manager/admin can assign backlog to todo", () => {
     const state = createSeedState();
-    const task = state.tasks.find((item) => item.id === "task-lem-010")!;
+    const task = state.tasks.find((item) => item.id === "task-alpha-010")!;
     task.assigneeId = "u-assignee1";
     const pm = userById(state, "u-pm1")!;
     const manager = userById(state, "u-manager")!;
@@ -91,7 +91,7 @@ describe("task transitions", () => {
 
   it("assignee moves todo to in progress and awaiting approval", () => {
     const state = createSeedState();
-    const task = state.tasks.find((item) => item.id === "task-lem-005")!;
+    const task = state.tasks.find((item) => item.id === "task-alpha-005")!;
     const assignee = userById(state, "u-assignee3")!;
     expect(taskTransition(state, assignee, task, "in_progress").ok).toBe(true);
     task.status = "in_progress";
@@ -100,7 +100,7 @@ describe("task transitions", () => {
 
   it("only pm owner/admin reviews awaiting approval", () => {
     const state = createSeedState();
-    const task = state.tasks.find((item) => item.id === "task-lem-002")!;
+    const task = state.tasks.find((item) => item.id === "task-alpha-002")!;
     const pm = userById(state, "u-pm1")!;
     const manager = userById(state, "u-manager")!;
     expect(taskTransition(state, manager, task, "completed").ok).toBe(false);
@@ -119,7 +119,7 @@ describe("visibility", () => {
       canViewProject(
         state,
         pm,
-        state.projects.find((project) => project.id === "p-alert")!,
+        state.projects.find((project) => project.id === "p-delta")!,
       ),
     ).toBe(false);
     expect(visibleProjects({ ...state, currentUserId: "u-manager" }).length).toBe(
@@ -129,14 +129,14 @@ describe("visibility", () => {
       canViewProject(
         state,
         assignee,
-        state.projects.find((project) => project.id === "p-alert")!,
+        state.projects.find((project) => project.id === "p-delta")!,
       ),
     ).toBe(true);
     expect(
       canViewProject(
         state,
         assignee,
-        state.projects.find((project) => project.id === "p-cdnv2")!,
+        state.projects.find((project) => project.id === "p-gamma")!,
       ),
     ).toBe(false);
     expect(visibleProjects({ ...state, currentUserId: "u-pm1" }).length).toBe(4);
@@ -148,22 +148,22 @@ describe("workload and groups", () => {
   it("counts only active card tasks by assignee", () => {
     const state = createSeedState();
     const rows = workloadRows(state);
-    const eugene = rows.find((row) => row.user.id === "u-assignee1")!;
-    const sigit = rows.find((row) => row.user.id === "u-assignee2")!;
+    const assignee1 = rows.find((row) => row.user.id === "u-assignee1")!;
+    const assignee2 = rows.find((row) => row.user.id === "u-assignee2")!;
     const andi = rows.find((row) => row.user.id === "u-assignee3")!;
 
-    expect(eugene.activeCount).toBe(3);
-    expect(sigit.activeCount).toBe(2);
+    expect(assignee1.activeCount).toBe(3);
+    expect(assignee2.activeCount).toBe(2);
     expect(andi.activeCount).toBe(3);
-    expect(eugene.statusCounts.need_revision).toBe(1);
-    expect(eugene.overdueCount).toBe(1);
+    expect(assignee1.statusCounts.need_revision).toBe(1);
+    expect(assignee1.overdueCount).toBe(1);
   });
 
   it("counts completed projects, not average journey progress", () => {
     const state = createSeedState();
     expect(groupProgress(state, "group-q4")).toBe(0);
 
-    state.projects.find((project) => project.id === "p-resear")!.status =
+    state.projects.find((project) => project.id === "p-beta")!.status =
       "completed";
     expect(groupProgress(state, "group-q4")).toBe(33);
 
@@ -181,17 +181,17 @@ describe("workload and groups", () => {
     const state = createSeedState();
     expect(
       isGroupableProject(
-        state.projects.find((project) => project.id === "p-lemmic")!,
+        state.projects.find((project) => project.id === "p-alpha")!,
       ),
     ).toBe(true);
     expect(
       isGroupableProject(
-        state.projects.find((project) => project.id === "p-alert")!,
+        state.projects.find((project) => project.id === "p-delta")!,
       ),
     ).toBe(false);
     expect(
       isGroupableProject(
-        state.projects.find((project) => project.id === "p-oldpro")!,
+        state.projects.find((project) => project.id === "p-legacy")!,
       ),
     ).toBe(false);
   });

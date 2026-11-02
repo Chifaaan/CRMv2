@@ -174,7 +174,13 @@ const formStatusClasses: Record<FormStatus, string> = {
   need_revision: "bg-rose-100 text-rose-700 ring-rose-200",
 };
 
-export function FormStatusBadge({ status }: { status: FormStatus }) {
+export function FormStatusBadge({
+  status,
+  label,
+}: {
+  status: FormStatus;
+  label?: string;
+}) {
   return (
     <span
       className={cn(
@@ -182,7 +188,7 @@ export function FormStatusBadge({ status }: { status: FormStatus }) {
         formStatusClasses[status],
       )}
     >
-      {FORM_STATUS_LABEL[status]}
+      {label ?? FORM_STATUS_LABEL[status]}
     </span>
   );
 }
@@ -304,12 +310,14 @@ export function Field({
 }
 
 export function NativeSelect({
+  id,
   value,
   onChange,
   children,
   className,
   disabled,
 }: {
+  id?: string;
   value: string;
   onChange: (value: string) => void;
   children: ReactNode;
@@ -318,6 +326,7 @@ export function NativeSelect({
 }) {
   return (
     <select
+      id={id}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       disabled={disabled}

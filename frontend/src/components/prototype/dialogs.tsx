@@ -142,7 +142,7 @@ export function ProjectDialog({
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Nama proyek" className="sm:col-span-2">
-            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Contoh: Connector Member System" />
+            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Contoh: Nama Proyek" />
           </Field>
           <Field label="Klien">
             <Input value={client} onChange={(event) => setClient(event.target.value)} placeholder="Nama klien" />
@@ -262,7 +262,7 @@ export function PitchingDialog({
         </DialogHeader>
         <div className="space-y-3">
           <Field label="Judul pitching">
-            <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Contoh: Konsep Portal Member" />
+            <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Contoh: Konsep Alpha" />
           </Field>
           <Field label="Deskripsi">
             <Textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={2} />

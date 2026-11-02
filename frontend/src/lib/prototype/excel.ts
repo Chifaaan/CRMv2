@@ -138,7 +138,7 @@ function downloadRows(fileName: string, rows: Record<string, unknown>[]) {
 export function downloadBastTemplate() {
   downloadRows("template-bast.xlsx", [
     {
-      project_code: "LEMMIC",
+      project_code: "PRJ-01",
       bast_number: "BAST/001/2026",
       bast_date: new Date().toISOString().slice(0, 10),
       notes: "Catatan BAST",
@@ -150,7 +150,7 @@ export function downloadBastTemplate() {
 export function downloadInvoiceTemplate() {
   downloadRows("template-invoice.xlsx", [
     {
-      project_code: "LEMMIC",
+      project_code: "PRJ-01",
       invoice_number: "INV/001/2026",
       invoice_date: new Date().toISOString().slice(0, 10),
       amount: 10000000,

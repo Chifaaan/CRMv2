@@ -1,4 +1,5 @@
 import { backfillProjectEvents } from "./events";
+import { migrateFormVersions } from "./form-versions";
 import { STEP_META, type AppState, type FormStepKey, type StepForm, type StepKey } from "./types";
 
 function iso(date: string): string {
@@ -23,11 +24,18 @@ function defaultPayload(key: FormStepKey) {
     return { items: [], notes: "" };
   }
   if (key === "bast") {
-    return { number: "", date: "", notes: "", documentUrl: "" };
+    return {
+      number: "",
+      date: "",
+      picId: "",
+      notes: "",
+      documentUrl: "",
+    };
   }
   return {
     number: "",
     date: "",
+    dueDate: "",
     amount: 0,
     taxPercent: 11,
     taxAmount: 0,
@@ -84,57 +92,57 @@ export function createSeedState(): AppState {
   const users = [
     {
       id: "u-admin",
-      name: "Admin Utama",
-      email: "admin@example.com",
+      name: "Admin Demo",
+      email: "admin.demo@example.com",
       role: "admin" as const,
       color: "bg-violet-500",
     },
     {
       id: "u-manager",
-      name: "Rina Prameswari",
-      email: "rina@example.com",
+      name: "Manager Demo",
+      email: "manager.demo@example.com",
       role: "manager" as const,
       color: "bg-sky-500",
     },
     {
       id: "u-pm1",
-      name: "Nur Irfan",
-      email: "irfan@example.com",
+      name: "PM Demo 1",
+      email: "pm1.demo@example.com",
       role: "pm" as const,
       color: "bg-indigo-500",
     },
     {
       id: "u-pm2",
-      name: "Yohan Kinata",
-      email: "yohan@example.com",
+      name: "PM Demo 2",
+      email: "pm2.demo@example.com",
       role: "pm" as const,
       color: "bg-emerald-500",
     },
     {
       id: "u-assignee1",
-      name: "Eugene",
-      email: "eugene@example.com",
+      name: "Assignee Demo 1",
+      email: "assignee1.demo@example.com",
       role: "assignee" as const,
       color: "bg-rose-500",
     },
     {
       id: "u-assignee2",
-      name: "Sigit Wijayanto",
-      email: "sigit@example.com",
+      name: "Assignee Demo 2",
+      email: "assignee2.demo@example.com",
       role: "assignee" as const,
       color: "bg-amber-500",
     },
     {
       id: "u-assignee3",
-      name: "Andi Jamero",
-      email: "andi@example.com",
+      name: "Assignee Demo 3",
+      email: "assignee3.demo@example.com",
       role: "assignee" as const,
       color: "bg-teal-500",
     },
     {
       id: "u-finance",
-      name: "Maya Sari",
-      email: "maya@example.com",
+      name: "Finance Demo",
+      email: "finance.demo@example.com",
       role: "finance" as const,
       color: "bg-fuchsia-500",
     },
@@ -142,10 +150,10 @@ export function createSeedState(): AppState {
 
   const projects = [
     {
-      id: "p-lemmic",
-      code: "LEMMIC",
-      name: "Connector Member System",
-      client: "LEMMIC",
+      id: "p-alpha",
+      code: "PRJ-01",
+      name: "Proyek Alpha",
+      client: "Klien Alpha",
       description: "Portal member, loyalty, dan integrasi kanal digital.",
       priority: "high" as const,
       status: "active" as const,
@@ -156,10 +164,10 @@ export function createSeedState(): AppState {
       createdAt: iso("2026-10-01"),
     },
     {
-      id: "p-resear",
-      code: "RESEAR",
-      name: "Research SYS",
-      client: "Spectrum",
+      id: "p-beta",
+      code: "PRJ-02",
+      name: "Proyek Beta",
+      client: "Klien Beta",
       description: "Riset pengalaman pengguna dan validasi lapangan.",
       priority: "medium" as const,
       status: "active" as const,
@@ -170,10 +178,10 @@ export function createSeedState(): AppState {
       createdAt: iso("2026-10-05"),
     },
     {
-      id: "p-cdnv2",
-      code: "CDNv2",
-      name: "CDNv2 Automation",
-      client: "Spectrum",
+      id: "p-gamma",
+      code: "PRJ-03",
+      name: "Proyek Gamma",
+      client: "Klien Beta",
       description: "Otomatisasi data ads, tracker, dan pelaporan kanal.",
       priority: "high" as const,
       status: "active" as const,
@@ -184,9 +192,9 @@ export function createSeedState(): AppState {
       createdAt: iso("2026-10-02"),
     },
     {
-      id: "p-alert",
-      code: "ALERT",
-      name: "Alert Prototype",
+      id: "p-delta",
+      code: "PRJ-04",
+      name: "Proyek Delta",
       client: "Internal",
       description: "Prototype alert engine dan notifikasi operasional.",
       priority: "critical" as const,
@@ -198,10 +206,10 @@ export function createSeedState(): AppState {
       createdAt: iso("2026-10-10"),
     },
     {
-      id: "p-posrv",
-      code: "POSRV",
-      name: "POS Revamp",
-      client: "Retail Nusantara",
+      id: "p-epsilon",
+      code: "PRJ-05",
+      name: "Proyek Epsilon",
+      client: "Klien Gamma",
       description: "Revamp point of sale dan integrasi pembayaran.",
       priority: "medium" as const,
       status: "active" as const,
@@ -212,9 +220,9 @@ export function createSeedState(): AppState {
       createdAt: iso("2026-09-01"),
     },
     {
-      id: "p-simple",
-      code: "SIMPLE",
-      name: "SIMPRO Mobile",
+      id: "p-zeta",
+      code: "PRJ-06",
+      name: "Proyek Zeta",
       client: "Internal",
       description: "Aplikasi mobile ringkas untuk monitoring proyek.",
       priority: "low" as const,
@@ -227,10 +235,10 @@ export function createSeedState(): AppState {
       createdAt: iso("2026-07-01"),
     },
     {
-      id: "p-oldpro",
-      code: "OLDPRO",
-      name: "Legacy Portal",
-      client: "Legacy Co",
+      id: "p-legacy",
+      code: "PRJ-07",
+      name: "Proyek Lama",
+      client: "Klien Lama",
       description: "Proyek lama yang dihentikan.",
       priority: "low" as const,
       status: "cancelled" as const,
@@ -244,23 +252,23 @@ export function createSeedState(): AppState {
   ];
 
   const steps = [
-    ...makeSteps("p-lemmic", ["pitching"]),
-    ...makeSteps("p-resear", ["survey"], ["pitching"]),
-    ...makeSteps("p-cdnv2", ["rab"], ["pitching", "survey"]),
-    ...makeSteps("p-alert", ["running"], ["pitching", "survey", "rab"]),
-    ...makeSteps("p-posrv", ["bast", "invoice"], [
+    ...makeSteps("p-alpha", ["pitching"]),
+    ...makeSteps("p-beta", ["survey"], ["pitching"]),
+    ...makeSteps("p-gamma", ["rab"], ["pitching", "survey"]),
+    ...makeSteps("p-delta", ["running"], ["pitching", "survey", "rab"]),
+    ...makeSteps("p-epsilon", ["bast", "invoice"], [
       "pitching",
       "survey",
       "rab",
       "running",
     ]),
-    ...makeSteps("p-simple", [], STEP_META.map((step) => step.key)),
-    ...makeSteps("p-oldpro", ["pitching"]),
+    ...makeSteps("p-zeta", [], STEP_META.map((step) => step.key)),
+    ...makeSteps("p-legacy", ["pitching"]),
   ];
 
   const forms = [
-    ...makeForms("p-lemmic"),
-    ...makeForms("p-resear", {
+    ...makeForms("p-alpha"),
+    ...makeForms("p-beta", {
       survey: {
         status: "submitted",
         assigneeId: "u-assignee1",
@@ -268,7 +276,7 @@ export function createSeedState(): AppState {
         payload: {
           surveyDate: "2026-10-28",
           location: "Jakarta Selatan",
-          pic: "Eugene",
+          pic: "Assignee Demo 1",
           findings:
             "Pengguna membutuhkan alur member yang lebih singkat dan status poin yang jelas.",
           notes: "Lanjut ke penyusunan RAB.",
@@ -289,7 +297,7 @@ export function createSeedState(): AppState {
         ],
       },
     }),
-    ...makeForms("p-cdnv2", {
+    ...makeForms("p-gamma", {
       survey: {
         status: "approved",
         assigneeId: "u-assignee2",
@@ -300,7 +308,7 @@ export function createSeedState(): AppState {
         payload: {
           surveyDate: "2026-10-17",
           location: "Bandung",
-          pic: "Sigit Wijayanto",
+          pic: "Assignee Demo 2",
           findings: "Kebutuhan tracker dan ads sudah terpetakan.",
           notes: "Disetujui untuk RAB.",
         },
@@ -311,17 +319,17 @@ export function createSeedState(): AppState {
         assigneeId: "u-finance",
         submittedAt: iso("2026-10-29"),
         payload: {
-          notes: "RAB awal untuk otomatisasi CDN.",
+          notes: "RAB awal untuk otomatisasi kanal.",
           items: [
             {
-              id: "rab-cdn-1",
+              id: "rab-gamma-1",
               description: "Automation workflow",
               qty: 1,
               unit: "paket",
               unitPrice: 75000000,
             },
             {
-              id: "rab-cdn-2",
+              id: "rab-gamma-2",
               description: "Integrasi tracker & ads",
               qty: 1,
               unit: "paket",
@@ -331,7 +339,7 @@ export function createSeedState(): AppState {
         },
       },
     }),
-    ...makeForms("p-alert", {
+    ...makeForms("p-delta", {
       survey: {
         status: "approved",
         assigneeId: "u-assignee3",
@@ -341,7 +349,7 @@ export function createSeedState(): AppState {
         payload: {
           surveyDate: "2026-10-14",
           location: "Surabaya",
-          pic: "Andi Jamero",
+          pic: "Assignee Demo 3",
           findings: "Alert manual masih dominan.",
           notes: "Setuju lanjut.",
         },
@@ -356,7 +364,7 @@ export function createSeedState(): AppState {
           notes: "RAB disetujui.",
           items: [
             {
-              id: "rab-alert-1",
+              id: "rab-delta-1",
               description: "Alert engine",
               qty: 1,
               unit: "paket",
@@ -366,7 +374,7 @@ export function createSeedState(): AppState {
         },
       },
     }),
-    ...makeForms("p-posrv", {
+    ...makeForms("p-epsilon", {
       survey: {
         status: "approved",
         assigneeId: "u-assignee1",
@@ -376,7 +384,7 @@ export function createSeedState(): AppState {
         payload: {
           surveyDate: "2026-09-09",
           location: "Jakarta",
-          pic: "Eugene",
+          pic: "Assignee Demo 1",
           findings: "POS lama perlu penyederhanaan.",
           notes: "Lanjut.",
         },
@@ -391,7 +399,7 @@ export function createSeedState(): AppState {
           notes: "RAB final.",
           items: [
             {
-              id: "rab-pos-1",
+              id: "rab-epsilon-1",
               description: "Revamp POS",
               qty: 1,
               unit: "paket",
@@ -407,6 +415,7 @@ export function createSeedState(): AppState {
         payload: {
           number: "BAST/POS/2026/014",
           date: "2026-10-30",
+          picId: "u-assignee1",
           notes: "BAST sudah ditandatangani klien.",
           documentUrl: "https://example.com/bast-pos.pdf",
         },
@@ -417,6 +426,7 @@ export function createSeedState(): AppState {
         payload: {
           number: "INV/POS/2026/014",
           date: "2026-10-31",
+          dueDate: "2026-11-30",
           amount: 88000000,
           taxPercent: 11,
           taxAmount: 9680000,
@@ -425,7 +435,7 @@ export function createSeedState(): AppState {
         },
       },
     }),
-    ...makeForms("p-simple", {
+    ...makeForms("p-zeta", {
       survey: {
         status: "approved",
         assigneeId: "u-assignee2",
@@ -435,7 +445,7 @@ export function createSeedState(): AppState {
         payload: {
           surveyDate: "2026-07-14",
           location: "Jakarta",
-          pic: "Sigit Wijayanto",
+          pic: "Assignee Demo 2",
           findings: "Kebutuhan mobile sederhana.",
           notes: "OK.",
         },
@@ -466,6 +476,7 @@ export function createSeedState(): AppState {
         payload: {
           number: "BAST/MOB/2026/009",
           date: "2026-09-28",
+          picId: "u-assignee2",
           notes: "BAST selesai.",
           documentUrl: "https://example.com/bast-mobile.pdf",
         },
@@ -477,6 +488,7 @@ export function createSeedState(): AppState {
         payload: {
           number: "INV/MOB/2026/009",
           date: "2026-09-29",
+          dueDate: "2026-10-29",
           amount: 55000000,
           taxPercent: 11,
           taxAmount: 6050000,
@@ -485,14 +497,14 @@ export function createSeedState(): AppState {
         },
       },
     }),
-    ...makeForms("p-oldpro"),
+    ...makeForms("p-legacy"),
   ];
 
   const pitchings = [
     {
-      id: "pitch-lem-1",
-      projectId: "p-lemmic",
-      title: "Konsep Portal Member",
+      id: "pitch-alpha-1",
+      projectId: "p-alpha",
+      title: "Konsep Alpha",
       description: "Portal member dengan loyalty dan dashboard poin.",
       status: "won" as const,
       createdById: "u-pm1",
@@ -500,9 +512,9 @@ export function createSeedState(): AppState {
       decidedAt: iso("2026-10-08"),
     },
     {
-      id: "pitch-lem-2",
-      projectId: "p-lemmic",
-      title: "Dashboard Engagement",
+      id: "pitch-alpha-2",
+      projectId: "p-alpha",
+      title: "Dashboard Alpha",
       description: "Dashboard aktivitas dan kampanye member.",
       status: "won" as const,
       createdById: "u-pm1",
@@ -510,9 +522,9 @@ export function createSeedState(): AppState {
       decidedAt: iso("2026-10-08"),
     },
     {
-      id: "pitch-lem-3",
-      projectId: "p-lemmic",
-      title: "Mobile Companion",
+      id: "pitch-alpha-3",
+      projectId: "p-alpha",
+      title: "Mobile Alpha",
       description: "Aplikasi companion untuk member.",
       status: "lost" as const,
       createdById: "u-pm1",
@@ -520,9 +532,9 @@ export function createSeedState(): AppState {
       decidedAt: iso("2026-10-08"),
     },
     {
-      id: "pitch-lem-4",
-      projectId: "p-lemmic",
-      title: "Gamifikasi Loyalty",
+      id: "pitch-alpha-4",
+      projectId: "p-alpha",
+      title: "Gamifikasi Alpha",
       description: "Mekanik gamifikasi untuk retensi.",
       status: "lost" as const,
       createdById: "u-pm1",
@@ -530,19 +542,19 @@ export function createSeedState(): AppState {
       decidedAt: iso("2026-10-08"),
     },
     {
-      id: "pitch-lem-5",
-      projectId: "p-lemmic",
-      title: "Integrasi WhatsApp",
-      description: "Notifikasi dan layanan via WhatsApp.",
+      id: "pitch-alpha-5",
+      projectId: "p-alpha",
+      title: "Integrasi Kanal",
+      description: "Notifikasi dan layanan via kanal pesan.",
       status: "lost" as const,
       createdById: "u-pm1",
       createdAt: iso("2026-10-02"),
       decidedAt: iso("2026-10-08"),
     },
     {
-      id: "pitch-res-1",
-      projectId: "p-resear",
-      title: "Riset Pengalaman Member",
+      id: "pitch-beta-1",
+      projectId: "p-beta",
+      title: "Riset Pengalaman Beta",
       description: "Pemenang pitching riset.",
       status: "won" as const,
       createdById: "u-pm1",
@@ -550,9 +562,9 @@ export function createSeedState(): AppState {
       decidedAt: iso("2026-10-10"),
     },
     {
-      id: "pitch-cdn-1",
-      projectId: "p-cdnv2",
-      title: "Otomatisasi CDN",
+      id: "pitch-gamma-1",
+      projectId: "p-gamma",
+      title: "Otomatisasi Gamma",
       description: "Pemenang pitching otomatisasi.",
       status: "won" as const,
       createdById: "u-pm1",
@@ -560,19 +572,19 @@ export function createSeedState(): AppState {
       decidedAt: iso("2026-10-06"),
     },
     {
-      id: "pitch-alert-1",
-      projectId: "p-alert",
-      title: "Alert Engine",
-      description: "Pemenang pitching alert.",
+      id: "pitch-delta-1",
+      projectId: "p-delta",
+      title: "Mesin Notifikasi",
+      description: "Pemenang pitching notifikasi.",
       status: "won" as const,
       createdById: "u-pm2",
       createdAt: iso("2026-10-11"),
       decidedAt: iso("2026-10-13"),
     },
     {
-      id: "pitch-pos-1",
-      projectId: "p-posrv",
-      title: "POS Revamp",
+      id: "pitch-epsilon-1",
+      projectId: "p-epsilon",
+      title: "Revamp Epsilon",
       description: "Pemenang pitching POS.",
       status: "won" as const,
       createdById: "u-pm2",
@@ -580,9 +592,9 @@ export function createSeedState(): AppState {
       decidedAt: iso("2026-09-05"),
     },
     {
-      id: "pitch-simple-1",
-      projectId: "p-simple",
-      title: "SIMPRO Mobile",
+      id: "pitch-zeta-1",
+      projectId: "p-zeta",
+      title: "Aplikasi Mobile Zeta",
       description: "Pemenang pitching mobile.",
       status: "won" as const,
       createdById: "u-pm2",
@@ -593,67 +605,67 @@ export function createSeedState(): AppState {
 
   const pitchingRoles = [
     {
-      id: "role-lem-1-1",
-      pitchingId: "pitch-lem-1",
+      id: "role-alpha-1-1",
+      pitchingId: "pitch-alpha-1",
       label: "Pembuat PPT",
       requestedUserId: "u-assignee1",
-      taskId: "task-lem-001",
+      taskId: "task-alpha-001",
     },
     {
-      id: "role-lem-1-2",
-      pitchingId: "pitch-lem-1",
+      id: "role-alpha-1-2",
+      pitchingId: "pitch-alpha-1",
       label: "Presenter",
       requestedUserId: "u-assignee2",
-      taskId: "task-lem-002",
+      taskId: "task-alpha-002",
     },
     {
-      id: "role-lem-1-3",
-      pitchingId: "pitch-lem-1",
+      id: "role-alpha-1-3",
+      pitchingId: "pitch-alpha-1",
       label: "Riset Kompetitor",
       requestedUserId: "u-assignee3",
-      taskId: "task-lem-003",
+      taskId: "task-alpha-003",
     },
     {
-      id: "role-lem-2-1",
-      pitchingId: "pitch-lem-2",
+      id: "role-alpha-2-1",
+      pitchingId: "pitch-alpha-2",
       label: "Pembuat PPT",
       requestedUserId: "u-assignee1",
-      taskId: "task-lem-004",
+      taskId: "task-alpha-004",
     },
     {
-      id: "role-lem-2-2",
-      pitchingId: "pitch-lem-2",
+      id: "role-alpha-2-2",
+      pitchingId: "pitch-alpha-2",
       label: "Presenter",
       requestedUserId: "u-assignee3",
-      taskId: "task-lem-005",
+      taskId: "task-alpha-005",
     },
     {
-      id: "role-lem-3-1",
-      pitchingId: "pitch-lem-3",
+      id: "role-alpha-3-1",
+      pitchingId: "pitch-alpha-3",
       label: "Pembuat PPT",
       requestedUserId: "u-assignee2",
-      taskId: "task-lem-006",
+      taskId: "task-alpha-006",
     },
     {
-      id: "role-lem-3-2",
-      pitchingId: "pitch-lem-3",
+      id: "role-alpha-3-2",
+      pitchingId: "pitch-alpha-3",
       label: "Presenter",
       requestedUserId: "u-assignee1",
-      taskId: "task-lem-007",
+      taskId: "task-alpha-007",
     },
     {
-      id: "role-lem-4-1",
-      pitchingId: "pitch-lem-4",
+      id: "role-alpha-4-1",
+      pitchingId: "pitch-alpha-4",
       label: "Presenter",
       requestedUserId: "u-assignee3",
-      taskId: "task-lem-008",
+      taskId: "task-alpha-008",
     },
     {
-      id: "role-lem-5-1",
-      pitchingId: "pitch-lem-5",
+      id: "role-alpha-5-1",
+      pitchingId: "pitch-alpha-5",
       label: "Pembuat PPT",
       requestedUserId: "u-assignee1",
-      taskId: "task-lem-009",
+      taskId: "task-alpha-009",
     },
   ];
 
@@ -670,13 +682,13 @@ export function createSeedState(): AppState {
   const tasks = [
     {
       ...baseTask,
-      id: "task-lem-001",
-      code: "LEMMIC-001",
-      projectId: "p-lemmic",
+      id: "task-alpha-001",
+      code: "PRJ1-001",
+      projectId: "p-alpha",
       stepKey: "pitching" as const,
-      pitchingId: "pitch-lem-1",
-      title: "[Konsep Portal Member] Pembuat PPT",
-      description: "Susun deck presentasi konsep portal member.",
+      pitchingId: "pitch-alpha-1",
+      title: "[Konsep Alpha] Pembuat PPT",
+      description: "Susun deck presentasi konsep Alpha.",
       priority: "high" as const,
       status: "in_progress" as const,
       requestedAssigneeId: "u-assignee1",
@@ -685,12 +697,12 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-lem-002",
-      code: "LEMMIC-002",
-      projectId: "p-lemmic",
+      id: "task-alpha-002",
+      code: "PRJ1-002",
+      projectId: "p-alpha",
       stepKey: "pitching" as const,
-      pitchingId: "pitch-lem-1",
-      title: "[Konsep Portal Member] Presenter",
+      pitchingId: "pitch-alpha-1",
+      title: "[Konsep Alpha] Presenter",
       description: "Latihan presentasi dan storyline.",
       priority: "medium" as const,
       status: "awaiting_approval" as const,
@@ -700,12 +712,12 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-lem-003",
-      code: "LEMMIC-003",
-      projectId: "p-lemmic",
+      id: "task-alpha-003",
+      code: "PRJ1-003",
+      projectId: "p-alpha",
       stepKey: "pitching" as const,
-      pitchingId: "pitch-lem-1",
-      title: "[Konsep Portal Member] Riset Kompetitor",
+      pitchingId: "pitch-alpha-1",
+      title: "[Konsep Alpha] Riset Kompetitor",
       description: "Riset kompetitor dan benchmark.",
       priority: "low" as const,
       status: "completed" as const,
@@ -714,13 +726,13 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-lem-004",
-      code: "LEMMIC-004",
-      projectId: "p-lemmic",
+      id: "task-alpha-004",
+      code: "PRJ1-004",
+      projectId: "p-alpha",
       stepKey: "pitching" as const,
-      pitchingId: "pitch-lem-2",
-      title: "[Dashboard Engagement] Pembuat PPT",
-      description: "Deck dashboard engagement.",
+      pitchingId: "pitch-alpha-2",
+      title: "[Dashboard Alpha] Pembuat PPT",
+      description: "Deck dashboard Alpha.",
       priority: "medium" as const,
       status: "completed" as const,
       requestedAssigneeId: "u-assignee1",
@@ -728,12 +740,12 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-lem-005",
-      code: "LEMMIC-005",
-      projectId: "p-lemmic",
+      id: "task-alpha-005",
+      code: "PRJ1-005",
+      projectId: "p-alpha",
       stepKey: "pitching" as const,
-      pitchingId: "pitch-lem-2",
-      title: "[Dashboard Engagement] Presenter",
+      pitchingId: "pitch-alpha-2",
+      title: "[Dashboard Alpha] Presenter",
       description: "Siapkan materi presentasi.",
       priority: "medium" as const,
       status: "todo" as const,
@@ -743,12 +755,12 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-lem-006",
-      code: "LEMMIC-006",
-      projectId: "p-lemmic",
+      id: "task-alpha-006",
+      code: "PRJ1-006",
+      projectId: "p-alpha",
       stepKey: "pitching" as const,
-      pitchingId: "pitch-lem-3",
-      title: "[Mobile Companion] Pembuat PPT",
+      pitchingId: "pitch-alpha-3",
+      title: "[Mobile Alpha] Pembuat PPT",
       description: "Task pitching kalah.",
       status: "completed" as const,
       archivedAt: iso("2026-10-08"),
@@ -758,12 +770,12 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-lem-007",
-      code: "LEMMIC-007",
-      projectId: "p-lemmic",
+      id: "task-alpha-007",
+      code: "PRJ1-007",
+      projectId: "p-alpha",
       stepKey: "pitching" as const,
-      pitchingId: "pitch-lem-3",
-      title: "[Mobile Companion] Presenter",
+      pitchingId: "pitch-alpha-3",
+      title: "[Mobile Alpha] Presenter",
       description: "Task pitching kalah.",
       status: "completed" as const,
       archivedAt: iso("2026-10-08"),
@@ -773,12 +785,12 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-lem-008",
-      code: "LEMMIC-008",
-      projectId: "p-lemmic",
+      id: "task-alpha-008",
+      code: "PRJ1-008",
+      projectId: "p-alpha",
       stepKey: "pitching" as const,
-      pitchingId: "pitch-lem-4",
-      title: "[Gamifikasi Loyalty] Presenter",
+      pitchingId: "pitch-alpha-4",
+      title: "[Gamifikasi Alpha] Presenter",
       description: "Task pitching kalah.",
       status: "completed" as const,
       archivedAt: iso("2026-10-08"),
@@ -788,12 +800,12 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-lem-009",
-      code: "LEMMIC-009",
-      projectId: "p-lemmic",
+      id: "task-alpha-009",
+      code: "PRJ1-009",
+      projectId: "p-alpha",
       stepKey: "pitching" as const,
-      pitchingId: "pitch-lem-5",
-      title: "[Integrasi WhatsApp] Pembuat PPT",
+      pitchingId: "pitch-alpha-5",
+      title: "[Integrasi Kanal] Pembuat PPT",
       description: "Task pitching kalah.",
       status: "completed" as const,
       archivedAt: iso("2026-10-08"),
@@ -803,9 +815,9 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-lem-010",
-      code: "LEMMIC-010",
-      projectId: "p-lemmic",
+      id: "task-alpha-010",
+      code: "PRJ1-010",
+      projectId: "p-alpha",
       stepKey: "pitching" as const,
       title: "Finalisasi Deck Presentasi",
       description: "Task manual untuk melengkapi deck pitching.",
@@ -815,9 +827,9 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-alert-001",
-      code: "ALERT-001",
-      projectId: "p-alert",
+      id: "task-delta-001",
+      code: "PRJ4-001",
+      projectId: "p-delta",
       stepKey: "running" as const,
       title: "Implementasi Alert Engine",
       description: "Bangun rule engine dan evaluasi event.",
@@ -841,9 +853,9 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-alert-002",
-      code: "ALERT-002",
-      projectId: "p-alert",
+      id: "task-delta-002",
+      code: "PRJ4-002",
+      projectId: "p-delta",
       stepKey: "running" as const,
       title: "Desain Halaman Notifikasi",
       description: "Desain daftar dan detail notifikasi.",
@@ -855,9 +867,9 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-alert-003",
-      code: "ALERT-003",
-      projectId: "p-alert",
+      id: "task-delta-003",
+      code: "PRJ4-003",
+      projectId: "p-delta",
       stepKey: "running" as const,
       title: "Integrasi Email",
       description: "Kirim digest email harian.",
@@ -869,9 +881,9 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-alert-004",
-      code: "ALERT-004",
-      projectId: "p-alert",
+      id: "task-delta-004",
+      code: "PRJ4-004",
+      projectId: "p-delta",
       stepKey: "running" as const,
       title: "QA Regression",
       description: "Regression test alur alert.",
@@ -891,9 +903,9 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-alert-005",
-      code: "ALERT-005",
-      projectId: "p-alert",
+      id: "task-delta-005",
+      code: "PRJ4-005",
+      projectId: "p-delta",
       stepKey: "running" as const,
       title: "Setup Monitoring",
       description: "Siapkan dashboard monitoring alert.",
@@ -904,9 +916,9 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-alert-006",
-      code: "ALERT-006",
-      projectId: "p-alert",
+      id: "task-delta-006",
+      code: "PRJ4-006",
+      projectId: "p-delta",
       stepKey: "running" as const,
       title: "Dokumentasi API",
       description: "Dokumentasi endpoint alert.",
@@ -917,9 +929,9 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-alert-007",
-      code: "ALERT-007",
-      projectId: "p-alert",
+      id: "task-delta-007",
+      code: "PRJ4-007",
+      projectId: "p-delta",
       stepKey: "running" as const,
       title: "Perbaikan Filter",
       description: "Perbaiki filter notifikasi.",
@@ -931,9 +943,9 @@ export function createSeedState(): AppState {
     },
     {
       ...baseTask,
-      id: "task-alert-008",
-      code: "ALERT-008",
-      projectId: "p-alert",
+      id: "task-delta-008",
+      code: "PRJ4-008",
+      projectId: "p-delta",
       stepKey: "running" as const,
       title: "Export CSV",
       description: "Export daftar alert.",
@@ -946,7 +958,7 @@ export function createSeedState(): AppState {
 
   const group = {
     id: "group-q4",
-    name: "Q4 Enterprise",
+    name: "Grup Demo Q4",
     description: "Program enterprise kuartal keempat.",
     status: "active" as const,
     createdById: "u-manager",
@@ -959,8 +971,8 @@ export function createSeedState(): AppState {
       userId: "u-pm1",
       type: "form_submitted",
       title: "Survey menunggu review",
-      body: "Survey RESEAR sudah disubmit oleh Eugene.",
-      href: "/crm/projects/p-resear",
+      body: "Survey Proyek Beta sudah disubmit oleh Assignee Demo 1.",
+      href: "/crm/projects/p-beta",
       createdAt: iso("2026-10-29"),
     },
     {
@@ -968,8 +980,8 @@ export function createSeedState(): AppState {
       userId: "u-manager",
       type: "task_unassigned",
       title: "Task backlog perlu di-assign",
-      body: "LEMMIC-010 belum punya assignee.",
-      href: "/projects/p-lemmic/backlog",
+      body: "PRJ1-010 belum punya assignee.",
+      href: "/projects/p-alpha/backlog",
       createdAt: iso("2026-10-30"),
     },
     {
@@ -977,8 +989,8 @@ export function createSeedState(): AppState {
       userId: "u-finance",
       type: "form_assigned",
       title: "RAB menunggu diisi",
-      body: "RAB CDNv2 sudah di-assign ke Anda.",
-      href: "/crm/projects/p-cdnv2",
+      body: "RAB Proyek Gamma sudah di-assign ke Anda.",
+      href: "/crm/projects/p-gamma",
       createdAt: iso("2026-10-29"),
     },
     {
@@ -986,7 +998,7 @@ export function createSeedState(): AppState {
       userId: "u-assignee1",
       type: "task_assigned",
       title: "Task baru di-assign",
-      body: "ALERT-001 Implementasi Alert Engine.",
+      body: "PRJ4-001 Implementasi Mesin Notifikasi.",
       href: "/my-tasks",
       createdAt: iso("2026-10-30"),
     },
@@ -995,7 +1007,7 @@ export function createSeedState(): AppState {
       userId: "u-assignee1",
       type: "form_assigned",
       title: "Survey di-assign",
-      body: "Survey RESEAR menunggu diisi.",
+      body: "Survey Proyek Beta menunggu diisi.",
       href: "/forms",
       createdAt: iso("2026-10-28"),
     },
@@ -1003,9 +1015,9 @@ export function createSeedState(): AppState {
       id: "ntf-6",
       userId: "u-pm2",
       type: "form_submitted",
-      title: "Invoice POSRV masih draft",
-      body: "Maya sudah submit BAST, invoice belum.",
-      href: "/crm/projects/p-posrv",
+      title: "Invoice Proyek Epsilon masih draft",
+      body: "Finance Demo sudah submit BAST, invoice belum.",
+      href: "/crm/projects/p-epsilon",
       createdAt: iso("2026-10-30"),
     },
   ];
@@ -1013,7 +1025,7 @@ export function createSeedState(): AppState {
   const activityLogs = [
     {
       id: "act-1",
-      projectId: "p-lemmic",
+      projectId: "p-alpha",
       actorId: "u-pm1",
       action: "pitching_decided",
       message: "2 pitching menang, 3 pitching kalah.",
@@ -1021,8 +1033,8 @@ export function createSeedState(): AppState {
     },
     {
       id: "act-2",
-      projectId: "p-alert",
-      taskId: "task-alert-001",
+      projectId: "p-delta",
+      taskId: "task-delta-001",
       actorId: "u-assignee1",
       action: "task_status",
       message: "Task dipindahkan ke In Progress.",
@@ -1030,20 +1042,20 @@ export function createSeedState(): AppState {
     },
     {
       id: "act-3",
-      projectId: "p-posrv",
+      projectId: "p-epsilon",
       actorId: "u-finance",
       action: "form_submitted",
-      message: "BAST POSRV disubmit.",
+      message: "BAST Proyek Epsilon disubmit.",
       createdAt: iso("2026-10-30"),
     },
   ];
 
   const baseState: AppState = {
-    seedVersion: 1,
+    seedVersion: 3,
     currentUserId: "u-pm1",
     users,
     projects: projects.map((project) =>
-      ["p-resear", "p-cdnv2", "p-alert"].includes(project.id)
+      ["p-beta", "p-gamma", "p-delta"].includes(project.id)
         ? { ...project, groupId: group.id }
         : project,
     ),
@@ -1058,8 +1070,14 @@ export function createSeedState(): AppState {
     projectEvents: [],
   };
 
+  const formsWithVersions = migrateFormVersions(baseState);
+
   return {
     ...baseState,
-    projectEvents: backfillProjectEvents(baseState),
+    forms: formsWithVersions,
+    projectEvents: backfillProjectEvents({
+      ...baseState,
+      forms: formsWithVersions,
+    }),
   };
 }

@@ -130,7 +130,9 @@ export function calculateJourneyProgress(
   for (const meta of STEP_META) {
     if (meta.key === "bast" || meta.key === "invoice") {
       const form = formFor(state, projectId, meta.key);
-      if (form?.status === "submitted") done += meta.weight;
+      if (form?.status === "submitted" || form?.status === "approved") {
+        done += meta.weight;
+      }
       continue;
     }
     const step = stepFor(state, projectId, meta.key);
@@ -153,7 +155,9 @@ export function calculateWorkProgress(
 
   if (stepKey === "bast" || stepKey === "invoice") {
     const form = formFor(state, projectId, stepKey);
-    return form?.status === "submitted" ? 100 : 0;
+    return form?.status === "submitted" || form?.status === "approved"
+      ? 100
+      : 0;
   }
 
   if (stepKey === "survey" || stepKey === "rab") {
@@ -267,7 +271,8 @@ export function evaluateGate(
 
   if (stepKey === "bast") {
     const form = formFor(state, projectId, "bast");
-    const submitted = form?.status === "submitted";
+    const submitted =
+      form?.status === "submitted" || form?.status === "approved";
     return {
       ready: submitted,
       requirements: [{ label: "BAST sudah submitted", met: submitted }],
@@ -276,7 +281,8 @@ export function evaluateGate(
 
   if (stepKey === "invoice") {
     const form = formFor(state, projectId, "invoice");
-    const submitted = form?.status === "submitted";
+    const submitted =
+      form?.status === "submitted" || form?.status === "approved";
     return {
       ready: submitted,
       requirements: [

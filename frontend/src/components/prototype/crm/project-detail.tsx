@@ -40,9 +40,7 @@ import {
   activeSteps,
   calculateJourneyProgress,
   canCancelProject,
-  canEditForm,
   canManageProject,
-  canReviewForm,
   evaluateGate,
   formatCurrency,
   formatDate,
@@ -73,8 +71,8 @@ import {
   UserAvatar,
 } from "../ui";
 import { PitchingDialog, ProjectDialog } from "../dialogs";
-import { FinanceFormDialog, RabFormDialog } from "../forms";
 import { ProjectStepHistory } from "./project-history";
+import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
 
 type StepTone = "done" | "active" | "attention" | "empty";
 
@@ -855,43 +853,9 @@ function RabStep({
   readOnly?: boolean;
 }) {
   const store = usePrototypeStore();
-  const form = formFor(store, project.id, "rab");
-  const currentUser = userById(store, store.currentUserId);
-  const [open, setOpen] = useState(false);
-  if (!form || !currentUser) return null;
-  const editable = canEditForm(store, currentUser, form);
-  const reviewer = canReviewForm(store, currentUser, form);
-  const payload = form.payload as { items?: { qty: number; unitPrice: number }[] };
-  const total = (payload.items ?? []).reduce(
-    (sum, item) => sum + item.qty * item.unitPrice,
-    0,
-  );
   return (
     <div className="space-y-4">
-      <SectionCard
-        title="Form RAB"
-        description="Diisi Finance di CRM. PM review sebelum step selesai."
-        actions={
-          <Button size="sm" variant={editable || reviewer ? "default" : "outline"} onClick={() => setOpen(true)}>
-            {editable ? "Isi RAB" : reviewer ? "Review RAB" : "Lihat RAB"}
-          </Button>
-        }
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          {!readOnly ? <AssignControl form={form} label="Finance" /> : null}
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground">Status:</span>
-            <FormStatusBadge status={form.status} />
-          </div>
-          <DataRow label="Jumlah item" value={`${payload.items?.length ?? 0} item`} />
-          <DataRow label="Total RAB" value={formatCurrency(total)} />
-        </div>
-        {form.reviewComment ? (
-          <p className="text-muted-foreground mt-2 rounded-lg bg-muted/40 p-2 text-xs">
-            Review: {form.reviewComment}
-          </p>
-        ) : null}
-      </SectionCard>
+      <StepFormPanel project={project} formKey="rab" readOnly={readOnly} />
       {!readOnly ? (
         <GatePanel
           projectId={project.id}
@@ -899,7 +863,6 @@ function RabStep({
           onComplete={() => store.completeStep(project.id, "rab")}
         />
       ) : null}
-      <RabFormDialog open={open} onOpenChange={setOpen} formId={form.id} />
     </div>
   );
 }
@@ -959,67 +922,6 @@ function RunningStep({
   );
 }
 
-function FinanceFormCard({
-  project,
-  keyName,
-  readOnly = false,
-}: {
-  project: Project;
-  keyName: "bast" | "invoice";
-  readOnly?: boolean;
-}) {
-  const store = usePrototypeStore();
-  const form = formFor(store, project.id, keyName);
-  const currentUser = userById(store, store.currentUserId);
-  const [open, setOpen] = useState(false);
-  if (!form || !currentUser) return null;
-  const editable = canEditForm(store, currentUser, form);
-  const payload = form.payload as {
-    number?: string;
-    amount?: number;
-    taxAmount?: number;
-  };
-  return (
-    <div className="rounded-xl border bg-card p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="flex items-center gap-2">
-            <FolderKanban className="size-4 text-primary" />
-            <h4 className="text-sm font-semibold">{keyName === "bast" ? "BAST" : "Invoice"}</h4>
-          </div>
-          <p className="text-muted-foreground mt-1 text-xs">
-            {keyName === "bast" ? "Berita Acara Serah Terima" : "Tagihan proyek"}
-          </p>
-        </div>
-        <FormStatusBadge status={form.status} />
-      </div>
-      <div className="mt-3 space-y-1">
-        <DataRow label="Nomor" value={payload.number || "—"} />
-        <DataRow label="Assignee" value={userById(store, form.assigneeId)?.name ?? "Belum di-assign"} />
-        {keyName === "invoice" ? (
-          <DataRow
-            label="Total"
-            value={formatCurrency((payload.amount ?? 0) + (payload.taxAmount ?? 0))}
-          />
-        ) : null}
-        <DataRow label="Submitted" value={formatDate(form.submittedAt)} />
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {!readOnly ? (
-          <AssignControl
-            form={form}
-            label={keyName === "bast" ? "Finance BAST" : "Finance Invoice"}
-          />
-        ) : null}
-        <Button size="sm" variant={editable ? "default" : "outline"} onClick={() => setOpen(true)}>
-          {editable ? "Isi / Edit" : "Lihat"}
-        </Button>
-      </div>
-      <FinanceFormDialog open={open} onOpenChange={setOpen} formId={form.id} />
-    </div>
-  );
-}
-
 function FinanceStep({
   project,
   stepKey,
@@ -1038,15 +940,17 @@ function FinanceStep({
     .every((step) => step.status === "completed");
   const ready = Boolean(
     nonFinanceDone &&
-      bast?.status === "submitted" &&
-      invoice?.status === "submitted" &&
+      (bast?.status === "submitted" || bast?.status === "approved") &&
+      (invoice?.status === "submitted" || invoice?.status === "approved") &&
       project.status === "active",
   );
-  const canComplete = currentUser?.role === "admin" || (currentUser?.role === "pm" && project.createdById === currentUser.id);
+  const canComplete =
+    currentUser?.role === "admin" ||
+    (currentUser?.role === "pm" && project.createdById === currentUser.id);
 
   return (
     <div className="space-y-4">
-      <FinanceFormCard project={project} keyName={stepKey} readOnly={readOnly} />
+      <StepFormPanel project={project} formKey={stepKey} readOnly={readOnly} />
       {!readOnly ? (
         <div className="rounded-xl border bg-muted/20 p-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold">
@@ -1054,15 +958,27 @@ function FinanceStep({
           </div>
           <div className="space-y-1.5 text-xs">
             <div className="flex items-center gap-2">
-              {bast?.status === "submitted" ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : <Circle className="text-muted-foreground size-3.5" />}
-              BAST submitted
+              {bast?.status === "submitted" || bast?.status === "approved" ? (
+                <CheckCircle2 className="size-3.5 text-emerald-600" />
+              ) : (
+                <Circle className="text-muted-foreground size-3.5" />
+              )}
+              BAST submitted/disetujui
             </div>
             <div className="flex items-center gap-2">
-              {invoice?.status === "submitted" ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : <Circle className="text-muted-foreground size-3.5" />}
-              Invoice submitted
+              {invoice?.status === "submitted" || invoice?.status === "approved" ? (
+                <CheckCircle2 className="size-3.5 text-emerald-600" />
+              ) : (
+                <Circle className="text-muted-foreground size-3.5" />
+              )}
+              Invoice submitted/disetujui
             </div>
             <div className="flex items-center gap-2">
-              {nonFinanceDone ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : <Circle className="text-muted-foreground size-3.5" />}
+              {nonFinanceDone ? (
+                <CheckCircle2 className="size-3.5 text-emerald-600" />
+              ) : (
+                <Circle className="text-muted-foreground size-3.5" />
+              )}
               Step sebelumnya selesai
             </div>
           </div>
@@ -1079,7 +995,9 @@ function FinanceStep({
               <CheckCircle2 className="size-3.5" /> Selesaikan proyek
             </Button>
           ) : (
-            <p className="text-muted-foreground mt-2 text-xs">Hanya PM/Admin yang dapat menutup proyek.</p>
+            <p className="text-muted-foreground mt-2 text-xs">
+              Hanya PM/Admin yang dapat menutup proyek.
+            </p>
           )}
         </div>
       ) : null}
@@ -1158,6 +1076,12 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const selectStep = (stepKey: StepKey) => {
     const next = projectSteps.find((step) => step.key === stepKey);
     if (!next || next.status === "pending") return;
+    if (stepKey !== selectedStepKey && hasUnsavedFormChanges()) {
+      const proceed = window.confirm(
+        "Ada perubahan form yang belum tersimpan. Pindah step akan membuang perubahan tersebut. Lanjutkan?",
+      );
+      if (!proceed) return;
+    }
     setSelectedStepKey(stepKey);
     const url = new URL(window.location.href);
     url.searchParams.set("step", stepKey);
@@ -1200,7 +1124,20 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-5">
-      <Link href="/crm/projects" className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs">
+      <Link
+        href="/crm/projects"
+        onClick={(event) => {
+          if (
+            hasUnsavedFormChanges() &&
+            !window.confirm(
+              "Ada perubahan form yang belum tersimpan. Keluar dari halaman akan membuang perubahan tersebut. Lanjutkan?",
+            )
+          ) {
+            event.preventDefault();
+          }
+        }}
+        className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
+      >
         <ArrowLeft className="size-3.5" /> Kembali ke projects
       </Link>
 
