@@ -11,6 +11,7 @@ import {
   FolderKanban,
   Gauge,
   LayoutDashboard,
+  LayoutTemplate,
   ListTodo,
   RotateCcw,
   Users,
@@ -48,6 +49,7 @@ const NAV_CRM = [
   { href: "/crm", label: "Dashboard", icon: LayoutDashboard },
   { href: "/crm/projects", label: "Projects", icon: FolderKanban },
   { href: "/crm/groups", label: "Groups", icon: Users },
+  { href: "/crm/templates", label: "Templates", icon: LayoutTemplate },
   { href: "/crm/workload", label: "Workload", icon: Gauge },
 ];
 
@@ -61,6 +63,7 @@ function titleForPath(pathname: string): string {
   if (pathname.startsWith("/crm/projects/")) return "Detail Proyek";
   if (pathname === "/crm/projects") return "Projects";
   if (pathname === "/crm/groups") return "Groups";
+  if (pathname === "/crm/templates") return "Templates";
   if (pathname === "/crm/workload") return "Workload";
   if (pathname.startsWith("/crm")) return "CRM";
   if (pathname.startsWith("/projects/")) return "Detail Proyek";
@@ -237,12 +240,20 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
               <div className="text-muted-foreground px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]">
                 CRM
               </div>
-              {NAV_CRM.filter(
-                (item) =>
-                  item.href !== "/crm/workload" ||
-                  currentUser.role === "admin" ||
-                  currentUser.role === "manager",
-              ).map((item) => (
+              {NAV_CRM.filter((item) => {
+                if (item.href === "/crm/workload") {
+                  return (
+                    currentUser.role === "admin" ||
+                    currentUser.role === "manager"
+                  );
+                }
+                if (item.href === "/crm/templates") {
+                  return (
+                    currentUser.role === "admin" || currentUser.role === "pm"
+                  );
+                }
+                return true;
+              }).map((item) => (
                 <NavItem key={item.href} {...item} pathname={pathname} />
               ))}
             </div>

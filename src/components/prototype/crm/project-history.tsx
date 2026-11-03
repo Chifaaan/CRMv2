@@ -21,15 +21,11 @@ import {
   formatDate,
   formatDateTime,
   formFor,
+  stageLabel,
   userById,
 } from "@/lib/prototype/domain";
-import { STEP_META, type ProjectEvent, type StepKey } from "@/lib/prototype/types";
+import { type ProjectEvent } from "@/lib/prototype/types";
 import { EmptyState } from "../ui";
-
-function stepLabel(step: StepKey | null): string {
-  if (!step) return "Proyek";
-  return STEP_META.find((meta) => meta.key === step)?.label ?? step;
-}
 
 function formatValue(key: string, value: unknown): string {
   if (value == null || value === "") return "—";
@@ -101,7 +97,7 @@ export function ProjectStepHistory({
   stepKey,
 }: {
   projectId: string;
-  stepKey: StepKey;
+  stepKey: string;
 }) {
   const store = usePrototypeStore();
   const [ready, setReady] = useState(false);
@@ -134,16 +130,7 @@ export function ProjectStepHistory({
     }
   }, [store, projectId, stepKey, visibleCount, retryKey]);
 
-  const form = formFor(
-    store,
-    projectId,
-    stepKey === "survey" ||
-      stepKey === "rab" ||
-      stepKey === "bast" ||
-      stepKey === "invoice"
-      ? stepKey
-      : "survey",
-  );
+  const form = formFor(store, projectId, stepKey);
   const payload = form?.payload as
     | { documentUrl?: string }
     | undefined;
@@ -267,7 +254,7 @@ export function ProjectStepHistory({
                         {formatDateTime(event.occurredAt)}
                       </span>
                       <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[9px] font-medium">
-                        {stepLabel(event.step)}
+                        {event.step ? stageLabel(store, projectId, event.step) : "Proyek"}
                       </span>
                     </div>
                     <p className="mt-1 text-xs">{event.summary}</p>

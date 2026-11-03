@@ -4,7 +4,13 @@ export type Priority = "low" | "medium" | "high" | "critical";
 
 export type ProjectStatus = "active" | "completed" | "cancelled";
 
-export type Phase = "planning" | "running" | "finance";
+export type Phase = "prospek" | "planning" | "running" | "closing";
+
+export type StageKind = "checklist" | "finance_form" | "gate";
+
+export type GateKind = "go_no_go" | "client_approval";
+
+export type Lifecycle = "active" | "won" | "lost" | "cancelled" | "done";
 
 export type StepKey =
   | "pitching"
@@ -62,15 +68,84 @@ export type Project = {
   groupId?: string;
   cancelReason?: string;
   createdAt: string;
+  templateId?: string;
+  templateVersion?: number;
+  lifecycle?: Lifecycle;
+  lostReason?: string;
+  structureLocked?: boolean;
+  rabBaselineLockedAt?: string;
+};
+
+export type TemplateTask = {
+  id: string;
+  name: string;
+  role?: string;
+  required: boolean;
+  deliverable?: string;
+};
+
+export type StageTask = TemplateTask & {
+  done: boolean;
+};
+
+export type GateDecision = {
+  decision: "approved" | "rejected";
+  reason?: string;
+  actorId: string;
+  decidedAt: string;
+};
+
+export type TemplateStage = {
+  id: string;
+  name: string;
+  description?: string;
+  phase: Phase;
+  order: number;
+  kind: StageKind;
+  required: boolean;
+  costBeforeCommitment?: boolean;
+  weight: number;
+  parallelGroup?: string;
+  financeKind?: FormStepKey;
+  gateKind?: GateKind;
+  legacyKey?: StepKey;
+  tasks: TemplateTask[];
+};
+
+export type ProjectTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  projectType: string;
+  version: number;
+  legacy?: boolean;
+  status: "active" | "archived";
+  stages: TemplateStage[];
+  changelog: { version: number; note: string; createdAt: string }[];
+  createdById: string;
+  createdAt: string;
 };
 
 export type ProjectStep = {
   id: string;
   projectId: string;
-  key: StepKey;
+  /** Legacy StepKey for the Umum template, stage id for other templates. */
+  key: string;
+  name: string;
+  description?: string;
   phase: Phase;
   order: number;
   status: StepStatus;
+  kind: StageKind;
+  required: boolean;
+  weight: number;
+  parallelGroup?: string;
+  financeKind?: FormStepKey;
+  gateKind?: GateKind;
+  costBeforeCommitment?: boolean;
+  legacyKey?: StepKey;
+  tasks: StageTask[];
+  gateDecision?: GateDecision;
   startedAt?: string;
   completedAt?: string;
 };
@@ -257,7 +332,7 @@ export type ActivityLog = {
 export type ProjectEvent = {
   id: string;
   projectId: string;
-  step: StepKey | null;
+  step: string | null;
   eventType: string;
   actorId: string;
   occurredAt: string;
@@ -272,6 +347,7 @@ export type AppState = {
   users: User[];
   projects: Project[];
   steps: ProjectStep[];
+  templates: ProjectTemplate[];
   pitchings: Pitching[];
   pitchingRoles: PitchingRole[];
   tasks: Task[];
@@ -308,13 +384,26 @@ export const STEP_META: {
   order: number;
   weight: number;
 }[] = [
-  { key: "pitching", label: "Pitching", phase: "planning", order: 1, weight: 1 },
-  { key: "survey", label: "Survey", phase: "planning", order: 2, weight: 1 },
-  { key: "rab", label: "RAB", phase: "planning", order: 3, weight: 1 },
+  { key: "pitching", label: "Pitching", phase: "prospek", order: 1, weight: 1 },
+  { key: "survey", label: "Survey", phase: "prospek", order: 2, weight: 1 },
+  { key: "rab", label: "RAB", phase: "prospek", order: 3, weight: 1 },
   { key: "running", label: "Running", phase: "running", order: 4, weight: 1 },
-  { key: "bast", label: "BAST", phase: "finance", order: 5, weight: 0.5 },
-  { key: "invoice", label: "Invoice", phase: "finance", order: 6, weight: 0.5 },
+  { key: "bast", label: "BAST", phase: "closing", order: 5, weight: 0.5 },
+  { key: "invoice", label: "Invoice", phase: "closing", order: 6, weight: 0.5 },
 ];
+
+export const PHASE_ORDER: Phase[] = [
+  "prospek",
+  "planning",
+  "running",
+  "closing",
+];
+
+export const STAGE_KIND_LABEL: Record<StageKind, string> = {
+  checklist: "Checklist",
+  finance_form: "Form keuangan",
+  gate: "Gerbang",
+};
 
 export const FORM_STEP_KEYS: FormStepKey[] = [
   "survey",
@@ -358,9 +447,30 @@ export const TASK_STATUS_ORDER: Record<TaskStatus, number> = {
 };
 
 export const PHASE_LABEL: Record<Phase, string> = {
+  prospek: "Prospek",
   planning: "Planning",
   running: "Running",
-  finance: "Finance",
+  closing: "Closing",
+};
+
+export const PHASE_HINT: Record<Phase, string> = {
+  prospek: "Belum ada komitmen kontrak: brief sampai persetujuan klien.",
+  planning: "Komitmen mulai berjalan: booking vendor/venue, PO, briefing.",
+  running: "Eksekusi pekerjaan dan produksi.",
+  closing: "Laporan akhir, BAST, invoice, pembayaran, evaluasi.",
+};
+
+export const LIFECYCLE_LABEL: Record<Lifecycle, string> = {
+  active: "Aktif",
+  won: "Menang",
+  lost: "Kalah",
+  cancelled: "Batal",
+  done: "Selesai",
+};
+
+export const GATE_KIND_LABEL: Record<GateKind, string> = {
+  go_no_go: "Go/No-Go",
+  client_approval: "Persetujuan klien (menang)",
 };
 
 export const PRIORITY_LABEL: Record<Priority, string> = {

@@ -1,5 +1,10 @@
 import { backfillProjectEvents } from "./events";
 import { migrateFormVersions } from "./form-versions";
+import {
+  createSeedTemplates,
+  stageTasksForProject,
+  UMUM_TEMPLATE_ID,
+} from "./templates";
 import { STEP_META, type AppState, type FormStepKey, type StepForm, type StepKey } from "./types";
 
 function iso(date: string): string {
@@ -63,29 +68,48 @@ function makeForms(
   }));
 }
 
+const SEED_TEMPLATES = createSeedTemplates();
+const UMUM_STAGES =
+  SEED_TEMPLATES.find((template) => template.id === UMUM_TEMPLATE_ID)?.stages ?? [];
+
 function makeSteps(
   projectId: string,
   activeKeys: StepKey[],
   completedKeys: StepKey[] = [],
 ) {
-  return STEP_META.map((meta) => ({
-    id: `step-${projectId}-${meta.key}`,
-    projectId,
-    key: meta.key,
-    phase: meta.phase,
-    order: meta.order,
-    status: completedKeys.includes(meta.key)
-      ? ("completed" as const)
-      : activeKeys.includes(meta.key)
-        ? ("active" as const)
-        : ("pending" as const),
-    startedAt: completedKeys.includes(meta.key) || activeKeys.includes(meta.key)
-      ? iso("2026-10-01")
-      : undefined,
-    completedAt: completedKeys.includes(meta.key)
-      ? iso("2026-10-20")
-      : undefined,
-  }));
+  return UMUM_STAGES.map((meta) => {
+    const legacyKey = meta.legacyKey as StepKey;
+    return {
+      id: `step-${projectId}-${meta.id}`,
+      projectId,
+      key: legacyKey,
+      name: meta.name,
+      description: meta.description,
+      phase: meta.phase,
+      order: meta.order,
+      status: completedKeys.includes(legacyKey)
+        ? ("completed" as const)
+        : activeKeys.includes(legacyKey)
+          ? ("active" as const)
+          : ("pending" as const),
+      kind: meta.kind,
+      required: meta.required,
+      weight: meta.weight,
+      parallelGroup: meta.parallelGroup,
+      financeKind: meta.financeKind,
+      gateKind: meta.gateKind,
+      costBeforeCommitment: meta.costBeforeCommitment,
+      legacyKey,
+      tasks: stageTasksForProject(meta.tasks),
+      startedAt:
+        completedKeys.includes(legacyKey) || activeKeys.includes(legacyKey)
+          ? iso("2026-10-01")
+          : undefined,
+      completedAt: completedKeys.includes(legacyKey)
+        ? iso("2026-10-20")
+        : undefined,
+    };
+  });
 }
 
 export function createSeedState(): AppState {
@@ -1054,12 +1078,23 @@ export function createSeedState(): AppState {
     seedVersion: 3,
     currentUserId: "u-pm1",
     users,
-    projects: projects.map((project) =>
-      ["p-beta", "p-gamma", "p-delta"].includes(project.id)
-        ? { ...project, groupId: group.id }
-        : project,
-    ),
+    projects: projects.map((project) => ({
+      ...project,
+      templateId: UMUM_TEMPLATE_ID,
+      templateVersion: 1,
+      structureLocked: true,
+      lifecycle:
+        project.status === "completed"
+          ? ("done" as const)
+          : project.status === "cancelled"
+            ? ("cancelled" as const)
+            : ("active" as const),
+      ...(["p-beta", "p-gamma", "p-delta"].includes(project.id)
+        ? { groupId: group.id }
+        : {}),
+    })),
     steps,
+    templates: SEED_TEMPLATES,
     pitchings,
     pitchingRoles,
     tasks,

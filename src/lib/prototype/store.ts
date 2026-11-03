@@ -2,7 +2,15 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { activeSteps, evaluateGate, groupCompleted, userById } from "./domain";
+import {
+  activeSteps,
+  canManageProject,
+  canManageTemplates,
+  canViewProject,
+  evaluateGate,
+  groupCompleted,
+  userById,
+} from "./domain";
 import {
   backfillProjectEvents,
   recordProjectEvent,
@@ -16,8 +24,12 @@ import {
 } from "./form-versions";
 import { createSeedState } from "./seed";
 import {
+  createSeedTemplates,
+  stageTasksForProject,
+  UMUM_TEMPLATE_ID,
+} from "./templates";
+import {
   FORM_STEP_KEYS,
-  STEP_META,
   type AppState,
   type Attachment,
   type FormStepKey,
@@ -26,10 +38,13 @@ import {
   type Project,
   type ProjectEvent,
   type ProjectStep,
+  type ProjectTemplate,
+  type StageTask,
   TASK_STATUS_LABEL,
   type StepForm,
   type Task,
   type TaskStatus,
+  type TemplateStage,
 } from "./types";
 
 type PitchingInput = {
@@ -48,6 +63,21 @@ type ProjectInput = {
   coverColor: string;
 };
 
+type CreateProjectInput = ProjectInput & {
+  templateId?: string;
+  /** Stages customized during creation; omitted means an exact template copy. */
+  stages?: TemplateStage[];
+};
+
+type TemplateInput = {
+  id?: string;
+  name: string;
+  description: string;
+  projectType: string;
+  stages: TemplateStage[];
+  note?: string;
+};
+
 type GroupInput = {
   name: string;
   description: string;
@@ -61,9 +91,14 @@ type PrototypeActions = {
   setForms: (forms: StepForm[]) => void;
   reset: () => void;
 
-  createProject: (input: ProjectInput) => string;
+  createProject: (input: CreateProjectInput) => string;
   updateProject: (projectId: string, input: Partial<ProjectInput>) => void;
   cancelProject: (projectId: string, reason: string) => void;
+  setProjectStructure: (projectId: string, stages: TemplateStage[]) => boolean;
+
+  saveTemplate: (input: TemplateInput) => string;
+  archiveTemplate: (templateId: string) => void;
+  duplicateTemplate: (templateId: string) => string;
 
   addPitching: (projectId: string, input: PitchingInput) => void;
   updatePitching: (pitchingId: string, input: PitchingInput) => void;
@@ -108,7 +143,14 @@ type PrototypeActions = {
   addAttachment: (taskId: string, attachment: Attachment) => void;
   removeAttachment: (taskId: string, attachmentId: string) => void;
 
-  completeStep: (projectId: string, stepKey: StepKey) => void;
+  completeStep: (projectId: string, stepKey: string) => void;
+  toggleStageTask: (projectId: string, stepKey: string, taskId: string) => void;
+  decideGate: (
+    projectId: string,
+    stepKey: string,
+    decision: "approved" | "rejected",
+    reason?: string,
+  ) => void;
   completeProject: (projectId: string) => void;
 
   createGroup: (input: GroupInput) => string;
@@ -122,8 +164,6 @@ type PrototypeActions = {
 };
 
 type PrototypeStore = AppState & PrototypeActions;
-
-type StepKey = ProjectStep["key"];
 
 function uid(prefix: string): string {
   const random =
@@ -268,16 +308,187 @@ function formSnapshot(form: StepForm): Record<string, unknown> {
   };
 }
 
-function makeSteps(projectId: string): ProjectStep[] {
-  return STEP_META.map((meta, index) => ({
-    id: `step-${projectId}-${meta.key}-${index}`,
-    projectId,
-    key: meta.key,
-    phase: meta.phase,
-    order: meta.order,
-    status: meta.key === "pitching" ? ("active" as const) : ("pending" as const),
-    startedAt: meta.key === "pitching" ? now() : undefined,
-  }));
+function stagesForProject(
+  projectId: string,
+  template: ProjectTemplate,
+  overrides?: TemplateStage[],
+): ProjectStep[] {
+  const stages =
+    overrides && overrides.length > 0 ? overrides : template.stages;
+  const sorted = [...stages].sort((a, b) => a.order - b.order);
+  const first = sorted[0];
+  return sorted.map((stage, index) => {
+    const active =
+      index === 0 ||
+      Boolean(first?.parallelGroup && stage.parallelGroup === first.parallelGroup);
+    return {
+      id: `step-${projectId}-${stage.id}`,
+      projectId,
+      key: stage.legacyKey ?? stage.financeKind ?? stage.id,
+      name: stage.name,
+      description: stage.description,
+      phase: stage.phase,
+      order: index + 1,
+      status: active ? ("active" as const) : ("pending" as const),
+      kind: stage.kind,
+      required: stage.required,
+      weight: stage.weight,
+      parallelGroup: stage.parallelGroup,
+      financeKind: stage.financeKind,
+      gateKind: stage.gateKind,
+      costBeforeCommitment: stage.costBeforeCommitment,
+      legacyKey: stage.legacyKey,
+      tasks: stageTasksForProject(stage.tasks),
+      startedAt: active ? now() : undefined,
+    };
+  });
+}
+
+function normalizeStageOrders(stages: TemplateStage[]): TemplateStage[] {
+  return stages.map((stage, index) => ({ ...stage, order: index + 1 }));
+}
+
+function stagesDiffer(
+  stages: TemplateStage[] | undefined,
+  template: ProjectTemplate,
+): boolean {
+  if (!stages || stages.length === 0) return false;
+  const shape = (items: TemplateStage[]) =>
+    JSON.stringify(
+      items.map((stage) => ({
+        id: stage.id,
+        name: stage.name,
+        phase: stage.phase,
+        kind: stage.kind,
+        required: stage.required,
+        weight: stage.weight,
+        financeKind: stage.financeKind,
+        gateKind: stage.gateKind,
+        parallelGroup: stage.parallelGroup,
+        costBeforeCommitment: stage.costBeforeCommitment,
+        tasks: stage.tasks.map((task) => ({
+          id: task.id,
+          name: task.name,
+          role: task.role,
+          required: task.required,
+          deliverable: task.deliverable,
+        })),
+      })),
+    );
+  return shape(stages) !== shape(template.stages);
+}
+
+function templateEvent(
+  events: ProjectEvent[],
+  eventType: string,
+  summary: string,
+  metadata: Record<string, unknown>,
+  actorId: string,
+): ProjectEvent[] {
+  return recordProjectEvent(events, {
+    projectId: "",
+    step: null,
+    eventType,
+    actorId,
+    summary,
+    metadata,
+  });
+}
+
+type PersistedState = Partial<AppState> & Record<string, unknown>;
+
+/**
+ * Upgrades localStorage data written before templates existed. Idempotent:
+ * fields that are already present are left untouched.
+ */
+export function migratePersistedState(persisted: unknown): PersistedState {
+  const state = (persisted ?? {}) as PersistedState;
+  const templates =
+    Array.isArray(state.templates) && state.templates.length > 0
+      ? (state.templates as ProjectTemplate[])
+      : createSeedTemplates();
+  const umum =
+    templates.find((template) => template.id === UMUM_TEMPLATE_ID) ?? templates[0];
+
+  const projects = Array.isArray(state.projects)
+    ? (state.projects as Project[]).map((project) => ({
+        ...project,
+        templateId: project.templateId ?? umum?.id ?? UMUM_TEMPLATE_ID,
+        templateVersion: project.templateVersion ?? umum?.version ?? 1,
+        structureLocked: project.structureLocked ?? true,
+        lifecycle:
+          project.lifecycle ??
+          (project.status === "completed"
+            ? ("done" as const)
+            : project.status === "cancelled"
+              ? ("cancelled" as const)
+              : ("active" as const)),
+      }))
+    : [];
+
+  const steps = Array.isArray(state.steps)
+    ? (state.steps as ProjectStep[]).map((step) => {
+        const meta = umum?.stages.find(
+          (stage) => (stage.legacyKey ?? stage.financeKind) === step.key,
+        );
+        const legacyPhase =
+          (step.phase as string) === "planning"
+            ? ("prospek" as const)
+            : (step.phase as string) === "finance"
+              ? ("closing" as const)
+              : step.phase;
+        return {
+          ...step,
+          phase: meta?.phase ?? legacyPhase,
+          name: step.name ?? meta?.name ?? step.key,
+          kind: step.kind ?? meta?.kind ?? ("checklist" as const),
+          required: step.required ?? true,
+          weight: step.weight ?? meta?.weight ?? 1,
+          parallelGroup: step.parallelGroup ?? meta?.parallelGroup,
+          financeKind: step.financeKind ?? meta?.financeKind,
+          gateKind: step.gateKind ?? meta?.gateKind,
+          costBeforeCommitment:
+            step.costBeforeCommitment ?? meta?.costBeforeCommitment,
+          legacyKey: step.legacyKey ?? meta?.legacyKey,
+          tasks: Array.isArray(step.tasks)
+            ? step.tasks
+            : stageTasksForProject(meta?.tasks ?? []),
+        };
+      })
+    : [];
+
+  return { ...state, templates, projects, steps };
+}
+
+function linkProjectsToTemplate(
+  events: ProjectEvent[],
+  projects: Project[],
+): ProjectEvent[] {
+  const ids = new Set(events.map((event) => event.id));
+  const additions: ProjectEvent[] = [];
+  for (const project of projects) {
+    if (project.templateId && project.templateId !== UMUM_TEMPLATE_ID) continue;
+    const id = `template-link-${project.id}`;
+    if (ids.has(id)) continue;
+    additions.push({
+      id,
+      projectId: project.id,
+      step: null,
+      eventType: "project.template_linked",
+      actorId: project.createdById,
+      occurredAt: project.createdAt,
+      summary: "Dihubungkan ke template Umum.",
+      metadata: {
+        templateId: project.templateId ?? UMUM_TEMPLATE_ID,
+        templateVersion: project.templateVersion ?? 1,
+      },
+    });
+  }
+  if (additions.length === 0) return events;
+  return [...events, ...additions].sort((a, b) => {
+    const byTime = a.occurredAt.localeCompare(b.occurredAt);
+    return byTime !== 0 ? byTime : a.id.localeCompare(b.id);
+  });
 }
 
 function defaultForm(projectId: string, key: FormStepKey): StepForm {
@@ -392,6 +603,11 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
       createProject: (input) => {
         const state = get();
+        const template =
+          state.templates.find((item) => item.id === input.templateId) ??
+          state.templates.find((item) => item.id === UMUM_TEMPLATE_ID) ??
+          state.templates[0];
+        if (!template) return "";
         const projectId = uid("p");
         const project: Project = {
           id: projectId,
@@ -401,18 +617,23 @@ export const usePrototypeStore = create<PrototypeStore>()(
           description: input.description,
           priority: input.priority,
           status: "active",
+          lifecycle: "active",
           startDate: input.startDate,
           targetEndDate: input.targetEndDate,
           coverColor: input.coverColor,
           createdById: state.currentUserId,
           createdAt: now(),
+          templateId: template.id,
+          templateVersion: template.version,
+          structureLocked: true,
         };
+        const steps = stagesForProject(projectId, template, input.stages);
         const forms = FORM_STEP_KEYS.map((key) => defaultForm(projectId, key));
         let events = projectEvent(state, {
           projectId,
           step: null,
-          eventType: "project.created",
-          summary: `Proyek ${project.name} dibuat.`,
+          eventType: "project.created_from_template",
+          summary: `Proyek ${project.name} dibuat dari template ${template.name} v${template.version}.`,
           metadata: {
             before: null,
             after: {
@@ -420,23 +641,44 @@ export const usePrototypeStore = create<PrototypeStore>()(
               client: project.client,
               priority: project.priority,
               status: project.status,
+              templateId: template.id,
+              templateName: template.name,
+              templateVersion: template.version,
             },
           },
         });
-        events = recordProjectEvent(events, {
-          projectId,
-          step: "pitching",
-          eventType: "project.step_changed",
-          actorId: state.currentUserId,
-          summary: "Step Pitching aktif.",
-          metadata: {
-            before: { status: "pending" },
-            after: { status: "active" },
-          },
-        });
+        if (stagesDiffer(input.stages, template)) {
+          events = recordProjectEvent(events, {
+            projectId,
+            step: null,
+            eventType: "project.structure_customized",
+            actorId: state.currentUserId,
+            summary: `Tahapan disesuaikan saat pembuatan (${steps.length} tahap).`,
+            metadata: {
+              templateId: template.id,
+              templateVersion: template.version,
+              stageCount: steps.length,
+              stageNames: steps.map((step) => step.name),
+            },
+          });
+        }
+        const first = steps[0];
+        if (first) {
+          events = recordProjectEvent(events, {
+            projectId,
+            step: first.key,
+            eventType: "project.step_changed",
+            actorId: state.currentUserId,
+            summary: `Tahap ${first.name} aktif.`,
+            metadata: {
+              before: { status: "pending" },
+              after: { status: "active" },
+            },
+          });
+        }
         set({
           projects: [...state.projects, project],
-          steps: [...state.steps, ...makeSteps(projectId)],
+          steps: [...state.steps, ...steps],
           forms: [...state.forms, ...forms],
           activityLogs: [
             ...state.activityLogs,
@@ -495,7 +737,12 @@ export const usePrototypeStore = create<PrototypeStore>()(
         set({
           projects: state.projects.map((item) =>
             item.id === projectId
-              ? { ...item, status: "cancelled", cancelReason: reason }
+              ? {
+                  ...item,
+                  status: "cancelled",
+                  lifecycle: "cancelled" as const,
+                  cancelReason: reason,
+                }
               : item,
           ),
           activityLogs: [
@@ -510,11 +757,11 @@ export const usePrototypeStore = create<PrototypeStore>()(
           projectEvents: projectEvent(state, {
             projectId,
             step: null,
-            eventType: "project.cancelled",
+            eventType: "project.lifecycle_changed",
             summary: `Proyek dibatalkan: ${reason}`,
             metadata: {
-              before: { status: project.status },
-              after: { status: "cancelled", reason },
+              before: { status: project.status, lifecycle: project.lifecycle ?? null },
+              after: { status: "cancelled", lifecycle: "cancelled", reason },
             },
           }),
           notifications: [
@@ -528,6 +775,157 @@ export const usePrototypeStore = create<PrototypeStore>()(
             }),
           ],
         });
+      },
+
+      setProjectStructure: (projectId, stages) => {
+        const state = get();
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!project) return false;
+        // FR-15: structure is locked after the project exists.
+        if (project.structureLocked) return false;
+        const current = state.steps.filter((step) => step.projectId === projectId);
+        const template = state.templates.find((item) => item.id === project.templateId);
+        if (!template) return false;
+        const nextSteps = stagesForProject(projectId, template, stages).map(
+          (step, index) => ({
+            ...step,
+            status: current[index]?.status ?? step.status,
+          }),
+        );
+        set({
+          steps: [
+            ...state.steps.filter((step) => step.projectId !== projectId),
+            ...nextSteps,
+          ],
+        });
+        return true;
+      },
+
+      saveTemplate: (input) => {
+        const state = get();
+        const user = userById(state, state.currentUserId);
+        if (!user || !canManageTemplates(user)) return "";
+        const existing = input.id
+          ? state.templates.find((item) => item.id === input.id)
+          : undefined;
+        const stages = normalizeStageOrders(input.stages);
+        if (existing) {
+          const next: ProjectTemplate = {
+            ...existing,
+            name: input.name.trim(),
+            description: input.description.trim(),
+            projectType: input.projectType.trim() || existing.projectType,
+            version: existing.version + 1,
+            stages,
+            changelog: [
+              ...existing.changelog,
+              {
+                version: existing.version + 1,
+                note: input.note?.trim() || "Versi baru.",
+                createdAt: now(),
+              },
+            ],
+          };
+          set({
+            templates: state.templates.map((item) =>
+              item.id === existing.id ? next : item,
+            ),
+            projectEvents: templateEvent(
+              state.projectEvents,
+              "template.version_published",
+              `Template ${next.name} v${next.version} diterbitkan.`,
+              {
+                templateId: next.id,
+                version: next.version,
+                note: input.note?.trim() || null,
+              },
+              state.currentUserId,
+            ),
+          });
+          return next.id;
+        }
+        const created: ProjectTemplate = {
+          id: uid("tpl"),
+          name: input.name.trim(),
+          description: input.description.trim(),
+          projectType: input.projectType.trim() || "Umum",
+          version: 1,
+          status: "active",
+          stages,
+          changelog: [
+            { version: 1, note: input.note?.trim() || "Versi awal.", createdAt: now() },
+          ],
+          createdById: state.currentUserId,
+          createdAt: now(),
+        };
+        set({
+          templates: [...state.templates, created],
+          projectEvents: templateEvent(
+            state.projectEvents,
+            "template.created",
+            `Template ${created.name} dibuat.`,
+            { templateId: created.id, version: created.version },
+            state.currentUserId,
+          ),
+        });
+        return created.id;
+      },
+
+      archiveTemplate: (templateId) => {
+        const state = get();
+        const user = userById(state, state.currentUserId);
+        if (!user || !canManageTemplates(user)) return;
+        const template = state.templates.find((item) => item.id === templateId);
+        if (!template) return;
+        set({
+          templates: state.templates.map((item) =>
+            item.id === templateId ? { ...item, status: "archived" } : item,
+          ),
+          projectEvents: templateEvent(
+            state.projectEvents,
+            "template.archived",
+            `Template ${template.name} diarsipkan.`,
+            { templateId, version: template.version },
+            state.currentUserId,
+          ),
+        });
+      },
+
+      duplicateTemplate: (templateId) => {
+        const state = get();
+        const user = userById(state, state.currentUserId);
+        if (!user || !canManageTemplates(user)) return "";
+        const template = state.templates.find((item) => item.id === templateId);
+        if (!template) return "";
+        const copy: ProjectTemplate = {
+          ...template,
+          id: uid("tpl"),
+          name: `${template.name} (salinan)`,
+          version: 1,
+          legacy: false,
+          status: "active",
+          stages: template.stages.map((stage) => ({
+            ...stage,
+            id: uid("stage"),
+            tasks: stage.tasks.map((task) => ({ ...task, id: uid("ttask") })),
+          })),
+          changelog: [
+            { version: 1, note: `Salinan dari ${template.name}.`, createdAt: now() },
+          ],
+          createdById: state.currentUserId,
+          createdAt: now(),
+        };
+        set({
+          templates: [...state.templates, copy],
+          projectEvents: templateEvent(
+            state.projectEvents,
+            "template.created",
+            `Template ${copy.name} dibuat dari ${template.name}.`,
+            { templateId: copy.id, sourceTemplateId: template.id },
+            state.currentUserId,
+          ),
+        });
+        return copy.id;
       },
 
       addPitching: (projectId, input) => {
@@ -754,6 +1152,12 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const state = get();
         const form = state.forms.find((item) => item.id === formId);
         if (!form) return { ok: false };
+        const project = state.projects.find(
+          (item) => item.id === form.projectId,
+        );
+        if (form.type === "rab" && project?.rabBaselineLockedAt) {
+          return { ok: false };
+        }
         if (
           hasEditConflict(form, options?.expectedUpdatedAt, state.currentUserId)
         ) {
@@ -820,6 +1224,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const form = state.forms.find((item) => item.id === formId);
         if (!form) return;
         const project = state.projects.find((item) => item.id === form.projectId);
+        if (form.type === "rab" && project?.rabBaselineLockedAt) return;
         const nextForm = submitFormVersion(form, state.currentUserId);
         const versionNumber = nextForm.versions?.length ?? 1;
         set({
@@ -1014,12 +1419,13 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const project = state.projects.find((item) => item.id === projectId);
         const step = activeSteps(state, projectId)[0];
         if (!project || !step) return "";
+        if (step.legacyKey !== "pitching" && step.legacyKey !== "running") return "";
         const taskId = uid("task");
         const task: Task = {
           id: taskId,
           code: taskCode(project, state.tasks),
           projectId,
-          stepKey: step.key,
+          stepKey: step.legacyKey,
           title: input.title,
           description: input.description,
           priority: input.priority,
@@ -1340,38 +1746,47 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const state = get();
         const actor = userById(state, state.currentUserId);
         const project = state.projects.find((item) => item.id === projectId);
-        if (!actor || !project) return;
-        const canComplete =
-          actor.role === "admin" ||
-          (actor.role === "pm" && project.createdById === actor.id);
-        if (!canComplete) return;
-        const gate = evaluateGate(state, projectId, stepKey);
-        if (!gate.ready) return;
+        if (!actor || !project || !canManageProject(actor, project)) return;
+        if (project.status !== "active") return;
         const current = state.steps.find(
           (step) => step.projectId === projectId && step.key === stepKey,
         );
         if (!current || current.status !== "active") return;
+        // Gates must go through decideGate so the decision is recorded.
+        if (current.kind === "gate") return;
+        const gate = evaluateGate(state, projectId, stepKey);
+        if (!gate.ready) return;
 
+        const completedAt = now();
         const completedSteps = state.steps.map((step) =>
           step.projectId === projectId && step.key === stepKey
-            ? { ...step, status: "completed" as const, completedAt: now() }
+            ? { ...step, status: "completed" as const, completedAt }
             : step,
         );
 
-        const nextPending = completedSteps
-          .filter(
-            (step) =>
-              step.projectId === projectId &&
-              step.status === "pending" &&
-              step.order > current.order,
-          )
-          .sort((a, b) => a.order - b.order);
-
-        let activatedKeys: StepKey[] = [];
-        if (nextPending[0]?.key === "bast") {
-          activatedKeys = ["bast", "invoice"];
-        } else if (nextPending[0]) {
-          activatedKeys = [nextPending[0].key];
+        const stillActive = completedSteps.some(
+          (step) => step.projectId === projectId && step.status === "active",
+        );
+        let activatedKeys: string[] = [];
+        if (!stillActive) {
+          const nextPending = completedSteps
+            .filter(
+              (step) =>
+                step.projectId === projectId &&
+                step.status === "pending" &&
+                step.order > current.order,
+            )
+            .sort((a, b) => a.order - b.order);
+          if (nextPending[0]) {
+            const group = nextPending[0].parallelGroup;
+            activatedKeys = nextPending
+              .filter(
+                (step) =>
+                  step.order === nextPending[0].order ||
+                  Boolean(group && step.parallelGroup === group),
+              )
+              .map((step) => step.key);
+          }
         }
 
         const steps = completedSteps.map((step) =>
@@ -1379,19 +1794,16 @@ export const usePrototypeStore = create<PrototypeStore>()(
             ? {
                 ...step,
                 status: "active" as const,
-                startedAt: step.startedAt ?? now(),
+                startedAt: step.startedAt ?? completedAt,
               }
             : step,
         );
 
-        const stepLabel =
-          STEP_META.find((meta) => meta.key === stepKey)?.label ?? stepKey;
-        const completedAt = now();
         let events = projectEvent(state, {
           projectId,
           step: stepKey,
           eventType: "project.step_changed",
-          summary: `Step ${stepLabel} selesai.`,
+          summary: `Tahap ${current.name} selesai.`,
           metadata: {
             before: { status: "active" },
             after: { status: "completed" },
@@ -1400,13 +1812,15 @@ export const usePrototypeStore = create<PrototypeStore>()(
           },
         });
         for (const key of activatedKeys) {
-          const label = STEP_META.find((meta) => meta.key === key)?.label ?? key;
+          const activated = steps.find(
+            (step) => step.projectId === projectId && step.key === key,
+          );
           events = recordProjectEvent(events, {
             projectId,
             step: key,
             eventType: "project.step_changed",
             actorId: state.currentUserId,
-            summary: `Step ${label} aktif.`,
+            summary: `Tahap ${activated?.name ?? key} aktif.`,
             metadata: {
               before: { status: "pending" },
               after: { status: "active" },
@@ -1423,33 +1837,234 @@ export const usePrototypeStore = create<PrototypeStore>()(
               projectId,
               actorId: state.currentUserId,
               action: "step_completed",
-              message: `Step ${stepKey} selesai.`,
+              message: `Tahap ${current.name} selesai.`,
             }),
           ],
           projectEvents: events,
-          notifications: project
-            ? [
-                ...state.notifications,
-                notify(state, {
-                  userId: project.createdById,
-                  type: "step_completed",
-                  title: `Step ${stepKey} selesai`,
-                  body: project.name,
-                  href: `/crm/projects/${projectId}`,
-                }),
-              ]
-            : state.notifications,
+          notifications: [
+            ...state.notifications,
+            notify(state, {
+              userId: project.createdById,
+              type: "step_completed",
+              title: `Tahap ${current.name} selesai`,
+              body: project.name,
+              href: `/crm/projects/${projectId}`,
+            }),
+          ],
+        });
+      },
+
+      toggleStageTask: (projectId, stepKey, taskId) => {
+        const state = get();
+        const project = state.projects.find((item) => item.id === projectId);
+        const user = userById(state, state.currentUserId);
+        if (!project || !user || project.status !== "active") return;
+        if (!canViewProject(state, user, project)) return;
+        const step = state.steps.find(
+          (item) => item.projectId === projectId && item.key === stepKey,
+        );
+        if (!step || step.status !== "active") return;
+        const target = step.tasks.find((task) => task.id === taskId);
+        if (!target) return;
+        const nextTasks: StageTask[] = step.tasks.map((task) =>
+          task.id === taskId ? { ...task, done: !task.done } : task,
+        );
+        set({
+          steps: state.steps.map((item) =>
+            item.projectId === projectId && item.key === stepKey
+              ? { ...item, tasks: nextTasks }
+              : item,
+          ),
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: stepKey,
+            eventType: "project.stage_task_toggled",
+            summary: `Task ${target.name} ${target.done ? "dibuka" : "diselesaikan"}.`,
+            metadata: {
+              taskId,
+              before: { done: target.done },
+              after: { done: !target.done },
+            },
+          }),
+        });
+      },
+
+      decideGate: (projectId, stepKey, decision, reason) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!actor || !project || project.status !== "active") return;
+        const current = state.steps.find(
+          (step) => step.projectId === projectId && step.key === stepKey,
+        );
+        if (!current || current.kind !== "gate" || current.status !== "active") {
+          return;
+        }
+        if (!canManageProject(actor, project)) return;
+        const trimmed = reason?.trim();
+        if (decision === "rejected" && !trimmed) return;
+        if (decision === "approved") {
+          const gate = evaluateGate(state, projectId, stepKey);
+          if (!gate.ready) return;
+        }
+
+        const decidedAt = now();
+        const gateDecision = {
+          decision,
+          reason: trimmed,
+          actorId: actor.id,
+          decidedAt,
+        };
+        const isWin =
+          current.gateKind === "client_approval" && decision === "approved";
+        const nextProjects = state.projects.map((item) => {
+          if (item.id !== projectId) return item;
+          if (isWin) {
+            return {
+              ...item,
+              lifecycle: "won" as const,
+              rabBaselineLockedAt: item.rabBaselineLockedAt ?? decidedAt,
+            };
+          }
+          if (decision === "rejected") {
+            return {
+              ...item,
+              status: "cancelled" as const,
+              lifecycle: "lost" as const,
+              lostReason: trimmed,
+            };
+          }
+          return item;
+        });
+
+        const completedSteps = state.steps.map((step) =>
+          step.projectId === projectId && step.key === stepKey
+            ? {
+                ...step,
+                status: "completed" as const,
+                completedAt: decidedAt,
+                gateDecision,
+              }
+            : step,
+        );
+
+        let steps = completedSteps;
+        let activatedKeys: string[] = [];
+        if (decision === "approved") {
+          const nextPending = completedSteps
+            .filter(
+              (step) =>
+                step.projectId === projectId &&
+                step.status === "pending" &&
+                step.order > current.order,
+            )
+            .sort((a, b) => a.order - b.order);
+          if (nextPending[0]) {
+            const group = nextPending[0].parallelGroup;
+            activatedKeys = nextPending
+              .filter(
+                (step) =>
+                  step.order === nextPending[0].order ||
+                  Boolean(group && step.parallelGroup === group),
+              )
+              .map((step) => step.key);
+          }
+          steps = completedSteps.map((step) =>
+            step.projectId === projectId && activatedKeys.includes(step.key)
+              ? {
+                  ...step,
+                  status: "active" as const,
+                  startedAt: step.startedAt ?? decidedAt,
+                }
+              : step,
+          );
+        }
+
+        let events = projectEvent(state, {
+          projectId,
+          step: stepKey,
+          eventType: decision === "approved" ? "gate.approved" : "gate.rejected",
+          summary:
+            decision === "approved"
+              ? `Gerbang ${current.name} disetujui.`
+              : `Gerbang ${current.name} ditolak: ${trimmed}`,
+          metadata: {
+            gateKind: current.gateKind ?? null,
+            reason: trimmed ?? null,
+            before: { status: "active" },
+            after: { status: "completed", decision },
+          },
+        });
+        events = recordProjectEvent(events, {
+          projectId,
+          step: null,
+          eventType: "project.lifecycle_changed",
+          actorId: actor.id,
+          summary: isWin
+            ? "Proyek menang; RAB menjadi baseline dan masuk Planning."
+            : decision === "rejected"
+              ? `Proyek kalah: ${trimmed}`
+              : "Keputusan gerbang dicatat.",
+          metadata: {
+            before: {
+              status: project.status,
+              lifecycle: project.lifecycle ?? "active",
+            },
+            after: {
+              status: nextProjects.find((item) => item.id === projectId)?.status,
+              lifecycle: nextProjects.find((item) => item.id === projectId)
+                ?.lifecycle,
+            },
+          },
+        });
+
+        set({
+          projects: nextProjects,
+          steps,
+          activityLogs: [
+            ...state.activityLogs,
+            activity(state, {
+              projectId,
+              actorId: actor.id,
+              action: decision === "approved" ? "gate_approved" : "gate_rejected",
+              message:
+                decision === "approved"
+                  ? `Gerbang ${current.name} disetujui.`
+                  : `Gerbang ${current.name} ditolak.`,
+            }),
+          ],
+          projectEvents: events,
+          notifications: [
+            ...state.notifications,
+            notify(state, {
+              userId: project.createdById,
+              type: decision === "approved" ? "gate_approved" : "gate_rejected",
+              title:
+                decision === "approved"
+                  ? `Gerbang ${current.name} disetujui`
+                  : `Gerbang ${current.name} ditolak`,
+              body: project.name,
+              href: `/crm/projects/${projectId}`,
+            }),
+          ],
         });
       },
 
       completeProject: (projectId) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
         const project = state.projects.find((item) => item.id === projectId);
-        if (!project || project.status !== "active") return;
-        const steps = state.steps.filter((step) => step.projectId === projectId);
-        const nonFinanceDone = steps
-          .filter((step) => step.phase !== "finance")
-          .every((step) => step.status === "completed");
+        if (!project || !actor || project.status !== "active") return;
+        if (!canManageProject(actor, project)) return;
+        const projectSteps = state.steps.filter(
+          (step) => step.projectId === projectId,
+        );
+        const allDone = projectSteps.every(
+          (step) => step.status === "completed" || step.status === "skipped",
+        );
+        const nonClosingDone = projectSteps
+          .filter((step) => step.phase !== "closing")
+          .every((step) => step.status === "completed" || step.status === "skipped");
         const bast = state.forms.find(
           (form) => form.projectId === projectId && form.stepKey === "bast",
         );
@@ -1460,18 +2075,31 @@ export const usePrototypeStore = create<PrototypeStore>()(
           bast?.status === "submitted" || bast?.status === "approved";
         const invoiceReady =
           invoice?.status === "submitted" || invoice?.status === "approved";
-        if (!nonFinanceDone || !bastReady || !invoiceReady) {
-          return;
-        }
+        const hasFinanceStages =
+          projectSteps.some((step) => step.key === "bast") &&
+          projectSteps.some((step) => step.key === "invoice");
+        const legacyReady =
+          !allDone &&
+          hasFinanceStages &&
+          nonClosingDone &&
+          bastReady &&
+          invoiceReady;
+        if (!allDone && !legacyReady) return;
+
+        const completedAt = now();
         const nextSteps = state.steps.map((step) =>
-          step.projectId === projectId &&
-          (step.key === "bast" || step.key === "invoice")
-            ? { ...step, status: "completed" as const, completedAt: now() }
+          step.projectId === projectId && step.status === "active"
+            ? { ...step, status: "completed" as const, completedAt }
             : step,
         );
         const nextProjects = state.projects.map((item) =>
           item.id === projectId
-            ? { ...item, status: "completed" as const, actualEndDate: now() }
+            ? {
+                ...item,
+                status: "completed" as const,
+                lifecycle: "done" as const,
+                actualEndDate: completedAt,
+              }
             : item,
         );
         const group = project.groupId
@@ -1488,22 +2116,24 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 : item,
             )
           : state.groups;
-        const completedAt = now();
-        let events = state.projectEvents;
-        for (const key of ["bast", "invoice"] as StepKey[]) {
-          events = recordProjectEvent(events, {
-            projectId,
-            step: key,
-            eventType: "project.step_changed",
-            actorId: state.currentUserId,
-            summary: `Step ${key === "bast" ? "BAST" : "Invoice"} selesai.`,
-            metadata: {
-              before: { status: "active" },
-              after: { status: "completed" },
-              completedAt,
+        let events = recordProjectEvent(state.projectEvents, {
+          projectId,
+          step: null,
+          eventType: "project.lifecycle_changed",
+          actorId: state.currentUserId,
+          summary: `Proyek ${project.name} selesai.`,
+          metadata: {
+            before: {
+              status: project.status,
+              lifecycle: project.lifecycle ?? "active",
             },
-          });
-        }
+            after: {
+              status: "completed",
+              lifecycle: "done",
+              actualEndDate: completedAt,
+            },
+          },
+        });
         events = recordProjectEvent(events, {
           projectId,
           step: null,
@@ -1668,13 +2298,16 @@ export const usePrototypeStore = create<PrototypeStore>()(
     }),
     {
       name: "crm-simpro:v1",
-      version: 1,
+      version: 2,
+      migrate: (persisted) =>
+        migratePersistedState(persisted) as unknown as PrototypeStore,
       partialize: (state) => ({
         seedVersion: state.seedVersion,
         currentUserId: state.currentUserId,
         users: state.users,
         projects: state.projects,
         steps: state.steps,
+        templates: state.templates,
         pitchings: state.pitchings,
         pitchingRoles: state.pitchingRoles,
         tasks: state.tasks,
@@ -1690,14 +2323,13 @@ export const usePrototypeStore = create<PrototypeStore>()(
           state.reset();
           return;
         }
-        if (!state.projectEvents?.length) {
-          state.setProjectEvents(
-            backfillProjectEvents({
+        const events = state.projectEvents?.length
+          ? state.projectEvents
+          : backfillProjectEvents({
               ...state,
               projectEvents: state.projectEvents ?? [],
-            }),
-          );
-        }
+            });
+        state.setProjectEvents(linkProjectsToTemplate(events, state.projects));
         state.setForms(migrateFormVersions(state));
         state.setHydrated(true);
       },

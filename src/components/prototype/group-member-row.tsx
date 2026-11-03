@@ -9,6 +9,7 @@ import {
   formatDate,
 } from "@/lib/prototype/domain";
 import type { Project } from "@/lib/prototype/types";
+import { PHASE_LABEL } from "@/lib/prototype/types";
 import { cn } from "@/lib/utils";
 import { ProgressBar } from "./ui";
 
@@ -25,6 +26,9 @@ export function GroupMemberRow({
 }) {
   const store = usePrototypeStore();
   const journey = calculateJourneyProgress(store, project.id);
+  const phase = store.steps.find(
+    (step) => step.projectId === project.id && step.status === "active",
+  )?.phase;
 
   return (
     <div
@@ -61,7 +65,7 @@ export function GroupMemberRow({
               : "bg-sky-100 text-sky-700",
         )}
       >
-        {project.status}
+        {project.status === "active" && phase ? PHASE_LABEL[phase] : project.status}
       </span>
 
       <span className="hidden w-28 sm:block">

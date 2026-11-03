@@ -147,9 +147,10 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
 }
 
 const phaseClasses: Record<Phase, string> = {
+  prospek: "bg-amber-100 text-amber-800 ring-amber-200",
   planning: "bg-violet-100 text-violet-700 ring-violet-200",
   running: "bg-sky-100 text-sky-700 ring-sky-200",
-  finance: "bg-emerald-100 text-emerald-700 ring-emerald-200",
+  closing: "bg-emerald-100 text-emerald-700 ring-emerald-200",
 };
 
 export function PhaseBadge({ phase }: { phase: Phase }) {

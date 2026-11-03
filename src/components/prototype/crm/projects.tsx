@@ -34,7 +34,7 @@ import {
 } from "../ui";
 import { ProjectCard } from "../project-card";
 import { GroupMemberRow } from "../group-member-row";
-import { GroupDialog, ProjectDialog } from "../dialogs";
+import { GroupDialog } from "../dialogs";
 
 const OPEN_GROUP_KEY = "crm-projects-open-group";
 
@@ -192,9 +192,9 @@ export function CrmProjects() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [phase, setPhase] = useState("");
+  const [templateFilter, setTemplateFilter] = useState("");
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupInitialProjects, setGroupInitialProjects] = useState<string[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -232,6 +232,7 @@ export function CrmProjects() {
       }
       if (status && project.status !== status) return false;
       if (priority && project.priority !== priority) return false;
+      if (templateFilter && project.templateId !== templateFilter) return false;
       if (phase) {
         const active = store.steps.filter(
           (step) => step.projectId === project.id && step.status === "active",
@@ -240,7 +241,7 @@ export function CrmProjects() {
       }
       return true;
     });
-  }, [projects, search, status, priority, phase, store.steps]);
+  }, [projects, search, status, priority, phase, templateFilter, store.steps]);
 
   if (!currentUser) return null;
   const canManageGroups =
@@ -370,14 +371,16 @@ export function CrmProjects() {
         }
         actions={
           canCreateProject(currentUser) ? (
-            <Button onClick={() => setDialogOpen(true)}>
-              <Plus className="size-4" /> Proyek baru
-            </Button>
+            <Link href="/crm/projects/new">
+              <Button>
+                <Plus className="size-4" /> Proyek baru
+              </Button>
+            </Link>
           ) : null
         }
       />
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_140px_140px_140px_140px]">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(0,1fr)_130px_130px_130px_130px_130px]">
         <div className="relative sm:col-span-2 lg:col-span-1">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
           <Input
@@ -408,6 +411,16 @@ export function CrmProjects() {
               {label}
             </option>
           ))}
+        </NativeSelect>
+        <NativeSelect value={templateFilter} onChange={setTemplateFilter}>
+          <option value="">Semua template</option>
+          {store.templates
+            .filter((template) => template.status === "active" || template.legacy)
+            .map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name}
+              </option>
+            ))}
         </NativeSelect>
         <NativeSelect value={status} onChange={setStatus}>
           <option value="">Semua status</option>
@@ -524,7 +537,6 @@ export function CrmProjects() {
         </div>
       )}
 
-      <ProjectDialog open={dialogOpen} onOpenChange={setDialogOpen} />
       <GroupDialog
         open={groupDialogOpen}
         onOpenChange={(open) => {

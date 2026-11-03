@@ -4,7 +4,7 @@
 
 Prototype monolith **CRM × SIMPRO** is implemented at the repository root.
 
-- Product source of truth: `Docs/PRD.md`
+- Product source of truth: `Docs/PRD.md` + addendum `Docs/PRD-Alur-CRM-Baru.md`
 - Delivery scope: `Docs/MVP.md`
 - Visual/code source of truth: `src` (primary), `Docs/References/*.png` (secondary)
 - Prototype data lives in the browser: Zustand + `localStorage` for app state, IndexedDB for uploaded files. No backend, auth, or real SIMPRO integration.
@@ -26,16 +26,17 @@ npm test
 
 ## Where the prototype lives
 
-- Domain rules, gates, progress, permissions: `src/lib/prototype/domain.ts`
+- Domain rules, gates, progress, permissions, template validation: `src/lib/prototype/domain.ts`
+- Template model and seed templates (Umum, KOL Campaign, Event Program): `src/lib/prototype/templates.ts`
 - Project audit trail (`project_events`, backfill, read/pagination): `src/lib/prototype/events.ts`
 - Step history UI: `src/components/prototype/crm/project-history.tsx`
 - Seed/demo data: `src/lib/prototype/seed.ts`
-- Zustand store + persistence: `src/lib/prototype/store.ts`
+- Zustand store + persistence + persist migration: `src/lib/prototype/store.ts`
 - IndexedDB file storage: `src/lib/prototype/files.ts`
 - Excel import/templates: `src/lib/prototype/excel.ts`
 - Prototype UI: `src/components/prototype/`
 - Routes:
-  - CRM: `/crm`, `/crm/projects`, `/crm/projects/[id]`, `/crm/groups`, `/crm/workload`
+  - CRM: `/crm`, `/crm/projects`, `/crm/projects/new`, `/crm/projects/[id]`, `/crm/groups`, `/crm/templates`, `/crm/workload`
   - SIMPRO: `/dashboard`, `/projects`, `/projects/[id]/*`, `/my-tasks`, `/forms`
 
 ## Frontend baseline
@@ -52,11 +53,17 @@ Prototype adaptations already made:
 
 ## Product rules that are easy to get wrong
 
-- Six fixed steps, all mandatory: Pitching → Survey → RAB → Running → BAST ∥ Invoice. No step editing and no skip.
-- Task cards exist only in Pitching and Running. Survey/RAB/BAST/Invoice are `StepForm`, not `Task`; they do not appear on the board, My Tasks, workload, or task progress.
-- BAST and Invoice are parallel Finance steps; each is 50% of Finance progress. Journey % uses denominator 5 (four full steps + Finance split 0.5/0.5).
+- Four fixed phases: Prospek → Planning → Running → Closing. Phase order cannot be changed by users. The meaning of "Planning" changed: it now starts at contract commitment.
+- Stages come from a project template. They may be customized only while creating a project, then `structureLocked` freezes them. There is no add/remove/reorder/skip after creation.
+- Template "Umum" is `legacy` and must keep the old six stages: Pitching → Survey → RAB → Running → BAST ∥ Invoice. New templates require one stage per phase and exactly one winning gate.
+- Journey % is weighted: sum of completed stage weights / sum of non-skipped stage weights. Umum weights (1,1,1,1,0.5,0.5) must produce the exact legacy numbers; a submitted BAST/Invoice still counts before the stage is formally completed.
+- Task cards exist only for the legacy Pitching and Running stages. New checklist stages are light (`step.tasks`) and do not appear on the board, My Tasks, workload, or task progress (PRD default P1).
+- BAST and Invoice are parallel finance stages (`parallelGroup: "finance"`); each is 0.5 weight.
 - Survey form lives in SIMPRO; RAB and finance forms live in CRM.
+- A winning gate (client approval) sets lifecycle `won`, locks RAB as baseline, and moves the project to Planning. Rejection sets `lost` with a required reason. Batal can be set in any phase.
+- Lost and cancelled projects stay complete with history, are read-only, and are excluded from workload and group completion denominators.
 - Only Manager/Admin assign tasks. PM creates tasks and reviews; PM only sees own projects.
+- Only Admin and PM manage templates; that right is separate from project access.
 - Pitching is unlimited, allows multiple winners, and losing pitchings/tasks are archived into read-only history.
 - Workload counts only active card tasks (To Do, In Progress, Awaiting Approval, Need Revision); no points or capacity.
 - PM does not reject BAST/Invoice; Finance edits until PM closes the project.
@@ -64,4 +71,4 @@ Prototype adaptations already made:
 
 ## Verification
 
-`npm run build`, `npm run lint`, and `npm test` pass. The domain tests cover gates, progress, visibility, task transitions, workload, and Excel validation.
+`npm run build`, `npm run lint`, and `npm test` pass. The domain tests cover gates, progress, visibility, task transitions, workload, and Excel validation. `tests/templates.test.ts` covers template copying/independence, validation, structure lock, gate transitions, weighted progress, template permissions, and idempotent persistence migration.

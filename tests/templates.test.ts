@@ -1,0 +1,331 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  calculateJourneyProgress,
+  canEditProjectStructure,
+  canManageTemplates,
+  canViewProject,
+  phaseOfProject,
+  userById,
+  validateTemplateStages,
+} from "../src/lib/prototype/domain";
+import { createSeedState } from "../src/lib/prototype/seed";
+import { usePrototypeStore } from "../src/lib/prototype/store";
+import { migratePersistedState } from "../src/lib/prototype/store";
+import {
+  KOL_TEMPLATE_ID,
+  UMUM_TEMPLATE_ID,
+  createSeedTemplates,
+} from "../src/lib/prototype/templates";
+
+function kolStages() {
+  return createSeedTemplates().find(
+    (template) => template.id === KOL_TEMPLATE_ID,
+  )!.stages;
+}
+
+function completeFirstThreeKolStages(projectId: string) {
+  const store = usePrototypeStore.getState();
+  for (let index = 0; index < 3; index += 1) {
+    const step = usePrototypeStore
+      .getState()
+      .steps.filter((item) => item.projectId === projectId)
+      .sort((a, b) => a.order - b.order)[index];
+    for (const task of step.tasks) {
+      store.toggleStageTask(projectId, step.key, task.id);
+    }
+    usePrototypeStore.getState().completeStep(projectId, step.key);
+  }
+}
+
+describe("template model", () => {
+  beforeEach(() => {
+    usePrototypeStore.getState().reset();
+  });
+
+  it("copies stages and tasks into the project", () => {
+    const store = usePrototypeStore.getState();
+    const projectId = store.createProject({
+      name: "KOL Test",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      templateId: KOL_TEMPLATE_ID,
+    });
+    const project = usePrototypeStore
+      .getState()
+      .projects.find((item) => item.id === projectId)!;
+    const steps = usePrototypeStore
+      .getState()
+      .steps.filter((step) => step.projectId === projectId);
+    expect(project.templateId).toBe(KOL_TEMPLATE_ID);
+    expect(project.structureLocked).toBe(true);
+    expect(steps).toHaveLength(13);
+    expect(steps[0].tasks[0].name).toBe("Catat brief dan KPI");
+    expect(steps[0].status).toBe("active");
+  });
+
+  it("keeps existing projects independent from later template versions", () => {
+    const store = usePrototypeStore.getState();
+    const projectId = store.createProject({
+      name: "KOL Test",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      templateId: KOL_TEMPLATE_ID,
+    });
+    const template = usePrototypeStore
+      .getState()
+      .templates.find((item) => item.id === KOL_TEMPLATE_ID)!;
+    const changed = template.stages.map((stage, index) =>
+      index === 0 ? { ...stage, name: "Brief Baru" } : stage,
+    );
+    const id = usePrototypeStore.getState().saveTemplate({
+      id: KOL_TEMPLATE_ID,
+      name: template.name,
+      description: template.description,
+      projectType: template.projectType,
+      stages: changed,
+      note: "ubah nama",
+    });
+    expect(id).toBe(KOL_TEMPLATE_ID);
+    expect(
+      usePrototypeStore
+        .getState()
+        .templates.find((item) => item.id === KOL_TEMPLATE_ID)!.version,
+    ).toBe(2);
+    const step = usePrototypeStore
+      .getState()
+      .steps.find(
+        (item) => item.projectId === projectId && item.order === 1,
+      )!;
+    expect(step.name).toBe("Brief Received");
+  });
+
+  it("rejects structure changes after the project exists", () => {
+    const store = usePrototypeStore.getState();
+    const projectId = store.createProject({
+      name: "KOL Test",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      templateId: KOL_TEMPLATE_ID,
+    });
+    const project = usePrototypeStore
+      .getState()
+      .projects.find((item) => item.id === projectId)!;
+    expect(canEditProjectStructure(project)).toBe(false);
+    expect(
+      usePrototypeStore.getState().setProjectStructure(projectId, kolStages()),
+    ).toBe(false);
+  });
+});
+
+describe("template validation", () => {
+  it("accepts KOL and legacy Umum", () => {
+    const templates = createSeedTemplates();
+    const kol = templates.find((item) => item.id === KOL_TEMPLATE_ID)!;
+    const umum = templates.find((item) => item.id === UMUM_TEMPLATE_ID)!;
+    expect(validateTemplateStages(kol.stages).ok).toBe(true);
+    expect(validateTemplateStages(umum.stages, { legacy: true }).ok).toBe(true);
+  });
+
+  it("requires one stage per phase and exactly one winning gate", () => {
+    const stages = kolStages().filter((stage) => stage.phase !== "planning");
+    const result = validateTemplateStages(stages);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes("Planning"))).toBe(true);
+  });
+
+  it("rejects duplicate stage names and backward phase order", () => {
+    const stages = kolStages();
+    const duplicate = stages.map((stage, index) =>
+      index === 1 ? { ...stage, name: stages[0].name } : stage,
+    );
+    expect(validateTemplateStages(duplicate).ok).toBe(false);
+
+    const backward = stages.map((stage, index) =>
+      index === 2 ? { ...stage, phase: "closing" as const } : stage,
+    );
+    expect(
+      validateTemplateStages(backward).errors.some((error) =>
+        error.includes("mundur"),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("gate and lifecycle", () => {
+  beforeEach(() => {
+    usePrototypeStore.getState().reset();
+  });
+
+  function createKolProject() {
+    return usePrototypeStore.getState().createProject({
+      name: "KOL Gate",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      templateId: KOL_TEMPLATE_ID,
+    });
+  }
+
+  it("approving the winning gate moves the project to Planning and locks RAB", () => {
+    const projectId = createKolProject();
+    completeFirstThreeKolStages(projectId);
+    const gate = usePrototypeStore
+      .getState()
+      .steps.find(
+        (step) =>
+          step.projectId === projectId && step.gateKind === "client_approval",
+      )!;
+    expect(gate.status).toBe("active");
+    usePrototypeStore.getState().decideGate(projectId, gate.key, "approved");
+    const project = usePrototypeStore
+      .getState()
+      .projects.find((item) => item.id === projectId)!;
+    expect(project.lifecycle).toBe("won");
+    expect(project.rabBaselineLockedAt).toBeTruthy();
+    expect(phaseOfProject(usePrototypeStore.getState(), projectId)).toBe(
+      "planning",
+    );
+  });
+
+  it("rejecting the gate marks the project Kalah with a reason and read-only", () => {
+    const projectId = createKolProject();
+    completeFirstThreeKolStages(projectId);
+    const gate = usePrototypeStore
+      .getState()
+      .steps.find(
+        (step) =>
+          step.projectId === projectId && step.gateKind === "client_approval",
+      )!;
+    usePrototypeStore
+      .getState()
+      .decideGate(projectId, gate.key, "rejected", "Harga terlalu tinggi");
+    const project = usePrototypeStore
+      .getState()
+      .projects.find((item) => item.id === projectId)!;
+    expect(project.status).toBe("cancelled");
+    expect(project.lifecycle).toBe("lost");
+    expect(project.lostReason).toBe("Harga terlalu tinggi");
+  });
+
+  it("requires a reason for rejection", () => {
+    const projectId = createKolProject();
+    completeFirstThreeKolStages(projectId);
+    const gate = usePrototypeStore
+      .getState()
+      .steps.find(
+        (step) =>
+          step.projectId === projectId && step.gateKind === "client_approval",
+      )!;
+    usePrototypeStore.getState().decideGate(projectId, gate.key, "rejected");
+    const project = usePrototypeStore
+      .getState()
+      .projects.find((item) => item.id === projectId)!;
+    expect(project.status).toBe("active");
+  });
+});
+
+describe("progress and permissions", () => {
+  beforeEach(() => {
+    usePrototypeStore.getState().reset();
+  });
+
+  it("uses weighted stages for non-legacy templates", () => {
+    const projectId = usePrototypeStore.getState().createProject({
+      name: "KOL Progress",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      templateId: KOL_TEMPLATE_ID,
+    });
+    completeFirstThreeKolStages(projectId);
+    // 3 completed stages of 12 total weight (9 full + 0.5 + 0.5 + 2 full).
+    expect(
+      calculateJourneyProgress(usePrototypeStore.getState(), projectId),
+    ).toBe(25);
+  });
+
+  it("allows only Admin and PM to manage templates", () => {
+    const state = createSeedState();
+    expect(canManageTemplates(userById(state, "u-admin")!)).toBe(true);
+    expect(canManageTemplates(userById(state, "u-pm1")!)).toBe(true);
+    expect(canManageTemplates(userById(state, "u-manager")!)).toBe(false);
+    expect(canManageTemplates(userById(state, "u-finance")!)).toBe(false);
+    expect(canManageTemplates(userById(state, "u-assignee1")!)).toBe(false);
+  });
+
+  it("keeps PM project visibility unchanged", () => {
+    const state = createSeedState();
+    const pm2 = userById(state, "u-pm2")!;
+    const alpha = state.projects.find((project) => project.id === "p-alpha")!;
+    expect(canViewProject(state, pm2, alpha)).toBe(false);
+  });
+});
+
+describe("persistence migration", () => {
+  it("is idempotent and adds templates plus lifecycle", () => {
+    const seed = createSeedState();
+    const legacy = {
+      ...seed,
+      templates: undefined,
+      projects: seed.projects.map((project) => {
+        const copy = { ...project };
+        delete copy.templateId;
+        delete copy.templateVersion;
+        delete copy.lifecycle;
+        delete copy.structureLocked;
+        return copy;
+      }),
+      steps: seed.steps.map((step) => ({
+        ...step,
+        phase:
+          step.key === "bast" || step.key === "invoice"
+            ? ("finance" as const)
+            : step.key === "running"
+              ? ("running" as const)
+              : ("planning" as const),
+        name: undefined,
+        kind: undefined,
+        tasks: undefined,
+      })),
+    };
+    const once = migratePersistedState(legacy);
+    const twice = migratePersistedState(once);
+    expect(twice.templates?.length).toBe(3);
+    expect(
+      twice.projects?.every(
+        (project) =>
+          project.templateId === UMUM_TEMPLATE_ID &&
+          project.lifecycle !== undefined &&
+          project.structureLocked === true,
+      ),
+    ).toBe(true);
+    expect(
+      twice.steps?.every((step) => step.kind && step.name && step.tasks),
+    ).toBe(true);
+    expect(
+      twice.steps?.find((step) => step.key === "bast")?.phase,
+    ).toBe("closing");
+    expect(
+      twice.steps?.find((step) => step.key === "pitching")?.phase,
+    ).toBe("prospek");
+    expect(JSON.stringify(twice)).toBe(JSON.stringify(migratePersistedState(twice)));
+  });
+});

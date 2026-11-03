@@ -28,7 +28,12 @@ import {
   userById,
   workProgressForProject,
 } from "@/lib/prototype/domain";
-import { TASK_STATUS_LABEL, type Project, type Task } from "@/lib/prototype/types";
+import {
+  PHASE_LABEL,
+  TASK_STATUS_LABEL,
+  type Project,
+  type Task,
+} from "@/lib/prototype/types";
 import { cn } from "@/lib/utils";
 import {
   DataRow,
@@ -88,7 +93,7 @@ function ProjectHeader({
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {phase ? (
                 <span className="rounded-md bg-violet-500/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-white/25">
-                  {phase}
+                  {PHASE_LABEL[phase]}
                 </span>
               ) : null}
               <span className="rounded-md bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ring-white/25">

@@ -1,20 +1,23 @@
 import {
   ACTIVE_TASK_STATUSES,
   FORM_STEP_KEYS,
+  PHASE_LABEL,
+  PHASE_ORDER,
   STEP_META,
   TASK_STATUS_LABEL,
   type AppState,
   type FormStepKey,
   type GateResult,
+  type Lifecycle,
   type Phase,
   type Priority,
   type Project,
   type ProjectStep,
   type Role,
   type StepForm,
-  type StepKey,
   type Task,
   type TaskStatus,
+  type TemplateStage,
   type User,
   type WorkloadRow,
 } from "./types";
@@ -30,7 +33,7 @@ export function projectById(state: AppState, id: string): Project | undefined {
 export function stepFor(
   state: AppState,
   projectId: string,
-  key: StepKey,
+  key: string,
 ): ProjectStep | undefined {
   return state.steps.find(
     (step) => step.projectId === projectId && step.key === key,
@@ -40,7 +43,7 @@ export function stepFor(
 export function formFor(
   state: AppState,
   projectId: string,
-  key: FormStepKey,
+  key: string,
 ): StepForm | undefined {
   return state.forms.find(
     (form) => form.projectId === projectId && form.stepKey === key,
@@ -62,7 +65,7 @@ export function rolesForPitching(state: AppState, pitchingId: string) {
 export function tasksForStep(
   state: AppState,
   projectId: string,
-  stepKey: StepKey,
+  stepKey: string,
 ): Task[] {
   return state.tasks.filter(
     (task) =>
@@ -104,7 +107,7 @@ export function activeSteps(state: AppState, projectId: string): ProjectStep[] {
 export function activeStepKey(
   state: AppState,
   projectId: string,
-): StepKey | undefined {
+): string | undefined {
   return activeSteps(state, projectId)[0]?.key;
 }
 
@@ -112,40 +115,89 @@ export function phaseOfProject(
   state: AppState,
   projectId: string,
 ): Phase | undefined {
-  return activeStepKey(state, projectId)
-    ? STEP_META.find((meta) => meta.key === activeStepKey(state, projectId))
-        ?.phase
-    : undefined;
+  const active = activeSteps(state, projectId);
+  if (active.length > 0) return active[0].phase;
+  const steps = state.steps
+    .filter((step) => step.projectId === projectId)
+    .sort((a, b) => a.order - b.order);
+  return steps[steps.length - 1]?.phase;
 }
 
-export function phaseForStep(key: StepKey): Phase {
-  return STEP_META.find((meta) => meta.key === key)?.phase ?? "planning";
+export function stageLabel(state: AppState, projectId: string, key: string): string {
+  const step = stepFor(state, projectId, key);
+  if (step) return step.name;
+  return STEP_META.find((meta) => meta.key === key)?.label ?? key;
 }
 
+/**
+ * Journey progress is the weighted share of completed stages. Skipped
+ * optional stages leave the denominator. Umum weights reproduce the legacy
+ * formula exactly: 4 full stages + BAST/Invoice 0.5 each over a total of 5.
+ */
 export function calculateJourneyProgress(
   state: AppState,
   projectId: string,
 ): number {
-  let done = 0;
-  for (const meta of STEP_META) {
-    if (meta.key === "bast" || meta.key === "invoice") {
-      const form = formFor(state, projectId, meta.key);
+  const steps = state.steps.filter(
+    (step) => step.projectId === projectId && step.status !== "skipped",
+  );
+  const total = steps.reduce((sum, step) => sum + (step.weight || 1), 0);
+  if (total === 0) return 0;
+  const done = steps.reduce((sum, step) => {
+    const weight = step.weight || 1;
+    if (step.status === "completed") return sum + weight;
+    // Legacy parity: a submitted BAST/Invoice already counted in the old
+    // formula even before the step was formally completed.
+    if (
+      step.kind === "finance_form" &&
+      (step.financeKind === "bast" || step.financeKind === "invoice")
+    ) {
+      const form = formFor(state, projectId, step.financeKind);
       if (form?.status === "submitted" || form?.status === "approved") {
-        done += meta.weight;
+        return sum + weight;
       }
-      continue;
     }
-    const step = stepFor(state, projectId, meta.key);
-    if (step?.status === "completed") done += meta.weight;
-  }
-  return Math.round((done / 5) * 100);
+    return sum;
+  }, 0);
+  return Math.round((done / total) * 100);
 }
 
 export function calculateWorkProgress(
   state: AppState,
   projectId: string,
-  stepKey: StepKey,
+  stepKey: string,
 ): number {
+  const step = stepFor(state, projectId, stepKey);
+  if (step) {
+    if (step.kind === "checklist") {
+      if (step.legacyKey === "pitching" || step.legacyKey === "running") {
+        const tasks = tasksForStep(state, projectId, step.legacyKey);
+        if (tasks.length === 0) return 100;
+        const done = tasks.filter((task) => task.status === "completed").length;
+        return Math.round((done / tasks.length) * 100);
+      }
+      const tasks = step.tasks ?? [];
+      if (tasks.length === 0) return 100;
+      return Math.round(
+        (tasks.filter((task) => task.done).length / tasks.length) * 100,
+      );
+    }
+
+    if (step.kind === "gate") {
+      return step.gateDecision?.decision === "approved" ? 100 : 0;
+    }
+
+    const key = step.financeKind ?? step.legacyKey;
+    if (!key) return 0;
+    const form = formFor(state, projectId, key);
+    if (key === "survey" || key === "rab") {
+      if (form?.status === "approved") return 100;
+      if (form?.status === "submitted") return 50;
+      return 0;
+    }
+    return form?.status === "submitted" || form?.status === "approved" ? 100 : 0;
+  }
+
   if (stepKey === "pitching" || stepKey === "running") {
     const tasks = tasksForStep(state, projectId, stepKey);
     if (tasks.length === 0) return 100;
@@ -179,18 +231,16 @@ export function workProgressForProject(
   if (project?.status === "cancelled") return 0;
   const active = activeSteps(state, projectId);
   if (active.length === 0) return 0;
-  if (active.some((step) => step.key === "bast")) {
-    const bast = calculateWorkProgress(state, projectId, "bast");
-    const invoice = calculateWorkProgress(state, projectId, "invoice");
-    return Math.round((bast + invoice) / 2);
-  }
-  return calculateWorkProgress(state, projectId, active[0].key);
+  const values = active.map((step) =>
+    calculateWorkProgress(state, projectId, step.key),
+  );
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
 export function evaluateGate(
   state: AppState,
   projectId: string,
-  stepKey: StepKey,
+  stepKey: string,
 ): GateResult {
   const project = projectById(state, projectId);
   if (!project) return { ready: false, requirements: [] };
@@ -291,6 +341,61 @@ export function evaluateGate(
     };
   }
 
+  const step = stepFor(state, projectId, stepKey);
+  if (!step) return { ready: false, requirements: [] };
+
+  if (step.kind === "gate") {
+    if (step.gateKind === "go_no_go") {
+      return { ready: true, requirements: [{ label: "Keputusan Go/No-Go dicatat", met: true }] };
+    }
+    const hasRabStage = state.steps.some(
+      (item) => item.projectId === projectId && item.financeKind === "rab",
+    );
+    const rabApproved =
+      !hasRabStage || formFor(state, projectId, "rab")?.status === "approved";
+    return {
+      ready: rabApproved,
+      requirements: [
+        { label: "RAB disetujui sebagai baseline", met: rabApproved },
+      ],
+    };
+  }
+
+  if (step.kind === "checklist") {
+    const tasks = step.tasks ?? [];
+    const requiredDone = tasks
+      .filter((task) => task.required)
+      .every((task) => task.done);
+    return {
+      ready: requiredDone,
+      requirements: [
+        {
+          label: "Semua task wajib selesai",
+          met: requiredDone,
+        },
+      ],
+    };
+  }
+
+  const formKey = step.financeKind ?? step.legacyKey;
+  if (formKey) {
+    const form = formFor(state, projectId, formKey);
+    const approved = form?.status === "approved";
+    const submitted = form?.status === "submitted" || approved;
+    const needsApproval = formKey === "survey" || formKey === "rab";
+    return {
+      ready: needsApproval ? approved : submitted,
+      requirements: [
+        {
+          label: needsApproval
+            ? `Form ${formKey.toUpperCase()} sudah approved`
+            : `Form ${formKey.toUpperCase()} sudah submitted`,
+          met: needsApproval ? approved : submitted,
+        },
+      ],
+    };
+  }
+
   return { ready: false, requirements: [] };
 }
 
@@ -335,6 +440,95 @@ export function canCancelProject(user: User, project: Project): boolean {
 
 export function canCreateProject(user: User): boolean {
   return user.role === "admin" || user.role === "pm";
+}
+
+/** Template management is a separate right from project access. */
+export function canManageTemplates(user: User): boolean {
+  return user.role === "admin" || user.role === "pm";
+}
+
+export function canApproveGate(
+  _state: AppState,
+  user: User,
+  project: Project,
+): boolean {
+  return canManageProject(user, project);
+}
+
+export function lifecycleOf(project: Project): Lifecycle {
+  if (project.lifecycle) return project.lifecycle;
+  if (project.status === "completed") return "done";
+  if (project.status === "cancelled") return "cancelled";
+  return "active";
+}
+
+export function isProjectReadOnly(project: Project): boolean {
+  return project.status !== "active";
+}
+
+/** Structure is frozen once the project exists (FR-15). */
+export function canEditProjectStructure(project: Project): boolean {
+  return !project.structureLocked;
+}
+
+export type TemplateValidation = { ok: boolean; errors: string[] };
+
+/**
+ * Validation for template stages and for the copy customized at project
+ * creation. Legacy Umum is exempt from the "one stage per phase" and "exactly
+ * one winning gate" rules because it keeps the old six-step shape.
+ */
+export function validateTemplateStages(
+  stages: TemplateStage[],
+  options: { legacy?: boolean } = {},
+): TemplateValidation {
+  const errors: string[] = [];
+  if (stages.length === 0) errors.push("Template harus punya minimal satu tahap.");
+
+  if (!options.legacy) {
+    for (const phase of PHASE_ORDER) {
+      if (!stages.some((stage) => stage.phase === phase)) {
+        errors.push(`Fase ${PHASE_LABEL[phase]} harus punya minimal satu tahap.`);
+      }
+    }
+    const winningGates = stages.filter(
+      (stage) => stage.kind === "gate" && stage.gateKind === "client_approval",
+    );
+    if (winningGates.length !== 1) {
+      errors.push("Template harus punya tepat satu gerbang menang (persetujuan klien).");
+    }
+  }
+
+  const sorted = [...stages].sort((a, b) => a.order - b.order);
+  let lastPhase = -1;
+  for (const stage of sorted) {
+    const index = PHASE_ORDER.indexOf(stage.phase);
+    if (index < lastPhase) {
+      errors.push(`Urutan fase mundur pada tahap "${stage.name}".`);
+    }
+    lastPhase = Math.max(lastPhase, index);
+  }
+
+  const names = new Set<string>();
+  for (const stage of stages) {
+    const name = stage.name.trim();
+    if (!name) errors.push("Nama tahap wajib diisi.");
+    else if (names.has(name.toLowerCase())) {
+      errors.push(`Nama tahap "${name}" duplikat.`);
+    }
+    names.add(name.toLowerCase());
+    if (stage.kind === "finance_form" && !stage.financeKind) {
+      errors.push(`Tahap "${stage.name}" harus memilih jenis form keuangan.`);
+    }
+    if (stage.kind === "gate" && !stage.gateKind) {
+      errors.push(`Tahap "${stage.name}" harus memilih jenis gerbang.`);
+    }
+    if (stage.weight <= 0) {
+      errors.push(`Bobot tahap "${stage.name}" harus lebih dari 0.`);
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
 }
 
 export function canAssignTask(user: User): boolean {
@@ -433,6 +627,7 @@ export function canEditForm(
 ): boolean {
   const project = projectById(state, form.projectId);
   if (project?.status !== "active") return false;
+  if (project.rabBaselineLockedAt && form.type === "rab") return false;
   const step = stepFor(state, form.projectId, form.stepKey);
   if (step?.status !== "active") return false;
   if (form.status === "approved") return false;
@@ -470,7 +665,8 @@ export function workloadRows(state: AppState): WorkloadRow[] {
         (task) =>
           task.assigneeId === user.id &&
           !task.archivedAt &&
-          ACTIVE_TASK_STATUSES.includes(task.status),
+          ACTIVE_TASK_STATUSES.includes(task.status) &&
+          projectById(state, task.projectId)?.status === "active",
       );
       const statusCounts: Record<string, number> = {};
       const priorityCounts: Record<string, number> = {};

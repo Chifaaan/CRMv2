@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { FolderKanban, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,6 @@ import { canCreateProject, userById, visibleProjects } from "@/lib/prototype/dom
 import { PHASE_LABEL, PRIORITY_LABEL } from "@/lib/prototype/types";
 import { EmptyState, NativeSelect, PageHeader } from "../ui";
 import { ProjectCard } from "../project-card";
-import { ProjectDialog } from "../dialogs";
 
 export function SimproProjects() {
   const store = usePrototypeStore();
@@ -19,7 +19,6 @@ export function SimproProjects() {
   const [phase, setPhase] = useState("");
   const [status, setStatus] = useState("");
   const [priority, setPriority] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -49,9 +48,11 @@ export function SimproProjects() {
         description="Kelola proyek dan pantau progress pekerjaan di SIMPRO."
         actions={
           canCreateProject(currentUser) ? (
-            <Button onClick={() => setDialogOpen(true)}>
-              <Plus className="size-4" /> New Project
-            </Button>
+            <Link href="/crm/projects/new">
+              <Button>
+                <Plus className="size-4" /> New Project
+              </Button>
+            </Link>
           ) : null
         }
       />
@@ -108,8 +109,6 @@ export function SimproProjects() {
           ))}
         </div>
       )}
-
-      <ProjectDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </div>
   );
 }

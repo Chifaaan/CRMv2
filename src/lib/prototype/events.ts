@@ -3,7 +3,6 @@ import type {
   ActivityLog,
   AppState,
   ProjectEvent,
-  StepKey,
   User,
 } from "./types";
 
@@ -37,7 +36,7 @@ export function recordProjectEvent(
   return [...events, createProjectEvent(input)];
 }
 
-function stepFromMessage(message: string): StepKey | null {
+function stepFromMessage(message: string): string | null {
   const text = message.toLowerCase();
   if (text.includes("bast")) return "bast";
   if (text.includes("invoice")) return "invoice";
@@ -47,7 +46,7 @@ function stepFromMessage(message: string): StepKey | null {
   if (text.includes("running")) return "running";
   const match = text.match(/step\s+([a-z]+)\s+selesai/);
   if (match) {
-    const key = match[1] as StepKey;
+    const key = match[1];
     if (
       key === "pitching" ||
       key === "survey" ||
@@ -62,7 +61,7 @@ function stepFromMessage(message: string): StepKey | null {
   return null;
 }
 
-function stepForActivity(state: AppState, log: ActivityLog): StepKey | null {
+function stepForActivity(state: AppState, log: ActivityLog): string | null {
   if (log.taskId) {
     const task = state.tasks.find((item) => item.id === log.taskId);
     if (task) return task.stepKey;
@@ -72,7 +71,7 @@ function stepForActivity(state: AppState, log: ActivityLog): StepKey | null {
 
 function eventTypeForActivity(
   log: ActivityLog,
-  step: StepKey | null,
+  step: string | null,
 ): string {
   const action = log.action;
   if (action === "step_completed") return "project.step_changed";
@@ -179,7 +178,7 @@ export function maskProjectEventForViewer(
 export type ReadProjectEventsInput = {
   projectId: string;
   viewerId: string;
-  step?: StepKey | null;
+  step?: string | null;
   includeProjectLevel?: boolean;
   cursor?: string;
   limit?: number;

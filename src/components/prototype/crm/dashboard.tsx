@@ -21,7 +21,7 @@ import {
   userById,
   visibleProjects,
 } from "@/lib/prototype/domain";
-import { PHASE_LABEL, type Phase } from "@/lib/prototype/types";
+import { PHASE_LABEL, PHASE_ORDER, type Phase } from "@/lib/prototype/types";
 import { cn } from "@/lib/utils";
 import {
   EmptyState,
@@ -33,7 +33,7 @@ import {
   UserAvatar,
 } from "../ui";
 
-const PHASES: Phase[] = ["planning", "running", "finance"];
+const PHASES: Phase[] = PHASE_ORDER;
 
 export function CrmDashboard() {
   const store = usePrototypeStore();
@@ -43,17 +43,15 @@ export function CrmDashboard() {
 
   if (!currentUser) return null;
 
-  const phaseCounts = {
-    planning: active.filter((project) =>
-      activeSteps(store, project.id).some((step) => step.phase === "planning"),
-    ).length,
-    running: active.filter((project) =>
-      activeSteps(store, project.id).some((step) => step.phase === "running"),
-    ).length,
-    finance: active.filter((project) =>
-      activeSteps(store, project.id).some((step) => step.phase === "finance"),
-    ).length,
-  };
+  const phaseCounts = PHASE_ORDER.reduce(
+    (counts, phase) => {
+      counts[phase] = active.filter((project) =>
+        activeSteps(store, project.id).some((step) => step.phase === phase),
+      ).length;
+      return counts;
+    },
+    {} as Record<Phase, number>,
+  );
 
   const actions = (() => {
     const items: { title: string; description: string; href: string; tone: string }[] = [];
@@ -157,11 +155,12 @@ export function CrmDashboard() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Proyek aktif" value={active.length} sub={`${projects.length} total terlihat`} icon={FolderKanban} />
-        <StatCard label="Planning" value={phaseCounts.planning} sub="Pitching, Survey, RAB" icon={ClipboardCheck} accent="from-violet-500 to-indigo-600" />
+        <StatCard label="Prospek" value={phaseCounts.prospek} sub="Brief sampai menang" icon={ClipboardCheck} accent="from-amber-500 to-orange-600" />
+        <StatCard label="Planning" value={phaseCounts.planning} sub="Komitmen vendor & venue" icon={ClipboardCheck} accent="from-violet-500 to-indigo-600" />
         <StatCard label="Running" value={phaseCounts.running} sub="Eksekusi di SIMPRO" icon={PlayCircle} accent="from-sky-500 to-blue-600" />
-        <StatCard label="Finance" value={phaseCounts.finance} sub="BAST & Invoice" icon={Wallet} accent="from-emerald-500 to-teal-600" />
+        <StatCard label="Closing" value={phaseCounts.closing} sub="BAST, Invoice, evaluasi" icon={Wallet} accent="from-emerald-500 to-teal-600" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
@@ -169,7 +168,7 @@ export function CrmDashboard() {
           title="Pipeline proyek"
           description="Proyek aktif berdasarkan fase yang sedang berjalan."
         >
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {PHASES.map((phase) => {
               const list = active.filter((project) =>
                 activeSteps(store, project.id).some((step) => step.phase === phase),
@@ -199,7 +198,7 @@ export function CrmDashboard() {
                               <div className="min-w-0">
                                 <p className="truncate text-xs font-semibold">{project.name}</p>
                                 <p className="text-muted-foreground truncate text-[10px]">
-                                  {step?.key ?? PHASE_LABEL[phase]}
+                                  {step?.name ?? PHASE_LABEL[phase]}
                                 </p>
                               </div>
                               <span className="text-[10px] font-semibold">{progress}%</span>
@@ -271,7 +270,7 @@ export function CrmDashboard() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold">{project.name}</p>
                     <p className="text-muted-foreground truncate text-[10px]">
-                      {project.code} · {step?.key ?? project.status}
+                      {project.code} · {step?.name ?? project.status}
                     </p>
                   </div>
                   <div className="hidden w-24 sm:block">

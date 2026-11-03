@@ -55,6 +55,9 @@ export function ProjectCard({
   const group = project.groupId
     ? store.groups.find((item) => item.id === project.groupId)
     : undefined;
+  const template = project.templateId
+    ? store.templates.find((item) => item.id === project.templateId)
+    : undefined;
   const activeSteps = store.steps.filter(
     (step) => step.projectId === project.id && step.status === "active",
   );
@@ -107,6 +110,9 @@ export function ProjectCard({
           <h3 className="line-clamp-1 text-sm font-semibold">{project.name}</h3>
           <p className="text-muted-foreground mt-0.5 line-clamp-1 text-xs">
             {project.client || "Tanpa klien"}
+          </p>
+          <p className="text-muted-foreground mt-0.5 line-clamp-1 text-[10px]">
+            {template?.name ?? "Umum"} · v{project.templateVersion ?? 1}
           </p>
         </div>
 
