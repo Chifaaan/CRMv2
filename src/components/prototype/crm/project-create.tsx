@@ -30,8 +30,11 @@ import {
   PHASE_ORDER,
   PRIORITY_LABEL,
   STAGE_KIND_LABEL,
+  type FormStepKey,
+  type GateKind,
   type Phase,
   type Priority,
+  type StageKind,
   type TemplateStage,
   type TemplateTask,
 } from "@/lib/prototype/types";
@@ -58,8 +61,31 @@ function uid(prefix: string): string {
 function cloneStages(stages: TemplateStage[]): TemplateStage[] {
   return stages.map((stage) => ({
     ...stage,
+    formTemplate: stage.formTemplate
+      ? {
+          ...stage.formTemplate,
+          defaultFields: { ...stage.formTemplate.defaultFields },
+          fields: stage.formTemplate.fields.map((field) => ({
+            ...field,
+            options: field.options ? [...field.options] : undefined,
+          })),
+        }
+      : undefined,
     tasks: stage.tasks.map((task) => ({ ...task })),
   }));
+}
+
+function formTemplateFor(title: string): NonNullable<TemplateStage["formTemplate"]> {
+  return {
+    title,
+    defaultFields: {
+      executionDate: { enabled: true, required: true },
+      location: { enabled: true, required: true },
+      notes: { enabled: true, required: false },
+      photos: { enabled: true, required: false },
+    },
+    fields: [],
+  };
 }
 
 function normalize(stages: TemplateStage[]): TemplateStage[] {
@@ -194,7 +220,8 @@ export function CrmProjectCreate() {
       name: `Tahap ${draft.stages.filter((item) => item.phase === phase).length + 1}`,
       phase,
       order: 0,
-      kind: "checklist",
+      kind: "form",
+      formTemplate: formTemplateFor(`Tahap ${draft.stages.filter((item) => item.phase === phase).length + 1}`),
       required: false,
       weight: 1,
       tasks: [],
@@ -492,6 +519,95 @@ export function CrmProjectCreate() {
                           </Button>
                         </div>
 
+                        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                          <NativeSelect
+                            value={stage.kind}
+                            onChange={(value) => {
+                              const kind = value as StageKind;
+                              updateStage(stage.id, {
+                                kind,
+                                financeKind:
+                                  kind === "finance_form"
+                                    ? stage.financeKind ?? "rab"
+                                    : undefined,
+                                gateKind:
+                                  kind === "gate"
+                                    ? stage.gateKind ?? "go_no_go"
+                                    : undefined,
+                                formTemplate:
+                                  kind === "form"
+                                    ? stage.formTemplate ??
+                                      formTemplateFor(stage.name)
+                                    : stage.formTemplate,
+                              });
+                            }}
+                            className="h-7 text-[11px]"
+                          >
+                            {Object.entries(STAGE_KIND_LABEL).map(
+                              ([value, label]) => (
+                                <option key={value} value={value}>
+                                  {label}
+                                </option>
+                              ),
+                            )}
+                          </NativeSelect>
+                          {stage.kind === "finance_form" ? (
+                            <NativeSelect
+                              value={stage.financeKind ?? "rab"}
+                              onChange={(value) =>
+                                updateStage(stage.id, {
+                                  financeKind: value as FormStepKey,
+                                })
+                              }
+                              className="h-7 text-[11px]"
+                            >
+                              <option value="rab">RAB</option>
+                              <option value="bast">BAST</option>
+                              <option value="invoice">Invoice</option>
+                              <option value="payment">Pembayaran</option>
+                            </NativeSelect>
+                          ) : null}
+                          {stage.kind === "gate" ? (
+                            <NativeSelect
+                              value={stage.gateKind ?? "go_no_go"}
+                              onChange={(value) =>
+                                updateStage(stage.id, {
+                                  gateKind: value as GateKind,
+                                })
+                              }
+                              className="h-7 text-[11px]"
+                            >
+                              {Object.entries(GATE_KIND_LABEL).map(
+                                ([value, label]) => (
+                                  <option key={value} value={value}>
+                                    {label}
+                                  </option>
+                                ),
+                              )}
+                            </NativeSelect>
+                          ) : null}
+                          {stage.kind === "form" ? (
+                            <Input
+                              value={
+                                (stage.formTemplate ??
+                                  formTemplateFor(stage.name)).title
+                              }
+                              onChange={(event) =>
+                                updateStage(stage.id, {
+                                  formTemplate: {
+                                    ...(stage.formTemplate ??
+                                      formTemplateFor(stage.name)),
+                                    title: event.target.value,
+                                  },
+                                })
+                              }
+                              placeholder="Judul form"
+                              className="h-7 text-[11px]"
+                              aria-label="Judul form"
+                            />
+                          ) : null}
+                        </div>
+
                         {stage.kind === "gate" && stage.gateKind ? (
                           <p className="text-muted-foreground mt-1 text-[10px]">
                             {GATE_KIND_LABEL[stage.gateKind]}
@@ -503,7 +619,7 @@ export function CrmProjectCreate() {
                           </p>
                         ) : null}
 
-                        {stage.tasks.length > 0 ? (
+                        {stage.kind === "simpro" && stage.tasks.length > 0 ? (
                           <details className="mt-2">
                             <summary className="text-muted-foreground cursor-pointer text-[10px] font-medium">
                               {stage.tasks.length} task default
@@ -570,14 +686,16 @@ export function CrmProjectCreate() {
                             </div>
                           </details>
                         ) : null}
-                        <Button
-                          variant="link"
-                          size="xs"
-                          className="mt-1 h-auto px-0"
-                          onClick={() => addTask(stage.id)}
-                        >
-                          <Plus className="size-3" /> Task
-                        </Button>
+                        {stage.kind === "simpro" ? (
+                          <Button
+                            variant="link"
+                            size="xs"
+                            className="mt-1 h-auto px-0"
+                            onClick={() => addTask(stage.id)}
+                          >
+                            <Plus className="size-3" /> Task
+                          </Button>
+                        ) : null}
                       </div>
                     ))
                   )}

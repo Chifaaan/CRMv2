@@ -147,6 +147,12 @@ describe("visibility", () => {
 describe("workload and groups", () => {
   it("counts only active card tasks by assignee", () => {
     const state = createSeedState();
+    const future = new Date(Date.now() + 86400000).toISOString();
+    const past = new Date(Date.now() - 86400000).toISOString();
+    for (const task of state.tasks) {
+      if (task.status !== "completed") task.dueDate = future;
+    }
+    state.tasks.find((task) => task.id === "task-delta-004")!.dueDate = past;
     const rows = workloadRows(state);
     const assignee1 = rows.find((row) => row.user.id === "u-assignee1")!;
     const assignee2 = rows.find((row) => row.user.id === "u-assignee2")!;

@@ -21,10 +21,12 @@ import {
   ShieldCheck,
   Trophy,
   Users,
+  X,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -39,11 +41,19 @@ import {
   activeSteps,
   calculateJourneyProgress,
   canApproveGate,
+  canAssignFormEntry,
   canCancelProject,
+  canCreateFormEntry,
+  canEditForm,
   canManageProject,
   evaluateGate,
+  formatCurrency,
   formatDate,
+  formatDateTime,
+  formEntriesForStep,
+  formEntryProgress,
   formFor,
+  formLabel,
   formsFor,
   pitchingsFor,
   rolesForPitching,
@@ -52,18 +62,25 @@ import {
   workProgressForProject,
 } from "@/lib/prototype/domain";
 import {
+  FORM_ENTRY_STATUS_LABEL,
   FORM_STATUS_LABEL,
   GATE_KIND_LABEL,
   LIFECYCLE_LABEL,
   PHASE_HINT,
   PHASE_LABEL,
-  PHASE_ORDER,
+  type FormEntry,
   type Phase,
   type Project,
   type ProjectStep,
   type StepForm,
 } from "@/lib/prototype/types";
 import { cn } from "@/lib/utils";
+import {
+  missingPhaseTooltip,
+  phaseStageCounts,
+  phaseTransitionBanner,
+  phasesPresent,
+} from "@/lib/prototype/stepper";
 import {
   DataRow,
   EmptyState,
@@ -170,6 +187,31 @@ function stageSummary(
       needsAttention: !form?.assigneeId,
     };
   }
+  if (step.kind === "form") {
+    if (step.legacyKey === "survey" && !step.formTemplate) {
+      const form = formFor(store, projectId, "survey");
+      const text =
+        form && form.status !== "unassigned"
+          ? FORM_STATUS_LABEL[form.status]
+          : "Belum ada PIC";
+      return {
+        full: text,
+        emptyValue: !form || form.status === "unassigned",
+        completedData: form?.status === "approved",
+        needsAttention: !form?.assigneeId,
+      };
+    }
+    const progress = formEntryProgress(store, projectId, step.key);
+    return {
+      full:
+        progress.total === 0
+          ? "Belum ada entri"
+          : `${progress.approved}/${progress.total} disetujui`,
+      emptyValue: progress.total === 0,
+      completedData: progress.total > 0 && progress.approved === progress.total,
+      needsAttention: progress.total === 0 || progress.approved < progress.total,
+    };
+  }
   if (step.legacyKey === "pitching") {
     const winners = pitchingsFor(store, projectId).filter(
       (pitching) => pitching.status === "won",
@@ -181,23 +223,13 @@ function stageSummary(
       needsAttention: false,
     };
   }
-  if (step.legacyKey === "running") {
-    const tasks = tasksForStep(store, projectId, "running");
-    const active = tasks.filter((task) => task.status !== "completed").length;
-    return {
-      full: `${active} aktif`,
-      emptyValue: active === 0,
-      completedData: false,
-      needsAttention: false,
-    };
-  }
-  const tasks = step.tasks ?? [];
-  const done = tasks.filter((task) => task.done).length;
+  const tasks = tasksForStep(store, projectId, step.key);
+  const active = tasks.filter((task) => task.status !== "completed").length;
   return {
-    full: tasks.length === 0 ? "Tanpa task" : `${done}/${tasks.length} task`,
+    full: tasks.length === 0 ? "Belum ada task" : `${active} aktif`,
     emptyValue: tasks.length === 0,
-    completedData: tasks.length > 0 && done === tasks.length,
-    needsAttention: tasks.some((task) => task.required && !task.done),
+    completedData: tasks.length > 0 && active === 0,
+    needsAttention: active > 0,
   };
 }
 
@@ -220,9 +252,17 @@ function ProjectStepper({
   const steps = store.steps
     .filter((step) => step.projectId === projectId)
     .sort((a, b) => a.order - b.order);
+  const phases = phasesPresent(steps);
+  const counts = phaseStageCounts(steps);
   const activePhase = steps.find((step) => step.status === "active")?.phase;
-  const phaseSteps = steps.filter((step) => step.phase === selectedPhase);
+  const effectivePhase = phases.includes(selectedPhase)
+    ? selectedPhase
+    : activePhase ?? phases[0];
+  const phaseSteps = effectivePhase
+    ? steps.filter((step) => step.phase === effectivePhase)
+    : [];
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const phaseRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const moveFocus = (
     event: KeyboardEvent<HTMLButtonElement>,
@@ -248,27 +288,61 @@ function ProjectStepper({
     }
   };
 
+  const movePhaseFocus = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    if (phases.length === 0) return;
+    let nextIndex = index;
+    if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % phases.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + phases.length) % phases.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = phases.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    const nextPhase = phases[nextIndex];
+    phaseRefs.current[nextPhase]?.focus();
+    onPhaseClick(nextPhase);
+  };
+
   return (
     <div className="space-y-3">
       <div
         role="tablist"
-        aria-label="Fase proyek"
-        className="grid grid-cols-2 gap-1.5 sm:grid-cols-4"
+        aria-label={`Fase proyek: ${phases
+          .map((phase) => PHASE_LABEL[phase])
+          .join(", ")}`}
+        className="flex gap-1.5 overflow-x-auto pb-1"
       >
-        {PHASE_ORDER.map((phase) => {
+        {phases.map((phase, index) => {
           const isActive = activePhase === phase;
-          const selected = selectedPhase === phase;
+          const selected = effectivePhase === phase;
           return (
             <button
               key={phase}
+              ref={(node) => {
+                phaseRefs.current[phase] = node;
+              }}
               type="button"
               role="tab"
               aria-selected={selected}
               aria-current={isActive ? "step" : undefined}
+              tabIndex={selected ? 0 : -1}
               title={PHASE_HINT[phase]}
               onClick={() => onPhaseClick(phase)}
+              onKeyDown={(event) => movePhaseFocus(event, index)}
+              style={{
+                flexGrow: counts[phase] ?? 1,
+                flexBasis: 0,
+              }}
               className={cn(
-                "rounded-lg px-2 py-1.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none",
+                "min-w-[110px] rounded-lg px-2 py-1.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none",
                 selected ? "bg-white/15" : "hover:bg-white/10",
               )}
             >
@@ -281,7 +355,9 @@ function ProjectStepper({
                 {PHASE_LABEL[phase]}
               </span>
               <span className="block truncate text-[10px] text-white/50">
-                {isActive ? "Sedang berjalan" : `${steps.filter((step) => step.phase === phase).length} tahap`}
+                {isActive
+                  ? "Sedang berjalan"
+                  : `${counts[phase] ?? 0} tahap`}
               </span>
             </button>
           );
@@ -290,7 +366,9 @@ function ProjectStepper({
 
       <div
         role="tablist"
-        aria-label={`Tahap fase ${PHASE_LABEL[selectedPhase]}`}
+        aria-label={`Tahap fase ${
+          PHASE_LABEL[effectivePhase ?? "prospek"]
+        }`}
         className="relative flex gap-2 overflow-x-auto pb-2"
       >
         {phaseSteps.map((step, index) => {
@@ -301,7 +379,7 @@ function ProjectStepper({
           const selected = selectedStepKey === step.key;
           const summary = skipped
             ? {
-                full: "Dilewati",
+                full: "Tidak digunakan",
                 emptyValue: false,
                 completedData: false,
                 needsAttention: false,
@@ -833,6 +911,116 @@ function SurveyStep({
   );
 }
 
+function FinanceFormSummary({
+  project,
+  formKey,
+  readOnly = false,
+}: {
+  project: Project;
+  formKey: "rab" | "bast" | "invoice" | "payment";
+  readOnly?: boolean;
+}) {
+  const store = usePrototypeStore();
+  const currentUser = userById(store, store.currentUserId);
+  const form = formFor(store, project.id, formKey);
+  const [panelMode, setPanelMode] = useState<"review" | "history" | null>(null);
+  if (!form || !currentUser) return null;
+
+  const editable =
+    !readOnly &&
+    canEditForm(store, currentUser, form) &&
+    form.status !== "submitted" &&
+    form.status !== "approved";
+  const href = `/crm/projects/${project.id}/forms/${formKey}`;
+  const rabItems =
+    formKey === "rab"
+      ? ((form.payload as { items?: { qty: number; unitPrice: number }[] })
+          .items ?? [])
+      : [];
+  const rabTotal = rabItems.reduce(
+    (sum, item) => sum + item.qty * item.unitPrice,
+    0,
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-card ring-foreground/10 rounded-xl p-4 shadow-sm ring-1">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold">{formLabel(formKey)}</h3>
+              <FormStatusBadge status={form.status} />
+            </div>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Assignee {userById(store, form.assigneeId)?.name ?? "Belum di-assign"}
+              {form.updatedAt
+                ? ` · Terakhir diubah ${formatDateTime(form.updatedAt)}`
+                : ""}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href={href}>
+              <Button size="sm" variant={editable ? "default" : "outline"}>
+                {editable ? "Buka form" : "Lihat form"}
+              </Button>
+            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPanelMode("review")}
+            >
+              Review
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPanelMode("history")}
+            >
+              History
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+          {formKey === "rab" ? (
+            <DataRow label="Total RAB" value={formatCurrency(rabTotal)} />
+          ) : null}
+          <DataRow label="Submitted" value={formatDate(form.submittedAt)} />
+          <DataRow
+            label="Review terakhir"
+            value={form.reviewComment || "—"}
+          />
+        </div>
+      </div>
+
+      {panelMode ? (
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h4 className="text-xs font-semibold">
+              {panelMode === "review" ? "Review form" : "History form"}
+            </h4>
+            <Button
+              size="xs"
+              variant="ghost"
+              onClick={() => setPanelMode(null)}
+            >
+              Tutup
+            </Button>
+          </div>
+          <StepFormPanel
+            key={panelMode}
+            project={project}
+            formKey={formKey}
+            initialMode={panelMode}
+            hideFill
+            hideModeTabs
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function RabStep({
   project,
   readOnly = false,
@@ -843,7 +1031,11 @@ function RabStep({
   const store = usePrototypeStore();
   return (
     <div className="space-y-4">
-      <StepFormPanel project={project} formKey="rab" readOnly={readOnly} />
+      <FinanceFormSummary
+        project={project}
+        formKey="rab"
+        readOnly={readOnly}
+      />
       {!readOnly ? (
         <GatePanel
           projectId={project.id}
@@ -920,10 +1112,20 @@ function FinanceStep({
   readOnly?: boolean;
 }) {
   const store = usePrototypeStore();
-  const stepKey = step.financeKind === "invoice" ? "invoice" : "bast";
+  const formKey =
+    step.financeKind === "payment"
+      ? "payment"
+      : step.financeKind === "invoice"
+        ? "invoice"
+        : "bast";
   return (
     <div className="space-y-4">
-      <StepFormPanel project={project} formKey={stepKey} readOnly={readOnly} />
+      <FinanceFormSummary
+        key={formKey}
+        project={project}
+        formKey={formKey}
+        readOnly={readOnly}
+      />
       {!readOnly ? (
         <GatePanel
           projectId={project.id}
@@ -935,7 +1137,232 @@ function FinanceStep({
   );
 }
 
-function ChecklistStage({
+function EntryAssignControl({
+  entry,
+  onDone,
+}: {
+  entry: FormEntry;
+  onDone: () => void;
+}) {
+  const store = usePrototypeStore();
+  const [userId, setUserId] = useState(entry.assigneeId ?? "");
+  const candidates = store.users.filter((user) => user.role === "assignee");
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <NativeSelect
+        value={userId}
+        onChange={setUserId}
+        className="h-7 w-[150px] text-[11px]"
+      >
+        <option value="">Pilih assignee</option>
+        {candidates.map((user) => (
+          <option key={user.id} value={user.id}>
+            {user.name}
+          </option>
+        ))}
+      </NativeSelect>
+      <Button
+        size="xs"
+        variant="outline"
+        disabled={!userId}
+        onClick={() => {
+          if (!userId) return;
+          store.assignFormEntry(entry.id, userId);
+          toast.success("Entri form di-assign.");
+          onDone();
+        }}
+      >
+        Assign
+      </Button>
+    </div>
+  );
+}
+
+function FormStagePanel({
+  project,
+  step,
+  readOnly = false,
+}: {
+  project: Project;
+  step: ProjectStep;
+  readOnly?: boolean;
+}) {
+  const store = usePrototypeStore();
+  const router = useRouter();
+  const currentUser = userById(store, store.currentUserId);
+  const entries = formEntriesForStep(store, project.id, step.key);
+  const progress = formEntryProgress(store, project.id, step.key);
+  const canCreate = Boolean(
+    currentUser &&
+      !readOnly &&
+      canCreateFormEntry(store, currentUser, project, step.key),
+  );
+  const canAssign = Boolean(currentUser && canAssignFormEntry(currentUser));
+  const canManage = Boolean(currentUser && canManageProject(currentUser, project));
+  const [createOpen, setCreateOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [dueDate, setDueDate] = useState("");
+
+  return (
+    <div className="space-y-4">
+      <SectionCard
+        title={step.name}
+        description={
+          step.description ||
+          step.formTemplate?.title ||
+          "Tahap form dengan satu template dan banyak entri."
+        }
+        actions={
+          canCreate ? (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="size-3.5" /> Buat entri
+            </Button>
+          ) : null
+        }
+      >
+        <div className="mb-3 space-y-1">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Progress</span>
+            <span className="font-semibold">
+              {progress.approved} dari {progress.total} disetujui
+            </span>
+          </div>
+          <ProgressBar
+            value={
+              progress.total === 0
+                ? 0
+                : Math.round((progress.approved / progress.total) * 100)
+            }
+          />
+        </div>
+
+        {entries.length === 0 ? (
+          <EmptyState
+            icon={Clock3}
+            title="Belum ada entri"
+            description="PM membuat entri, lalu Manager/Admin meng-assign ke assignee."
+          />
+        ) : (
+          <div className="space-y-2">
+            {entries.map((entry) => (
+              <div
+                key={entry.id}
+                className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">{entry.title}</p>
+                  <p className="text-muted-foreground text-[10px]">
+                    {FORM_ENTRY_STATUS_LABEL[entry.status]}
+                    {entry.dueDate ? ` · Tenggat ${formatDate(entry.dueDate)}` : ""}
+                  </p>
+                </div>
+                <UserAvatar user={userById(store, entry.assigneeId)} size="sm" />
+                {canAssign && entry.status === "unassigned" ? (
+                  <EntryAssignControl
+                    entry={entry}
+                    onDone={() => undefined}
+                  />
+                ) : null}
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() => router.push(`/forms?entry=${entry.id}`)}
+                >
+                  Buka
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {canManage && entries.length === 0 && !step.noWorkConfirmedAt ? (
+          <div className="mt-3 rounded-lg border border-dashed p-2">
+            <p className="text-muted-foreground mb-2 text-[11px]">
+              Tidak ada pekerjaan di tahap ini? Konfirmasi akan dicatat di audit trail.
+            </p>
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => {
+                store.confirmNoWork(project.id, step.key);
+                toast.success("Konfirmasi tidak ada pekerjaan dicatat.");
+              }}
+            >
+              Konfirmasi tidak ada pekerjaan
+            </Button>
+          </div>
+        ) : null}
+      </SectionCard>
+
+      {!readOnly ? (
+        <GatePanel
+          projectId={project.id}
+          stepKey={step.key}
+          onComplete={() => store.completeStep(project.id, step.key)}
+        />
+      ) : null}
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Buat entri form</DialogTitle>
+            <DialogDescription>
+              Entri dibuat tanpa assignee. Manager/Admin meng-assign setelahnya.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium" htmlFor="entry-title">
+                Nama entri
+              </label>
+              <Input
+                id="entry-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Contoh: Vendor A / Lokasi Jakarta"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium" htmlFor="entry-due">
+                Tenggat
+              </label>
+              <Input
+                id="entry-due"
+                type="date"
+                value={dueDate}
+                onChange={(event) => setDueDate(event.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              disabled={!title.trim()}
+              onClick={() => {
+                store.createFormEntry(project.id, step.key, {
+                  title,
+                  dueDate: dueDate
+                    ? new Date(`${dueDate}T00:00:00`).toISOString()
+                    : undefined,
+                });
+                setTitle("");
+                setDueDate("");
+                setCreateOpen(false);
+                toast.success("Entri form dibuat.");
+              }}
+            >
+              Buat entri
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function SimproStagePanel({
   project,
   step,
   readOnly = false,
@@ -946,16 +1373,28 @@ function ChecklistStage({
 }) {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
-  const canComplete = Boolean(
-    currentUser && canManageProject(currentUser, project) && project.status === "active",
-  );
-  const tasks = step.tasks ?? [];
+  const tasks = tasksForStep(store, project.id, step.key);
+  const active = tasks.filter((task) => task.status !== "completed").length;
+  const canManage = Boolean(currentUser && canManageProject(currentUser, project));
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const suggestions = step.tasks ?? [];
 
   return (
     <div className="space-y-4">
       <SectionCard
         title={step.name}
-        description={step.description || "Tahap checklist dari template proyek."}
+        description={
+          step.description ||
+          "Tahap SIMPRO dikerjakan lewat kartu task di board."
+        }
+        actions={
+          <Link href={`/projects/${project.id}/board?stage=${step.key}`}>
+            <Button size="sm" variant="outline">
+              Buka Board
+            </Button>
+          </Link>
+        }
       >
         {step.costBeforeCommitment ? (
           <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
@@ -963,70 +1402,136 @@ function ChecklistStage({
             Tahap berbiaya sebelum komitmen. Biaya tetap tercatat meski proyek kalah.
           </div>
         ) : null}
-
+        <div className="mb-3 grid gap-3 sm:grid-cols-3">
+          <DataRow label="Total task" value={tasks.length} />
+          <DataRow
+            label="Selesai"
+            value={tasks.filter((task) => task.status === "completed").length}
+          />
+          <DataRow label="Aktif" value={active} />
+        </div>
         {tasks.length === 0 ? (
           <EmptyState
             icon={Clock3}
             title="Belum ada task"
-            description="Tahap ini tidak memiliki task default."
+            description="Buat task dari board atau dari template tahap."
           />
         ) : (
-          <div className="space-y-2">
-            {tasks.map((task) => (
+          <div className="space-y-1.5">
+            {tasks.slice(0, 8).map((task) => (
               <div
                 key={task.id}
-                className="flex items-start gap-2 rounded-lg border px-3 py-2"
+                className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs"
               >
-                <button
-                  type="button"
-                  aria-pressed={task.done}
-                  aria-label={`${task.done ? "Buka" : "Selesaikan"} task ${task.name}`}
-                  disabled={readOnly}
-                  onClick={() =>
-                    store.toggleStageTask(project.id, step.key, task.id)
-                  }
-                  className={cn(
-                    "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors",
-                    task.done
-                      ? "border-emerald-500 bg-emerald-500 text-white"
-                      : "border-muted-foreground/40",
-                    readOnly ? "cursor-default opacity-60" : "cursor-pointer",
-                  )}
-                >
-                  {task.done ? <Check className="size-2.5" /> : null}
-                </button>
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={cn(
-                      "text-xs font-medium",
-                      task.done && "text-muted-foreground line-through",
-                    )}
-                  >
-                    {task.name}
-                  </p>
-                  <p className="text-muted-foreground text-[10px]">
-                    {[
-                      task.role,
-                      task.required ? "Wajib" : "Opsional",
-                      task.deliverable,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </p>
-                </div>
+                <span className="text-muted-foreground w-20 shrink-0">
+                  {task.code}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{task.title}</span>
+                <TaskStatusBadge status={task.status} />
+                <UserAvatar user={userById(store, task.assigneeId)} size="sm" />
               </div>
             ))}
           </div>
         )}
       </SectionCard>
 
-      {!readOnly && canComplete ? (
+      {suggestions.length > 0 && canManage ? (
+        <SectionCard
+          title="Task dari template"
+          description="Task default adalah usulan, bukan dibuat otomatis."
+          actions={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setSelected(suggestions.map((task) => task.id));
+                setTemplateOpen(true);
+              }}
+            >
+              Buat dari template
+            </Button>
+          }
+        >
+          <p className="text-muted-foreground text-xs">
+            {suggestions.length} task default tersedia.
+          </p>
+        </SectionCard>
+      ) : null}
+
+      {!readOnly ? (
         <GatePanel
           projectId={project.id}
           stepKey={step.key}
           onComplete={() => store.completeStep(project.id, step.key)}
         />
       ) : null}
+
+      {canManage && tasks.length === 0 && !step.noWorkConfirmedAt ? (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            store.confirmNoWork(project.id, step.key);
+            toast.success("Konfirmasi tidak ada pekerjaan dicatat.");
+          }}
+        >
+          Konfirmasi tidak ada pekerjaan
+        </Button>
+      ) : null}
+
+      <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Buat task dari template</DialogTitle>
+            <DialogDescription>
+              Pilih task default yang ingin dibuat sebagai kartu Backlog.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {suggestions.map((task) => (
+              <label key={task.id} className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  className="size-4"
+                  checked={selected.includes(task.id)}
+                  onChange={(event) =>
+                    setSelected((current) =>
+                      event.target.checked
+                        ? [...current, task.id]
+                        : current.filter((id) => id !== task.id),
+                    )
+                  }
+                />
+                <span>{task.name}</span>
+                {task.deliverable ? (
+                  <span className="text-muted-foreground text-[10px]">
+                    {task.deliverable}
+                  </span>
+                ) : null}
+              </label>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTemplateOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              disabled={selected.length === 0}
+              onClick={() => {
+                const count = store.createTasksFromTemplate(
+                  project.id,
+                  step.key,
+                  selected,
+                );
+                setTemplateOpen(false);
+                toast.success(`${count} task dibuat dari template.`);
+              }}
+            >
+              Buat task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1210,6 +1715,13 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const [cancelReason, setCancelReason] = useState("");
   const [selectedStepKey, setSelectedStepKey] = useState<string | null>(null);
   const [selectedPhase, setSelectedPhase] = useState<Phase>("prospek");
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const transitionBanner = project
+    ? phaseTransitionBanner(projectSteps, project.status)
+    : null;
+  const bannerStorageKey = transitionBanner
+    ? `crm-phase-banner:${projectId}:${transitionBanner.key}`
+    : null;
 
   useEffect(() => {
     const fromUrl = new URLSearchParams(window.location.search).get("step");
@@ -1223,6 +1735,15 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     // reset the user's selected step.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  useEffect(() => {
+    if (!bannerStorageKey) return;
+    try {
+      setBannerDismissed(window.localStorage.getItem(bannerStorageKey) === "1");
+    } catch {
+      setBannerDismissed(false);
+    }
+  }, [bannerStorageKey]);
 
   if (!project || !currentUser) {
     return <EmptyState icon={FolderKanban} title="Proyek tidak ditemukan" description="Proyek mungkin tidak ada atau bukan milik Anda." />;
@@ -1251,6 +1772,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const template = project.templateId
     ? store.templates.find((item) => item.id === project.templateId)
     : undefined;
+  const templateTooltip = missingPhaseTooltip(projectSteps);
 
   const selectStep = (stepKey: string) => {
     const next = projectSteps.find((step) => step.key === stepKey);
@@ -1295,7 +1817,15 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         <GateStage project={project} step={selectedStep} readOnly={readOnly} />
       );
     }
-    if (selectedStep.kind === "checklist") {
+    if (selectedStep.kind === "form") {
+      if (selectedStep.legacyKey === "survey" && !selectedStep.formTemplate) {
+        return <SurveyStep project={project} readOnly={readOnly} />;
+      }
+      return (
+        <FormStagePanel project={project} step={selectedStep} readOnly={readOnly} />
+      );
+    }
+    if (selectedStep.kind === "simpro") {
       if (selectedStep.legacyKey === "pitching") {
         return <PitchingStep project={project} readOnly={readOnly} />;
       }
@@ -1303,7 +1833,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         return <RunningStep project={project} readOnly={readOnly} />;
       }
       return (
-        <ChecklistStage project={project} step={selectedStep} readOnly={readOnly} />
+        <SimproStagePanel project={project} step={selectedStep} readOnly={readOnly} />
       );
     }
     if (selectedStep.financeKind === "survey") {
@@ -1358,7 +1888,13 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
                   </span>
                 ) : null}
                 {template ? (
-                  <span className="rounded-md bg-white/15 px-2 py-0.5 text-[10px] font-semibold ring-1 ring-white/25">
+                  <span
+                    className="rounded-md bg-white/15 px-2 py-0.5 text-[10px] font-semibold ring-1 ring-white/25"
+                    title={templateTooltip}
+                    aria-label={`${template.name} v${
+                      project.templateVersion ?? template.version
+                    }. ${templateTooltip}`}
+                  >
                     {template.name} v{project.templateVersion ?? template.version}
                   </span>
                 ) : null}
@@ -1428,6 +1964,32 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           </div>
         </div>
       </div>
+
+      {transitionBanner && !bannerDismissed ? (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900"
+        >
+          <span>{transitionBanner.message}</span>
+          <button
+            type="button"
+            aria-label="Tutup pemberitahuan fase"
+            className="text-sky-700 hover:text-sky-900 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:outline-none"
+            onClick={() => {
+              try {
+                if (bannerStorageKey) {
+                  window.localStorage.setItem(bannerStorageKey, "1");
+                }
+              } catch {
+                /* ignore storage errors */
+              }
+              setBannerDismissed(true);
+            }}
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      ) : null}
 
       {project.status === "completed" ? (
         <CompletedSummary project={project} />

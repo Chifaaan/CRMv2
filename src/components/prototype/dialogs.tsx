@@ -488,11 +488,13 @@ export function TaskDialog({
   onOpenChange,
   projectId,
   taskId,
+  stepKey,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
   taskId?: string;
+  stepKey?: string;
 }) {
   const store = usePrototypeStore();
   const task = taskId ? store.tasks.find((item) => item.id === taskId) : undefined;
@@ -546,6 +548,7 @@ export function TaskDialog({
       description: description.trim(),
       priority,
       dueDate: dueDate ? new Date(`${dueDate}T00:00:00`).toISOString() : undefined,
+      stepKey,
     });
     toast.success("Task dibuat di Backlog.");
     onOpenChange(false);

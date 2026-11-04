@@ -4,9 +4,13 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   activeSteps,
+  canAssignFormEntry,
+  canCancelFormEntry,
+  canCreateFormEntry,
+  canEditFormEntry,
   canManageProject,
   canManageTemplates,
-  canViewProject,
+  canReviewFormEntry,
   evaluateGate,
   groupCompleted,
   userById,
@@ -32,14 +36,17 @@ import {
   FORM_STEP_KEYS,
   type AppState,
   type Attachment,
+  type FormEntry,
+  type FormEntryPayload,
+  type FormField,
   type FormStepKey,
+  type FormTemplate,
   type Pitching,
   type Priority,
   type Project,
   type ProjectEvent,
   type ProjectStep,
   type ProjectTemplate,
-  type StageTask,
   TASK_STATUS_LABEL,
   type StepForm,
   type Task,
@@ -132,6 +139,7 @@ type PrototypeActions = {
       description: string;
       priority: Priority;
       dueDate?: string;
+      stepKey?: string;
     },
   ) => string;
   assignTask: (taskId: string, userId: string) => void;
@@ -144,7 +152,26 @@ type PrototypeActions = {
   removeAttachment: (taskId: string, attachmentId: string) => void;
 
   completeStep: (projectId: string, stepKey: string) => void;
-  toggleStageTask: (projectId: string, stepKey: string, taskId: string) => void;
+  confirmNoWork: (projectId: string, stepKey: string, note?: string) => void;
+  createFormEntry: (
+    projectId: string,
+    stepKey: string,
+    input: { title: string; dueDate?: string },
+  ) => string;
+  assignFormEntry: (entryId: string, userId: string) => void;
+  saveFormEntry: (entryId: string, payload: FormEntryPayload) => void;
+  submitFormEntry: (entryId: string) => void;
+  reviewFormEntry: (
+    entryId: string,
+    decision: "approved" | "need_revision",
+    comment: string,
+  ) => void;
+  cancelFormEntry: (entryId: string, reason: string) => void;
+  createTasksFromTemplate: (
+    projectId: string,
+    stepKey: string,
+    taskIds: string[],
+  ) => number;
   decideGate: (
     projectId: string,
     stepKey: string,
@@ -295,6 +322,21 @@ function formSnapshot(form: StepForm): Record<string, unknown> {
       documentUrl: payload.documentUrl ?? "",
     };
   }
+  if (form.type === "payment") {
+    const payload = form.payload as {
+      paymentDate?: string;
+      amount?: number;
+      method?: string;
+      status?: string;
+    };
+    return {
+      ...base,
+      paymentDate: payload.paymentDate ?? "",
+      amount: payload.amount ?? 0,
+      method: payload.method ?? "",
+      paymentStatus: payload.status ?? "unpaid",
+    };
+  }
   const payload = form.payload as {
     surveyDate?: string;
     location?: string;
@@ -338,6 +380,7 @@ function stagesForProject(
       gateKind: stage.gateKind,
       costBeforeCommitment: stage.costBeforeCommitment,
       legacyKey: stage.legacyKey,
+      formTemplate: stage.formTemplate,
       tasks: stageTasksForProject(stage.tasks),
       startedAt: active ? now() : undefined,
     };
@@ -366,6 +409,7 @@ function stagesDiffer(
         gateKind: stage.gateKind,
         parallelGroup: stage.parallelGroup,
         costBeforeCommitment: stage.costBeforeCommitment,
+        formTemplate: stage.formTemplate,
         tasks: stage.tasks.map((task) => ({
           id: task.id,
           name: task.name,
@@ -397,67 +441,177 @@ function templateEvent(
 
 type PersistedState = Partial<AppState> & Record<string, unknown>;
 
+function defaultFormTemplate(
+  title: string,
+  tasks: { name: string }[] = [],
+): FormTemplate {
+  const fields: FormField[] =
+    tasks.length > 0
+      ? [
+          {
+            id: `field-checklist-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+            label: "Daftar centang",
+            type: "checklist",
+            required: true,
+            options: tasks.map((task) => task.name),
+          },
+        ]
+      : [];
+  return {
+    title,
+    defaultFields: {
+      executionDate: { enabled: true, required: true },
+      location: { enabled: true, required: true },
+      notes: { enabled: true, required: false },
+      photos: { enabled: true, required: false },
+    },
+    fields,
+  };
+}
+
+function seedTemplateFor(id?: string): ProjectTemplate | undefined {
+  return createSeedTemplates().find((template) => template.id === id);
+}
+
+function migrateTemplateStage(stage: TemplateStage): TemplateStage {
+  if ((stage.kind as string) === "checklist") {
+    return {
+      ...stage,
+      kind: "form",
+      formTemplate: stage.formTemplate ?? defaultFormTemplate(stage.name, stage.tasks),
+    };
+  }
+  if (stage.kind === "form" && !stage.formTemplate) {
+    return {
+      ...stage,
+      formTemplate: defaultFormTemplate(stage.name, stage.tasks),
+    };
+  }
+  return stage;
+}
+
 /**
  * Upgrades localStorage data written before templates existed. Idempotent:
  * fields that are already present are left untouched.
  */
 export function migratePersistedState(persisted: unknown): PersistedState {
   const state = (persisted ?? {}) as PersistedState;
+  const existingTemplates = Array.isArray(state.templates)
+    ? (state.templates as ProjectTemplate[])
+    : [];
   const templates =
-    Array.isArray(state.templates) && state.templates.length > 0
-      ? (state.templates as ProjectTemplate[])
+    existingTemplates.length > 0
+      ? existingTemplates.map((template) => {
+          const seed = seedTemplateFor(template.id);
+          if (seed) {
+            return {
+              ...seed,
+              changelog: [
+                ...template.changelog,
+                ...seed.changelog.filter(
+                  (entry) => !template.changelog.some((old) => old.version === entry.version),
+                ),
+              ],
+            };
+          }
+          return {
+            ...template,
+            stages: template.stages.map(migrateTemplateStage),
+          };
+        })
       : createSeedTemplates();
-  const umum =
-    templates.find((template) => template.id === UMUM_TEMPLATE_ID) ?? templates[0];
 
   const projects = Array.isArray(state.projects)
-    ? (state.projects as Project[]).map((project) => ({
-        ...project,
-        templateId: project.templateId ?? umum?.id ?? UMUM_TEMPLATE_ID,
-        templateVersion: project.templateVersion ?? umum?.version ?? 1,
-        structureLocked: project.structureLocked ?? true,
-        lifecycle:
-          project.lifecycle ??
-          (project.status === "completed"
-            ? ("done" as const)
-            : project.status === "cancelled"
-              ? ("cancelled" as const)
-              : ("active" as const)),
-      }))
+    ? (state.projects as Project[]).map((project) => {
+        const template = templates.find((item) => item.id === project.templateId);
+        return {
+          ...project,
+          templateId: project.templateId ?? UMUM_TEMPLATE_ID,
+          templateVersion: template?.version ?? project.templateVersion ?? 1,
+          structureLocked: project.structureLocked ?? true,
+          lifecycle:
+            project.lifecycle ??
+            (project.status === "completed"
+              ? ("done" as const)
+              : project.status === "cancelled"
+                ? ("cancelled" as const)
+                : ("active" as const)),
+        };
+      })
     : [];
 
   const steps = Array.isArray(state.steps)
     ? (state.steps as ProjectStep[]).map((step) => {
-        const meta = umum?.stages.find(
-          (stage) => (stage.legacyKey ?? stage.financeKind) === step.key,
-        );
+        const project = projects.find((item) => item.id === step.projectId);
+        const template = templates.find((item) => item.id === project?.templateId);
+        const prefix = `step-${step.projectId}-`;
+        const stageId = step.id.startsWith(prefix)
+          ? step.id.slice(prefix.length)
+          : undefined;
+        const seedStage = stageId
+          ? template?.stages.find((stage) => stage.id === stageId)
+          : undefined;
         const legacyPhase =
           (step.phase as string) === "planning"
             ? ("prospek" as const)
             : (step.phase as string) === "finance"
               ? ("closing" as const)
               : step.phase;
-        return {
+        const base: ProjectStep = {
           ...step,
-          phase: meta?.phase ?? legacyPhase,
-          name: step.name ?? meta?.name ?? step.key,
-          kind: step.kind ?? meta?.kind ?? ("checklist" as const),
+          phase: seedStage?.phase ?? legacyPhase,
+          name: step.name ?? seedStage?.name ?? step.key,
+          kind:
+            seedStage?.kind ??
+            (step.legacyKey === "pitching" || step.legacyKey === "running"
+              ? "simpro"
+              : (step.kind as string) === "checklist"
+                ? "form"
+                : step.kind ?? "form"),
           required: step.required ?? true,
-          weight: step.weight ?? meta?.weight ?? 1,
-          parallelGroup: step.parallelGroup ?? meta?.parallelGroup,
-          financeKind: step.financeKind ?? meta?.financeKind,
-          gateKind: step.gateKind ?? meta?.gateKind,
+          weight: step.weight ?? seedStage?.weight ?? 1,
+          parallelGroup: step.parallelGroup ?? seedStage?.parallelGroup,
+          financeKind: step.financeKind ?? seedStage?.financeKind,
+          gateKind: step.gateKind ?? seedStage?.gateKind,
           costBeforeCommitment:
-            step.costBeforeCommitment ?? meta?.costBeforeCommitment,
-          legacyKey: step.legacyKey ?? meta?.legacyKey,
+            step.costBeforeCommitment ?? seedStage?.costBeforeCommitment,
+          legacyKey: step.legacyKey ?? seedStage?.legacyKey,
+          formTemplate:
+            seedStage?.formTemplate ??
+            step.formTemplate ??
+            (((step.kind as string) === "checklist" ||
+            (step.kind === "form" && step.legacyKey !== "survey")
+              ? defaultFormTemplate(step.name ?? step.key, step.tasks ?? [])
+              : undefined)),
           tasks: Array.isArray(step.tasks)
             ? step.tasks
-            : stageTasksForProject(meta?.tasks ?? []),
+            : stageTasksForProject(seedStage?.tasks ?? []),
         };
+        return base;
       })
     : [];
 
-  return { ...state, templates, projects, steps };
+  const tasks = Array.isArray(state.tasks)
+    ? (state.tasks as Task[]).map((task) => {
+        if (task.stageId) return task;
+        const step = steps.find(
+          (item) =>
+            item.projectId === task.projectId && item.key === task.stepKey,
+        );
+        return { ...task, stageId: step?.id };
+      })
+    : [];
+
+  return {
+    ...state,
+    templates,
+    projects,
+    steps,
+    tasks,
+    formEntries: Array.isArray(state.formEntries)
+      ? (state.formEntries as FormEntry[])
+      : [],
+  };
 }
 
 function linkProjectsToTemplate(
@@ -532,6 +686,25 @@ function defaultForm(projectId: string, key: FormStepKey): StepForm {
       updatedAt: now(),
     };
   }
+  if (key === "payment") {
+    return {
+      ...base,
+      payload: {
+        invoiceId: "",
+        paymentDate: "",
+        amount: 0,
+        method: "",
+        proofFileName: "",
+        proofStorageKey: "",
+        proofMimeType: "",
+        proofSize: 0,
+        status: "unpaid" as const,
+        notes: "",
+      },
+      versions: [],
+      updatedAt: now(),
+    };
+  }
   return {
     ...base,
     payload: {
@@ -566,6 +739,9 @@ function createPitchingTasks(
         code: taskCode(project, tasks),
         projectId,
         stepKey: "pitching",
+        stageId: state.steps.find(
+          (step) => step.projectId === projectId && step.key === "pitching",
+        )?.id,
         pitchingId: pitching.id,
         title: `[${pitching.title}] ${role.label}`,
         description: "Task otomatis dari pitching.",
@@ -1417,15 +1593,26 @@ export const usePrototypeStore = create<PrototypeStore>()(
       createTask: (projectId, input) => {
         const state = get();
         const project = state.projects.find((item) => item.id === projectId);
-        const step = activeSteps(state, projectId)[0];
-        if (!project || !step) return "";
-        if (step.legacyKey !== "pitching" && step.legacyKey !== "running") return "";
+        if (!project || project.status !== "active") return "";
+        const step =
+          (input.stepKey
+            ? state.steps.find(
+                (item) =>
+                  item.projectId === projectId && item.key === input.stepKey,
+              )
+            : activeSteps(state, projectId).find(
+                (item) => item.kind === "simpro",
+              )) ?? undefined;
+        if (!step || step.kind !== "simpro" || step.status === "completed") {
+          return "";
+        }
         const taskId = uid("task");
         const task: Task = {
           id: taskId,
           code: taskCode(project, state.tasks),
           projectId,
-          stepKey: step.legacyKey,
+          stepKey: step.key,
+          stageId: step.id,
           title: input.title,
           description: input.description,
           priority: input.priority,
@@ -1453,9 +1640,10 @@ export const usePrototypeStore = create<PrototypeStore>()(
             projectId,
             step: step.key,
             eventType: "task.created",
-            summary: `Task ${task.code} dibuat.`,
+            summary: `Task ${task.code} dibuat pada tahap ${step.name}.`,
             metadata: {
               taskId,
+              stageId: step.id,
               after: {
                 title: task.title,
                 priority: task.priority,
@@ -1854,39 +2042,343 @@ export const usePrototypeStore = create<PrototypeStore>()(
         });
       },
 
-      toggleStageTask: (projectId, stepKey, taskId) => {
+      confirmNoWork: (projectId, stepKey, note) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
         const project = state.projects.find((item) => item.id === projectId);
-        const user = userById(state, state.currentUserId);
-        if (!project || !user || project.status !== "active") return;
-        if (!canViewProject(state, user, project)) return;
+        if (!actor || !project || project.status !== "active") return;
+        if (!canManageProject(actor, project)) return;
         const step = state.steps.find(
           (item) => item.projectId === projectId && item.key === stepKey,
         );
-        if (!step || step.status !== "active") return;
-        const target = step.tasks.find((task) => task.id === taskId);
-        if (!target) return;
-        const nextTasks: StageTask[] = step.tasks.map((task) =>
-          task.id === taskId ? { ...task, done: !task.done } : task,
-        );
+        if (!step || (step.kind !== "form" && step.kind !== "simpro")) return;
+        const confirmedAt = now();
         set({
           steps: state.steps.map((item) =>
             item.projectId === projectId && item.key === stepKey
-              ? { ...item, tasks: nextTasks }
+              ? {
+                  ...item,
+                  noWorkConfirmedAt: confirmedAt,
+                  noWorkConfirmedById: actor.id,
+                }
               : item,
           ),
           projectEvents: projectEvent(state, {
             projectId,
             step: stepKey,
-            eventType: "project.stage_task_toggled",
-            summary: `Task ${target.name} ${target.done ? "dibuka" : "diselesaikan"}.`,
+            eventType: "step.no_work_confirmed",
+            summary: `Konfirmasi tidak ada pekerjaan pada tahap ${step.name}.`,
+            metadata: { note: note?.trim() || null, confirmedAt },
+          }),
+        });
+      },
+
+      createFormEntry: (projectId, stepKey, input) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!actor || !project) return "";
+        if (!canCreateFormEntry(state, actor, project, stepKey)) return "";
+        const step = state.steps.find(
+          (item) => item.projectId === projectId && item.key === stepKey,
+        );
+        if (!step || !input.title.trim()) return "";
+        const entry: FormEntry = {
+          id: uid("fentry"),
+          projectId,
+          stepKey,
+          templateStageId: step.id,
+          title: input.title.trim(),
+          dueDate: input.dueDate,
+          status: "unassigned",
+          payload: { values: {}, photos: [] },
+          versions: [],
+          createdById: actor.id,
+          createdAt: now(),
+        };
+        set({
+          formEntries: [...state.formEntries, entry],
+          activityLogs: [
+            ...state.activityLogs,
+            activity(state, {
+              projectId,
+              actorId: actor.id,
+              action: "form_entry_created",
+              message: `Entri form ${entry.title} dibuat.`,
+            }),
+          ],
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: stepKey,
+            eventType: "form_entry.created",
+            summary: `Entri form ${entry.title} dibuat pada tahap ${step.name}.`,
+            metadata: { entryId: entry.id, title: entry.title },
+          }),
+        });
+        return entry.id;
+      },
+
+      assignFormEntry: (entryId, userId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const entry = state.formEntries.find((item) => item.id === entryId);
+        if (!actor || !entry || !canAssignFormEntry(actor)) return;
+        const assignee = userById(state, userId);
+        if (!assignee) return;
+        set({
+          formEntries: state.formEntries.map((item) =>
+            item.id === entryId
+              ? {
+                  ...item,
+                  assigneeId: userId,
+                  status: "assigned" as const,
+                  updatedAt: now(),
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          notifications: [
+            ...state.notifications,
+            notify(state, {
+              userId,
+              type: "form_entry_assigned",
+              title: "Form baru di-assign",
+              body: entry.title,
+              href: `/forms?entry=${entry.id}`,
+            }),
+          ],
+          projectEvents: projectEvent(state, {
+            projectId: entry.projectId,
+            step: entry.stepKey,
+            eventType: "form_entry.assigned",
+            summary: `Entri form ${entry.title} di-assign ke ${assignee.name}.`,
             metadata: {
-              taskId,
-              before: { done: target.done },
-              after: { done: !target.done },
+              entryId,
+              before: { assigneeId: entry.assigneeId ?? null, status: entry.status },
+              after: { assigneeId: userId, status: "assigned" },
             },
           }),
         });
+      },
+
+      saveFormEntry: (entryId, payload) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const entry = state.formEntries.find((item) => item.id === entryId);
+        if (!actor || !entry || !canEditFormEntry(state, actor, entry)) return;
+        set({
+          formEntries: state.formEntries.map((item) =>
+            item.id === entryId
+              ? {
+                  ...item,
+                  payload,
+                  status: "draft" as const,
+                  updatedAt: now(),
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          projectEvents: projectEvent(state, {
+            projectId: entry.projectId,
+            step: entry.stepKey,
+            eventType: "form_entry.updated",
+            summary: `Entri form ${entry.title} disimpan sebagai draft.`,
+            metadata: { entryId },
+          }),
+        });
+      },
+
+      submitFormEntry: (entryId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const entry = state.formEntries.find((item) => item.id === entryId);
+        if (!actor || !entry || !canEditFormEntry(state, actor, entry)) return;
+        const submittedAt = now();
+        const versionNumber = entry.versions.length + 1;
+        set({
+          formEntries: state.formEntries.map((item) =>
+            item.id === entryId
+              ? {
+                  ...item,
+                  status: "submitted" as const,
+                  submittedAt,
+                  versions: [
+                    ...item.versions,
+                    {
+                      id: uid("fversion"),
+                      entryId,
+                      versionNumber,
+                      status: "submitted" as const,
+                      payload: item.payload,
+                      createdAt: submittedAt,
+                      createdById: actor.id,
+                    },
+                  ],
+                  updatedAt: submittedAt,
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          notifications: [
+            ...state.notifications,
+            notify(state, {
+              userId:
+                state.projects.find((item) => item.id === entry.projectId)
+                  ?.createdById ?? actor.id,
+              type: "form_entry_submitted",
+              title: "Entri form menunggu review",
+              body: entry.title,
+              href: `/crm/projects/${entry.projectId}?step=${entry.stepKey}`,
+            }),
+          ],
+          projectEvents: projectEvent(state, {
+            projectId: entry.projectId,
+            step: entry.stepKey,
+            eventType: "form_entry.submitted",
+            summary: `Entri form ${entry.title} disubmit (v${versionNumber}).`,
+            metadata: { entryId, versionNumber },
+          }),
+        });
+      },
+
+      reviewFormEntry: (entryId, decision, comment) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const entry = state.formEntries.find((item) => item.id === entryId);
+        if (!actor || !entry || !canReviewFormEntry(state, actor, entry)) return;
+        if (decision === "need_revision" && !comment.trim()) return;
+        const reviewedAt = now();
+        set({
+          formEntries: state.formEntries.map((item) =>
+            item.id === entryId
+              ? {
+                  ...item,
+                  status: decision,
+                  reviewedAt,
+                  reviewedById: actor.id,
+                  reviewComment: comment.trim(),
+                  updatedAt: reviewedAt,
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          notifications: entry.assigneeId
+            ? [
+                ...state.notifications,
+                notify(state, {
+                  userId: entry.assigneeId,
+                  type:
+                    decision === "approved"
+                      ? "form_entry_approved"
+                      : "form_entry_revision",
+                  title:
+                    decision === "approved"
+                      ? "Entri form disetujui"
+                      : "Entri form perlu revisi",
+                  body: comment || entry.title,
+                  href: `/forms?entry=${entry.id}`,
+                }),
+              ]
+            : state.notifications,
+          projectEvents: projectEvent(state, {
+            projectId: entry.projectId,
+            step: entry.stepKey,
+            eventType:
+              decision === "approved"
+                ? "form_entry.approved"
+                : "form_entry.need_revision",
+            summary:
+              decision === "approved"
+                ? `Entri form ${entry.title} disetujui.`
+                : `Entri form ${entry.title} perlu revisi.`,
+            metadata: { entryId, reviewComment: comment.trim() },
+          }),
+        });
+      },
+
+      cancelFormEntry: (entryId, reason) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const entry = state.formEntries.find((item) => item.id === entryId);
+        if (!actor || !entry || !reason.trim()) return;
+        if (!canCancelFormEntry(state, actor, entry)) return;
+        const cancelledAt = now();
+        set({
+          formEntries: state.formEntries.map((item) =>
+            item.id === entryId
+              ? {
+                  ...item,
+                  status: "cancelled" as const,
+                  cancelledAt,
+                  cancelReason: reason.trim(),
+                  updatedAt: cancelledAt,
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          projectEvents: projectEvent(state, {
+            projectId: entry.projectId,
+            step: entry.stepKey,
+            eventType: "form_entry.cancelled",
+            summary: `Entri form ${entry.title} dibatalkan: ${reason.trim()}`,
+            metadata: { entryId, reason: reason.trim() },
+          }),
+        });
+      },
+
+      createTasksFromTemplate: (projectId, stepKey, taskIds) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!actor || !project || !canManageProject(actor, project)) return 0;
+        const step = state.steps.find(
+          (item) => item.projectId === projectId && item.key === stepKey,
+        );
+        if (!step || step.kind !== "simpro" || step.status === "completed") {
+          return 0;
+        }
+        const nextTasks = [...state.tasks];
+        let created = 0;
+        for (const templateTask of step.tasks) {
+          if (!taskIds.includes(templateTask.id)) continue;
+          const exists = nextTasks.some(
+            (task) =>
+              task.projectId === projectId &&
+              task.stageId === step.id &&
+              task.title === templateTask.name &&
+              !task.archivedAt,
+          );
+          if (exists) continue;
+          nextTasks.push({
+            id: uid("task"),
+            code: taskCode(project, nextTasks),
+            projectId,
+            stepKey: step.key,
+            stageId: step.id,
+            title: templateTask.name,
+            description: templateTask.deliverable ?? "",
+            priority: "medium",
+            status: "backlog",
+            reporterId: actor.id,
+            createdAt: now(),
+            checklist: [],
+            comments: [],
+            attachments: [],
+          });
+          created += 1;
+        }
+        if (created === 0) return 0;
+        set({
+          tasks: nextTasks,
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: step.key,
+            eventType: "task.created_from_template",
+            summary: `${created} task dibuat dari template tahap ${step.name}.`,
+            metadata: { stageId: step.id, count: created },
+          }),
+        });
+        return created;
       },
 
       decideGate: (projectId, stepKey, decision, reason) => {
@@ -2298,7 +2790,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
     }),
     {
       name: "crm-simpro:v1",
-      version: 2,
+      version: 3,
       migrate: (persisted) =>
         migratePersistedState(persisted) as unknown as PrototypeStore,
       partialize: (state) => ({
@@ -2312,6 +2804,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
         pitchingRoles: state.pitchingRoles,
         tasks: state.tasks,
         forms: state.forms,
+        formEntries: state.formEntries,
         groups: state.groups,
         notifications: state.notifications,
         activityLogs: state.activityLogs,

@@ -5,6 +5,7 @@ import type {
   FormStepKey,
   FormVersion,
   InvoicePayload,
+  PaymentPayload,
   RabPayload,
   StepForm,
 } from "./types";
@@ -35,6 +36,16 @@ export function formHasData(type: FormStepKey, payload: FormPayload): boolean {
         value.amount ||
         value.notes ||
         value.documentUrl,
+    );
+  }
+  if (type === "payment") {
+    const value = payload as PaymentPayload;
+    return Boolean(
+      value.paymentDate ||
+        value.amount ||
+        value.method ||
+        value.proofFileName ||
+        value.notes,
     );
   }
   const value = payload as { surveyDate?: string; findings?: string };
@@ -198,6 +209,24 @@ export function getValidationErrors(
     return issues;
   }
 
+  if (type === "payment") {
+    const value = payload as PaymentPayload;
+    const issues: ValidationIssue[] = [];
+    if (!value.paymentDate) {
+      issues.push({ key: "paymentDate", label: "Tanggal bayar wajib diisi." });
+    }
+    if (!value.amount || value.amount <= 0) {
+      issues.push({ key: "amount", label: "Nominal pembayaran harus lebih dari 0." });
+    }
+    if (!value.method.trim()) {
+      issues.push({ key: "method", label: "Metode pembayaran wajib diisi." });
+    }
+    if (value.status === "paid" && !value.proofStorageKey) {
+      issues.push({ key: "proof", label: "Bukti pembayaran wajib untuk status lunas." });
+    }
+    return issues;
+  }
+
   return [];
 }
 
@@ -256,6 +285,10 @@ const FIELD_LABELS: Record<string, string> = {
   amount: "Nilai",
   taxPercent: "PPN %",
   taxAmount: "Nominal PPN",
+  paymentDate: "Tanggal bayar",
+  method: "Metode",
+  paymentStatus: "Status pembayaran",
+  proofFileName: "Bukti",
 };
 
 export function diffFormPayloads(

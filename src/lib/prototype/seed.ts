@@ -37,6 +37,20 @@ function defaultPayload(key: FormStepKey) {
       documentUrl: "",
     };
   }
+  if (key === "payment") {
+    return {
+      invoiceId: "",
+      paymentDate: "",
+      amount: 0,
+      method: "",
+      proofFileName: "",
+      proofStorageKey: "",
+      proofMimeType: "",
+      proofSize: 0,
+      status: "unpaid" as const,
+      notes: "",
+    };
+  }
   return {
     number: "",
     date: "",
@@ -53,7 +67,7 @@ function makeForms(
   projectId: string,
   overrides: Partial<Record<FormStepKey, Partial<StepForm>>> = {},
 ): StepForm[] {
-  const keys: FormStepKey[] = ["survey", "rab", "bast", "invoice"];
+  const keys: FormStepKey[] = ["survey", "rab", "bast", "invoice", "payment"];
   return keys.map((key) => ({
     id: formId(projectId, key),
     projectId,
@@ -100,6 +114,7 @@ function makeSteps(
       gateKind: meta.gateKind,
       costBeforeCommitment: meta.costBeforeCommitment,
       legacyKey,
+      formTemplate: meta.formTemplate,
       tasks: stageTasksForProject(meta.tasks),
       startedAt:
         completedKeys.includes(legacyKey) || activeKeys.includes(legacyKey)
@@ -1074,14 +1089,20 @@ export function createSeedState(): AppState {
     },
   ];
 
+  const tasksWithStages = tasks.map((task) => ({
+    ...task,
+    stageId: steps.find(
+      (step) => step.projectId === task.projectId && step.key === task.stepKey,
+    )?.id,
+  }));
+
   const baseState: AppState = {
-    seedVersion: 3,
-    currentUserId: "u-pm1",
+    seedVersion: 3,    currentUserId: "u-pm1",
     users,
     projects: projects.map((project) => ({
       ...project,
       templateId: UMUM_TEMPLATE_ID,
-      templateVersion: 1,
+      templateVersion: 2,
       structureLocked: true,
       lifecycle:
         project.status === "completed"
@@ -1097,8 +1118,9 @@ export function createSeedState(): AppState {
     templates: SEED_TEMPLATES,
     pitchings,
     pitchingRoles,
-    tasks,
+    tasks: tasksWithStages,
     forms,
+    formEntries: [],
     groups: [group],
     notifications,
     activityLogs,

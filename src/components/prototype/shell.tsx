@@ -30,11 +30,13 @@ import {
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   formatDateTime,
+  formsNeedingAction,
   landingForRole,
   roleCanAccessCrm,
   roleCanAccessSimpro,
   userById,
 } from "@/lib/prototype/domain";
+import { simproFinanceFormsNeedingAction } from "@/lib/prototype/simpro-forms";
 import { clearPrototypeFiles } from "@/lib/prototype/files";
 import { NativeSelect, UserAvatar } from "./ui";
 
@@ -78,11 +80,13 @@ function NavItem({
   label,
   icon: Icon,
   pathname,
+  badge,
 }: {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
   pathname: string;
+  badge?: number;
 }) {
   const active = isActive(pathname, href);
   return (
@@ -97,6 +101,15 @@ function NavItem({
     >
       <Icon className={cn("h-[18px] w-[18px] shrink-0", active && "text-primary")} />
       <span className="truncate">{label}</span>
+      {badge && badge > 0 ? (
+        <span
+          className="bg-primary text-primary-foreground ml-auto rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+          aria-label={`${badge} form perlu diisi`}
+          title={`${badge} form perlu diisi`}
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
     </Link>
   );
 }
@@ -176,10 +189,15 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!currentUser) return;
     const isCrm = pathname.startsWith("/crm");
+    const isFormsPath = pathname === "/forms" || pathname.startsWith("/forms/");
     if (isCrm && !roleCanAccessCrm(currentUser.role)) {
       router.replace(landingForRole(currentUser.role));
     }
-    if (!isCrm && !roleCanAccessSimpro(currentUser.role)) {
+    if (
+      !isCrm &&
+      !roleCanAccessSimpro(currentUser.role) &&
+      !(currentUser.role === "finance" && isFormsPath)
+    ) {
       router.replace("/crm");
     }
   }, [currentUser, pathname, router]);
@@ -192,6 +210,10 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
     [store.notifications, store.currentUserId],
   );
   const unread = notifications.filter((notification) => !notification.readAt).length;
+  const formBadge = currentUser
+    ? formsNeedingAction(store, currentUser.id) +
+      simproFinanceFormsNeedingAction(store, currentUser.id)
+    : 0;
 
   if (!store.hydrated || !currentUser) {
     return (
@@ -205,6 +227,12 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
 
   const showCrm = roleCanAccessCrm(currentUser.role);
   const showSimpro = roleCanAccessSimpro(currentUser.role);
+  const showSimproForms = currentUser.role === "finance";
+  const simproNav = showSimpro
+    ? NAV_SIMPRO
+    : showSimproForms
+      ? NAV_SIMPRO.filter((item) => item.href === "/forms")
+      : [];
   const isCrm = pathname.startsWith("/crm");
 
   return (
@@ -225,13 +253,18 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
-          {showSimpro ? (
+          {simproNav.length > 0 ? (
             <div className="flex flex-col gap-0.5">
               <div className="text-muted-foreground px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]">
                 SIMPRO
               </div>
-              {NAV_SIMPRO.map((item) => (
-                <NavItem key={item.href} {...item} pathname={pathname} />
+              {simproNav.map((item) => (
+                <NavItem
+                  key={item.href}
+                  {...item}
+                  pathname={pathname}
+                  badge={item.href === "/forms" ? formBadge : undefined}
+                />
               ))}
             </div>
           ) : null}

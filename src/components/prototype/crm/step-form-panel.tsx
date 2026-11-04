@@ -49,16 +49,20 @@ import type {
   FormPayload,
   FormStepKey,
   InvoicePayload,
+  PaymentPayload,
   Project,
   RabItem,
   RabPayload,
   StepForm,
   User,
 } from "@/lib/prototype/types";
+import { PAYMENT_STATUS_LABEL } from "@/lib/prototype/types";
+import { putPrototypeFile } from "@/lib/prototype/files";
 import { cn } from "@/lib/utils";
 import {
   DataRow,
   EmptyState,
+  Field,
   FormStatusBadge,
   NativeSelect,
   ProgressBar,
@@ -858,24 +862,27 @@ function rabTotalValue(payload: FormPayload): number {
   return rabTotal(payload as RabPayload);
 }
 
-type FormKey = "rab" | "bast" | "invoice";
+type FormKey = "rab" | "bast" | "invoice" | "payment";
 
 const FORM_TITLE: Record<FormKey, string> = {
   rab: "Form RAB",
   bast: "Form BAST",
   invoice: "Form Invoice",
+  payment: "Form Pembayaran",
 };
 
 const FORM_DESCRIPTION: Record<FormKey, string> = {
   rab: "Diisi Finance di CRM. PM mereview sebelum step RAB selesai.",
   bast: "Finance menunjuk PIC dan melengkapi dokumen BAST. PM mereview.",
   invoice: "Diisi Finance di CRM. Selisih nilai dengan RAB hanya peringatan.",
+  payment: "Finance mencatat pembayaran, status, dan bukti bayar. PM mereview.",
 };
 
 const FORM_EMPTY_HINT: Record<FormKey, string> = {
   rab: "RAB berisi daftar item, kuantitas, satuan, dan harga. Diisi oleh Finance yang di-assign.",
   bast: "BAST berisi PIC, tanggal, catatan, dan link dokumen serah terima. Diisi oleh Finance.",
   invoice: "Invoice berisi nomor, tanggal terbit, jatuh tempo, nilai, dan lampiran. Diisi oleh Finance.",
+  payment: "Pembayaran berisi tanggal, nominal, metode, status, dan bukti bayar. Diisi oleh Finance.",
 };
 
 const STATUS_TEXT: Record<string, string> = {
@@ -892,19 +899,29 @@ type PanelProps = {
   form: StepForm;
   currentUser: User;
   readOnly: boolean;
+  initialMode?: Mode;
+  forceFillView?: boolean;
+  hideModeTabs?: boolean;
+  hideFill?: boolean;
+  onSubmitted?: () => void;
 };
 
 function ModeTabs({
   mode,
   onChange,
   canFill,
+  hideFill = false,
+  hideTabs = false,
 }: {
   mode: Mode;
   onChange: (mode: Mode) => void;
   canFill: boolean;
+  hideFill?: boolean;
+  hideTabs?: boolean;
 }) {
+  if (hideTabs) return null;
   const tabs: { id: Mode; label: string }[] = [
-    ...(canFill ? [{ id: "fill" as const, label: "Isi" }] : []),
+    ...(canFill && !hideFill ? [{ id: "fill" as const, label: "Isi" }] : []),
     { id: "review", label: "Review" },
     { id: "history", label: "History" },
   ];
@@ -1044,6 +1061,19 @@ function SubmitSummary({
       </div>
     );
   }
+  if (type === "payment") {
+    const value = payload as PaymentPayload;
+    return (
+      <div className="space-y-2 rounded-xl border bg-muted/20 p-4 text-sm">
+        <p className="font-semibold">Ringkasan Pembayaran</p>
+        <DataRow label="Tanggal bayar" value={formatDate(value.paymentDate)} />
+        <DataRow label="Nominal" value={formatCurrency(value.amount)} />
+        <DataRow label="Metode" value={value.method || "—"} />
+        <DataRow label="Status" value={PAYMENT_STATUS_LABEL[value.status]} />
+        <DataRow label="Bukti" value={value.proofFileName || "—"} />
+      </div>
+    );
+  }
   const value = payload as InvoicePayload;
   return (
     <div className="space-y-2 rounded-xl border bg-muted/20 p-4 text-sm">
@@ -1064,7 +1094,17 @@ function SubmitSummary({
   );
 }
 
-function PanelInner({ project, form, currentUser, readOnly }: PanelProps) {
+function PanelInner({
+  project,
+  form,
+  currentUser,
+  readOnly,
+  initialMode,
+  forceFillView = false,
+  hideModeTabs = false,
+  hideFill = false,
+  onSubmitted,
+}: PanelProps) {
   const store = usePrototypeStore();
   const locked = form.status === "submitted" || form.status === "approved";
   const editable =
@@ -1072,7 +1112,9 @@ function PanelInner({ project, form, currentUser, readOnly }: PanelProps) {
   const reviewer = canReviewForm(store, currentUser, form);
   const versions = form.versions ?? [];
   const latestVersion = versions[versions.length - 1];
-  const [mode, setMode] = useState<Mode>(editable ? "fill" : "review");
+  const [mode, setMode] = useState<Mode>(
+    initialMode ?? (editable ? "fill" : "review"),
+  );
   const [draft, setDraft] = useState<FormPayload>(form.payload);
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState<
@@ -1117,15 +1159,19 @@ function PanelInner({ project, form, currentUser, readOnly }: PanelProps) {
     setCompare(false);
     setAssignUserId(form.assigneeId ?? "");
     modePickedRef.current = false;
-    setMode(editable ? "fill" : "review");
+    setMode(initialMode ?? (editable ? "fill" : "review"));
     // Only reset when the form itself changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.id]);
 
   useEffect(() => {
+    if (forceFillView) {
+      setMode("fill");
+      return;
+    }
     if (!editable && mode === "fill") setMode("review");
-    else if (editable && !modePickedRef.current) setMode("fill");
-  }, [editable, mode]);
+    else if (editable && !modePickedRef.current && !initialMode) setMode("fill");
+  }, [editable, mode, forceFillView, initialMode]);
 
   useEffect(() => {
     if (dirty) dirtyForms.add(form.id);
@@ -1291,6 +1337,7 @@ function PanelInner({ project, form, currentUser, readOnly }: PanelProps) {
     toast.success(
       `${title.replace("Form ", "")} disubmit dan menunggu review PM.`,
     );
+    onSubmitted?.();
   };
 
   const decide = (decision: "approved" | "need_revision") => {
@@ -1391,6 +1438,8 @@ function PanelInner({ project, form, currentUser, readOnly }: PanelProps) {
                 setMode(next);
               }}
               canFill={editable}
+              hideFill={hideFill}
+              hideTabs={hideModeTabs}
             />
           ) : null}
         </div>
@@ -1737,6 +1786,144 @@ function PanelInner({ project, form, currentUser, readOnly }: PanelProps) {
   );
 }
 
+function PaymentEditor({
+  project,
+  payload,
+  onChange,
+  readOnly,
+  errors,
+}: {
+  project: Project;
+  payload: PaymentPayload;
+  onChange: (payload: PaymentPayload) => void;
+  readOnly: boolean;
+  errors: ValidationIssue[];
+}) {
+  const store = usePrototypeStore();
+  const invoices = store.forms.filter(
+    (form) => form.projectId === project.id && form.type === "invoice",
+  );
+  const update = (patch: Partial<PaymentPayload>) =>
+    onChange({ ...payload, ...patch });
+
+  return (
+    <div className="space-y-3">
+      {errors.length > 0 ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-800">
+          {errors.map((issue) => (
+            <p key={issue.key}>{issue.label}</p>
+          ))}
+        </div>
+      ) : null}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Invoice terkait">
+          <NativeSelect
+            value={payload.invoiceId ?? ""}
+            onChange={(value) => update({ invoiceId: value })}
+            disabled={readOnly}
+          >
+            <option value="">Tidak ditautkan</option>
+            {invoices.map((invoice) => {
+              const value = invoice.payload as InvoicePayload;
+              return (
+                <option key={invoice.id} value={invoice.id}>
+                  {value.number || invoice.id}
+                </option>
+              );
+            })}
+          </NativeSelect>
+        </Field>
+        <Field label="Tanggal bayar">
+          <Input
+            type="date"
+            value={dateInput(payload.paymentDate)}
+            disabled={readOnly}
+            onChange={(event) => update({ paymentDate: event.target.value })}
+          />
+        </Field>
+        <Field label="Nominal">
+          <Input
+            type="number"
+            min={0}
+            value={payload.amount || ""}
+            disabled={readOnly}
+            onChange={(event) => update({ amount: Number(event.target.value) })}
+          />
+        </Field>
+        <Field label="Metode">
+          <Input
+            value={payload.method}
+            disabled={readOnly}
+            placeholder="Transfer bank / tunai"
+            onChange={(event) => update({ method: event.target.value })}
+          />
+        </Field>
+        <Field label="Status pembayaran">
+          <NativeSelect
+            value={payload.status}
+            onChange={(value) =>
+              update({ status: value as PaymentPayload["status"] })
+            }
+            disabled={readOnly}
+          >
+            {Object.entries(PAYMENT_STATUS_LABEL).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </NativeSelect>
+        </Field>
+        <Field label="Bukti pembayaran">
+          {readOnly ? (
+            <p className="text-xs">{payload.proofFileName || "Belum ada bukti."}</p>
+          ) : (
+            <div className="space-y-1">
+              <label className="text-primary inline-flex cursor-pointer items-center gap-1 text-xs font-medium">
+                <input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png"
+                  className="hidden"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast.error("Maksimal 5 MB per bukti.");
+                      return;
+                    }
+                    const storageKey = `payment-${Date.now()}-${Math.random()
+                      .toString(36)
+                      .slice(2, 7)}`;
+                    await putPrototypeFile(storageKey, file);
+                    update({
+                      proofFileName: file.name,
+                      proofStorageKey: storageKey,
+                      proofMimeType: file.type,
+                      proofSize: file.size,
+                    });
+                    toast.success("Bukti pembayaran ditambahkan.");
+                  }}
+                />
+                Unggah bukti
+              </label>
+              <p className="text-muted-foreground text-[10px]">
+                {payload.proofFileName || "Belum ada bukti."}
+              </p>
+            </div>
+          )}
+        </Field>
+        <Field label="Catatan" className="sm:col-span-2">
+          <Textarea
+            value={payload.notes}
+            disabled={readOnly}
+            rows={2}
+            onChange={(event) => update({ notes: event.target.value })}
+          />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
 function DraftFields({
   project,
   form,
@@ -1779,6 +1966,17 @@ function DraftFields({
         />
       );
     }
+    if (form.type === "payment") {
+      return (
+        <PaymentEditor
+          project={project}
+          payload={payload as PaymentPayload}
+          onChange={(next) => onChange(next)}
+          readOnly={readOnly}
+          errors={errors}
+        />
+      );
+    }
     return (
       <InvoiceEditor
         project={project}
@@ -1798,10 +1996,20 @@ export function StepFormPanel({
   project,
   formKey,
   readOnly = false,
+  initialMode,
+  forceFillView = false,
+  hideModeTabs = false,
+  hideFill = false,
+  onSubmitted,
 }: {
   project: Project;
   formKey: FormKey;
   readOnly?: boolean;
+  initialMode?: Mode;
+  forceFillView?: boolean;
+  hideModeTabs?: boolean;
+  hideFill?: boolean;
+  onSubmitted?: () => void;
 }) {
   const store = usePrototypeStore();
   const form = formFor(store, project.id, formKey);
@@ -1813,6 +2021,11 @@ export function StepFormPanel({
       form={form}
       currentUser={currentUser}
       readOnly={readOnly}
+      initialMode={initialMode}
+      forceFillView={forceFillView}
+      hideModeTabs={hideModeTabs}
+      hideFill={hideFill}
+      onSubmitted={onSubmitted}
     />
   );
 }

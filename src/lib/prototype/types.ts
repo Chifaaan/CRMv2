@@ -6,7 +6,7 @@ export type ProjectStatus = "active" | "completed" | "cancelled";
 
 export type Phase = "prospek" | "planning" | "running" | "closing";
 
-export type StageKind = "checklist" | "finance_form" | "gate";
+export type StageKind = "form" | "finance_form" | "gate" | "simpro";
 
 export type GateKind = "go_no_go" | "client_approval";
 
@@ -20,7 +20,97 @@ export type StepKey =
   | "bast"
   | "invoice";
 
-export type FormStepKey = "survey" | "rab" | "bast" | "invoice";
+export type FormStepKey =
+  | "survey"
+  | "rab"
+  | "bast"
+  | "invoice"
+  | "payment";
+
+export type FormFieldType =
+  | "text"
+  | "number"
+  | "date"
+  | "select"
+  | "checklist"
+  | "file";
+
+export type FormField = {
+  id: string;
+  label: string;
+  type: FormFieldType;
+  required: boolean;
+  options?: string[];
+};
+
+export type FormDefaultFieldConfig = {
+  enabled: boolean;
+  required: boolean;
+};
+
+export type FormTemplate = {
+  title: string;
+  defaultFields: {
+    executionDate: FormDefaultFieldConfig;
+    location: FormDefaultFieldConfig;
+    notes: FormDefaultFieldConfig;
+    photos: FormDefaultFieldConfig;
+  };
+  fields: FormField[];
+};
+
+export type FormEntryStatus =
+  | "unassigned"
+  | "assigned"
+  | "draft"
+  | "submitted"
+  | "approved"
+  | "need_revision"
+  | "cancelled";
+
+export type FormEntryValue = string | number | string[];
+
+export type FormEntryPayload = {
+  executionDate?: string;
+  location?: string;
+  notes?: string;
+  photos?: SurveyPhoto[];
+  values: Record<string, FormEntryValue>;
+  files?: Record<string, SurveyPhoto>;
+};
+
+export type FormEntryVersion = {
+  id: string;
+  entryId: string;
+  versionNumber: number;
+  status: FormEntryStatus;
+  payload: FormEntryPayload;
+  createdAt: string;
+  createdById: string;
+};
+
+export type FormEntry = {
+  id: string;
+  projectId: string;
+  stepKey: string;
+  templateStageId?: string;
+  title: string;
+  assigneeId?: string;
+  dueDate?: string;
+  status: FormEntryStatus;
+  payload: FormEntryPayload;
+  versions: FormEntryVersion[];
+  submittedAt?: string;
+  reviewedAt?: string;
+  reviewedById?: string;
+  reviewComment?: string;
+  cancelledAt?: string;
+  cancelReason?: string;
+  createdById: string;
+  createdAt: string;
+  updatedAt?: string;
+  updatedById?: string;
+};
 
 export type StepStatus = "pending" | "active" | "completed" | "skipped";
 
@@ -109,6 +199,7 @@ export type TemplateStage = {
   financeKind?: FormStepKey;
   gateKind?: GateKind;
   legacyKey?: StepKey;
+  formTemplate?: FormTemplate;
   tasks: TemplateTask[];
 };
 
@@ -144,8 +235,11 @@ export type ProjectStep = {
   gateKind?: GateKind;
   costBeforeCommitment?: boolean;
   legacyKey?: StepKey;
+  formTemplate?: FormTemplate;
   tasks: StageTask[];
   gateDecision?: GateDecision;
+  noWorkConfirmedAt?: string;
+  noWorkConfirmedById?: string;
   startedAt?: string;
   completedAt?: string;
 };
@@ -194,7 +288,8 @@ export type Task = {
   id: string;
   code: string;
   projectId: string;
-  stepKey: StepKey;
+  stepKey: string;
+  stageId?: string;
   pitchingId?: string;
   title: string;
   description: string;
@@ -253,11 +348,27 @@ export type InvoicePayload = {
   documentUrl: string;
 };
 
+export type PaymentStatus = "unpaid" | "partial" | "paid";
+
+export type PaymentPayload = {
+  invoiceId?: string;
+  paymentDate: string;
+  amount: number;
+  method: string;
+  proofFileName?: string;
+  proofStorageKey?: string;
+  proofMimeType?: string;
+  proofSize?: number;
+  status: PaymentStatus;
+  notes: string;
+};
+
 export type FormPayload =
   | SurveyPayload
   | RabPayload
   | BastPayload
-  | InvoicePayload;
+  | InvoicePayload
+  | PaymentPayload;
 
 export type SurveyPhoto = {
   id: string;
@@ -352,6 +463,7 @@ export type AppState = {
   pitchingRoles: PitchingRole[];
   tasks: Task[];
   forms: StepForm[];
+  formEntries: FormEntry[];
   groups: ProjectGroup[];
   notifications: Notification[];
   activityLogs: ActivityLog[];
@@ -371,6 +483,7 @@ export type GateResult = {
 export type WorkloadRow = {
   user: User;
   activeCount: number;
+  activeFormCount: number;
   statusCounts: Record<string, number>;
   priorityCounts: Record<string, number>;
   projectNames: string[];
@@ -400,9 +513,10 @@ export const PHASE_ORDER: Phase[] = [
 ];
 
 export const STAGE_KIND_LABEL: Record<StageKind, string> = {
-  checklist: "Checklist",
+  form: "Form",
   finance_form: "Form keuangan",
   gate: "Gerbang",
+  simpro: "SIMPRO",
 };
 
 export const FORM_STEP_KEYS: FormStepKey[] = [
@@ -410,7 +524,24 @@ export const FORM_STEP_KEYS: FormStepKey[] = [
   "rab",
   "bast",
   "invoice",
+  "payment",
 ];
+
+export const FORM_ENTRY_STATUS_LABEL: Record<FormEntryStatus, string> = {
+  unassigned: "Belum ditugaskan",
+  assigned: "Ditugaskan",
+  draft: "Draft",
+  submitted: "Submitted",
+  approved: "Disetujui",
+  need_revision: "Perlu revisi",
+  cancelled: "Dibatalkan",
+};
+
+export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
+  unpaid: "Belum dibayar",
+  partial: "Sebagian",
+  paid: "Lunas",
+};
 
 export const TASK_STATUSES: TaskStatus[] = [
   "backlog",

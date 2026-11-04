@@ -57,6 +57,11 @@ function BoardCard({
     : undefined;
   const assignee = userById(store, task.assigneeId);
   const requested = userById(store, task.requestedAssigneeId);
+  const stage = store.steps.find(
+    (step) =>
+      step.projectId === task.projectId &&
+      (step.id === task.stageId || step.key === task.stepKey),
+  );
 
   return (
     <div
@@ -73,7 +78,7 @@ function BoardCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1">
           <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-            Task
+            {stage?.name ?? "Task"}
           </span>
           <PriorityBadge priority={task.priority} />
         </div>

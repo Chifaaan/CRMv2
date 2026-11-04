@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  activeStepKey,
   activeSteps,
   calculateJourneyProgress,
   canCreateTask,
@@ -459,6 +458,12 @@ export function SimproProjectPage({
   const [editOpen, setEditOpen] = useState(false);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskId, setTaskId] = useState<string | undefined>(undefined);
+  const [stageKey, setStageKey] = useState("");
+
+  useEffect(() => {
+    const fromQuery = new URLSearchParams(window.location.search).get("stage");
+    if (fromQuery) setStageKey(fromQuery);
+  }, [projectId]);
 
   useEffect(() => {
     const taskFromQuery = new URLSearchParams(window.location.search).get("task");
@@ -498,14 +503,35 @@ export function SimproProjectPage({
     );
   }
 
-  const stepKey = activeStepKey(store, project.id);
-  const isBoardStep = stepKey === "pitching" || stepKey === "running";
-  const stepTasks = stepKey ? tasksForStep(store, project.id, stepKey) : [];
+  const simproStages = store.steps
+    .filter((step) => step.projectId === project.id && step.kind === "simpro")
+    .sort((a, b) => a.order - b.order);
+  const selectedStage =
+    simproStages.find((step) => step.key === stageKey) ??
+    simproStages.find((step) => step.status === "active") ??
+    simproStages[0];
+  const isBoardStep = Boolean(selectedStage);
+  const stageTasks = selectedStage
+    ? tasksForStep(store, project.id, selectedStage.key)
+    : [];
   const tasks =
     currentUser.role === "assignee"
-      ? stepTasks.filter((task) => task.assigneeId === currentUser.id)
-      : stepTasks;
+      ? stageTasks.filter((task) => task.assigneeId === currentUser.id)
+      : stageTasks;
+  const projectTasks = store.tasks.filter(
+    (task) =>
+      task.projectId === project.id &&
+      !task.archivedAt &&
+      (currentUser.role !== "assignee" || task.assigneeId === currentUser.id),
+  );
   const canCreate = canCreateTask(store, currentUser, project);
+
+  const changeStage = (key: string) => {
+    setStageKey(key);
+    const url = new URL(window.location.href);
+    url.searchParams.set("stage", key);
+    window.history.replaceState(null, "", url);
+  };
 
   const openTask = (task: Task) => {
     setTaskId(task.id);
@@ -526,25 +552,51 @@ export function SimproProjectPage({
 
       {tab === "overview" ? <Overview project={project} /> : null}
       {tab === "board" ? (
-        isBoardStep ? (
+        isBoardStep && selectedStage ? (
           <SectionCard
-            title={`Board · ${stepKey}`}
-            description="Hanya task pada step aktif. Drag card sesuai aturan role."
+            title={`Board · ${selectedStage.name}`}
+            description="Filter tahap SIMPRO. Drag card sesuai aturan role."
           >
-            <TaskBoard tasks={tasks} onTaskClick={openTask} onNewTask={canCreate ? openNewTask : undefined} />
+            <div className="mb-3 flex flex-wrap items-end gap-2">
+              <label className="text-xs font-medium">
+                Tahap
+                <NativeSelect
+                  value={selectedStage.key}
+                  onChange={changeStage}
+                  className="mt-1 w-[240px]"
+                >
+                  {simproStages.map((step) => (
+                    <option key={step.id} value={step.key}>
+                      {step.name}
+                      {step.status === "completed" ? " (selesai)" : ""}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+            </div>
+            <TaskBoard
+              tasks={tasks}
+              onTaskClick={openTask}
+              onNewTask={
+                canCreate && selectedStage.status !== "completed"
+                  ? openNewTask
+                  : undefined
+              }
+              readOnly={selectedStage.status === "completed"}
+            />
           </SectionCard>
         ) : (
           <EmptyState
             icon={ClipboardList}
-            title="Board tidak tersedia di step ini"
-            description="Board hanya dipakai pada step Pitching dan Running. Step form dikelola di CRM."
+            title="Board tidak tersedia"
+            description="Proyek ini tidak memiliki tahap SIMPRO."
           />
         )
       ) : null}
       {tab === "backlog" ? (
         <Backlog
           project={project}
-          tasks={tasks}
+          tasks={projectTasks}
           onTaskClick={openTask}
           onNewTask={openNewTask}
           canCreate={canCreate}
@@ -559,6 +611,7 @@ export function SimproProjectPage({
         onOpenChange={setTaskDialogOpen}
         projectId={project.id}
         taskId={taskId}
+        stepKey={selectedStage?.key}
       />
     </div>
   );

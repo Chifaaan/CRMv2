@@ -46,6 +46,8 @@ import {
   PHASE_LABEL,
   PHASE_ORDER,
   STAGE_KIND_LABEL,
+  type FormField,
+  type FormFieldType,
   type FormStepKey,
   type GateKind,
   type Phase,
@@ -70,8 +72,31 @@ function uid(prefix: string): string {
 function cloneStages(stages: TemplateStage[]): TemplateStage[] {
   return stages.map((stage) => ({
     ...stage,
+    formTemplate: stage.formTemplate
+      ? {
+          ...stage.formTemplate,
+          defaultFields: { ...stage.formTemplate.defaultFields },
+          fields: stage.formTemplate.fields.map((field) => ({
+            ...field,
+            options: field.options ? [...field.options] : undefined,
+          })),
+        }
+      : undefined,
     tasks: stage.tasks.map((task) => ({ ...task })),
   }));
+}
+
+function formTemplateFor(title: string): NonNullable<TemplateStage["formTemplate"]> {
+  return {
+    title,
+    defaultFields: {
+      executionDate: { enabled: true, required: true },
+      location: { enabled: true, required: true },
+      notes: { enabled: true, required: false },
+      photos: { enabled: true, required: false },
+    },
+    fields: [],
+  };
 }
 
 function normalize(stages: TemplateStage[]): TemplateStage[] {
@@ -85,7 +110,8 @@ function starterStages(): TemplateStage[] {
       name: "Brief Received",
       phase: "prospek",
       order: 1,
-      kind: "checklist",
+      kind: "form",
+      formTemplate: formTemplateFor("Brief Received"),
       required: true,
       weight: 1,
       tasks: [],
@@ -106,7 +132,7 @@ function starterStages(): TemplateStage[] {
       name: "Kickoff",
       phase: "planning",
       order: 3,
-      kind: "checklist",
+      kind: "simpro",
       required: true,
       weight: 1,
       tasks: [],
@@ -116,7 +142,7 @@ function starterStages(): TemplateStage[] {
       name: "Eksekusi",
       phase: "running",
       order: 4,
-      kind: "checklist",
+      kind: "simpro",
       required: true,
       weight: 1,
       tasks: [],
@@ -126,7 +152,8 @@ function starterStages(): TemplateStage[] {
       name: "Laporan Akhir",
       phase: "closing",
       order: 5,
-      kind: "checklist",
+      kind: "form",
+      formTemplate: formTemplateFor("Laporan Akhir"),
       required: true,
       weight: 1,
       tasks: [],
@@ -135,9 +162,19 @@ function starterStages(): TemplateStage[] {
 }
 
 const KIND_CLASS: Record<StageKind, string> = {
-  checklist: "bg-slate-100 text-slate-700",
+  form: "bg-slate-100 text-slate-700",
   finance_form: "bg-sky-100 text-sky-700",
   gate: "bg-amber-100 text-amber-800",
+  simpro: "bg-emerald-100 text-emerald-700",
+};
+
+const FIELD_TYPE_LABEL: Record<FormFieldType, string> = {
+  text: "Teks",
+  number: "Angka",
+  date: "Tanggal",
+  select: "Pilihan",
+  checklist: "Daftar centang",
+  file: "Unggah file",
 };
 
 function SortableStageRow({
@@ -240,7 +277,10 @@ function TemplateEditor({
       name: `Tahap ${stages.filter((item) => item.phase === phase).length + 1}`,
       phase,
       order: 0,
-      kind: "checklist",
+      kind: "form",
+      formTemplate: formTemplateFor(
+        `Tahap ${stages.filter((item) => item.phase === phase).length + 1}`,
+      ),
       required: true,
       weight: 1,
       tasks: [],
@@ -317,6 +357,52 @@ function TemplateEditor({
       tasks: selected.tasks.map((task) =>
         task.id === taskId ? { ...task, ...patch } : task,
       ),
+    });
+  };
+
+  const updateFormTemplate = (
+    patch: Partial<NonNullable<TemplateStage["formTemplate"]>>,
+  ) => {
+    if (!selected) return;
+    updateStage(selected.id, {
+      formTemplate: {
+        ...(selected.formTemplate ?? formTemplateFor(selected.name)),
+        ...patch,
+      },
+    });
+  };
+
+  const addField = () => {
+    if (!selected) return;
+    const templateValue = selected.formTemplate ?? formTemplateFor(selected.name);
+    if (templateValue.fields.length >= 20) {
+      toast.error("Maksimal 20 isian tambahan.");
+      return;
+    }
+    const field: FormField = {
+      id: uid("field"),
+      label: "Isian baru",
+      type: "text",
+      required: false,
+    };
+    updateFormTemplate({ fields: [...templateValue.fields, field] });
+  };
+
+  const updateField = (fieldId: string, patch: Partial<FormField>) => {
+    if (!selected) return;
+    const templateValue = selected.formTemplate ?? formTemplateFor(selected.name);
+    updateFormTemplate({
+      fields: templateValue.fields.map((field) =>
+        field.id === fieldId ? { ...field, ...patch } : field,
+      ),
+    });
+  };
+
+  const removeField = (fieldId: string) => {
+    if (!selected) return;
+    const templateValue = selected.formTemplate ?? formTemplateFor(selected.name);
+    updateFormTemplate({
+      fields: templateValue.fields.filter((field) => field.id !== fieldId),
     });
   };
 
@@ -408,26 +494,35 @@ function TemplateEditor({
             description="Urutan fase tetap. Tahap di dalam fase bisa diurutkan."
           >
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              {PHASE_ORDER.map((phase) => (
-                <div key={phase} className="rounded-lg border bg-muted/20 p-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide">
-                    {PHASE_LABEL[phase]}
-                  </p>
-                  <div className="mt-1 space-y-1">
-                    {stages
-                      .filter((stage) => stage.phase === phase)
-                      .map((stage) => (
-                        <span
-                          key={stage.id}
-                          className="block truncate rounded bg-card px-1.5 py-1 text-[10px] ring-1 ring-foreground/10"
-                          title={stage.name}
-                        >
-                          {stage.name}
-                        </span>
-                      ))}
+              {PHASE_ORDER.map((phase) => {
+                const phaseStages = stages.filter(
+                  (stage) => stage.phase === phase,
+                );
+                return (
+                  <div key={phase} className="rounded-lg border bg-muted/20 p-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide">
+                      {PHASE_LABEL[phase]}
+                    </p>
+                    <div className="mt-1 space-y-1">
+                      {phaseStages.length === 0 ? (
+                        <p className="text-muted-foreground text-[10px] italic">
+                          Fase {PHASE_LABEL[phase]} kosong, tidak akan tampil pada proyek
+                        </p>
+                      ) : (
+                        phaseStages.map((stage) => (
+                          <span
+                            key={stage.id}
+                            className="block truncate rounded bg-card px-1.5 py-1 text-[10px] ring-1 ring-foreground/10"
+                            title={stage.name}
+                          >
+                            {stage.name}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </SectionCard>
 
@@ -552,6 +647,11 @@ function TemplateEditor({
                             value === "gate"
                               ? selected.gateKind ?? "go_no_go"
                               : undefined,
+                          formTemplate:
+                            value === "form"
+                              ? selected.formTemplate ??
+                                formTemplateFor(selected.name)
+                              : selected.formTemplate,
                         })
                       }
                     >
@@ -577,6 +677,7 @@ function TemplateEditor({
                       <option value="rab">RAB</option>
                       <option value="bast">BAST</option>
                       <option value="invoice">Invoice</option>
+                      <option value="payment">Pembayaran</option>
                     </NativeSelect>
                   </Field>
                 ) : null}
@@ -597,6 +698,164 @@ function TemplateEditor({
                       ))}
                     </NativeSelect>
                   </Field>
+                ) : null}
+                {selected.kind === "form" ? (
+                  <div className="space-y-3 rounded-lg border p-2">
+                    <Field label="Judul form">
+                      <Input
+                        value={
+                          (selected.formTemplate ?? formTemplateFor(selected.name))
+                            .title
+                        }
+                        onChange={(event) =>
+                          updateFormTemplate({ title: event.target.value })
+                        }
+                      />
+                    </Field>
+                    <div className="space-y-1.5 text-xs">
+                      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                        Isian default
+                      </p>
+                      {(
+                        [
+                          ["executionDate", "Tanggal pelaksanaan"],
+                          ["location", "Lokasi"],
+                          ["notes", "Keterangan"],
+                          ["photos", "Foto"],
+                        ] as const
+                      ).map(([key, label]) => {
+                        const config = (
+                          selected.formTemplate ?? formTemplateFor(selected.name)
+                        ).defaultFields[key];
+                        return (
+                          <div key={key} className="flex items-center gap-3">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                className="size-4"
+                                checked={config.enabled}
+                                onChange={(event) =>
+                                  updateFormTemplate({
+                                    defaultFields: {
+                                      ...(selected.formTemplate ??
+                                        formTemplateFor(selected.name)).defaultFields,
+                                      [key]: {
+                                        ...config,
+                                        enabled: event.target.checked,
+                                      },
+                                    },
+                                  })
+                                }
+                              />
+                              {label}
+                            </label>
+                            <label className="text-muted-foreground flex items-center gap-1">
+                              <input
+                                type="checkbox"
+                                className="size-3.5"
+                                checked={config.required}
+                                disabled={!config.enabled}
+                                onChange={(event) =>
+                                  updateFormTemplate({
+                                    defaultFields: {
+                                      ...(selected.formTemplate ??
+                                        formTemplateFor(selected.name)).defaultFields,
+                                      [key]: {
+                                        ...config,
+                                        required: event.target.checked,
+                                      },
+                                    },
+                                  })
+                                }
+                              />
+                              wajib
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-semibold">Isian tambahan</p>
+                        <Button variant="outline" size="xs" onClick={addField}>
+                          <Plus className="size-3" /> Isian
+                        </Button>
+                      </div>
+                      <div className="space-y-2">
+                        {(selected.formTemplate?.fields ?? []).map((field) => (
+                          <div key={field.id} className="space-y-1.5 rounded border p-2">
+                            <div className="flex items-center gap-1.5">
+                              <Input
+                                value={field.label}
+                                onChange={(event) =>
+                                  updateField(field.id, { label: event.target.value })
+                                }
+                                className="h-7 text-xs"
+                                aria-label="Label isian"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Hapus isian"
+                                onClick={() => removeField(field.id)}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <NativeSelect
+                                value={field.type}
+                                onChange={(value) =>
+                                  updateField(field.id, {
+                                    type: value as FormFieldType,
+                                  })
+                                }
+                                className="h-7 text-xs"
+                              >
+                                {Object.entries(FIELD_TYPE_LABEL).map(
+                                  ([value, label]) => (
+                                    <option key={value} value={value}>
+                                      {label}
+                                    </option>
+                                  ),
+                                )}
+                              </NativeSelect>
+                              <label className="flex items-center gap-1 text-[11px]">
+                                <input
+                                  type="checkbox"
+                                  className="size-3.5"
+                                  checked={field.required}
+                                  onChange={(event) =>
+                                    updateField(field.id, {
+                                      required: event.target.checked,
+                                    })
+                                  }
+                                />
+                                wajib
+                              </label>
+                            </div>
+                            {field.type === "select" ||
+                            field.type === "checklist" ? (
+                              <Input
+                                value={(field.options ?? []).join(", ")}
+                                onChange={(event) =>
+                                  updateField(field.id, {
+                                    options: event.target.value
+                                      .split(",")
+                                      .map((item) => item.trim())
+                                      .filter(Boolean),
+                                  })
+                                }
+                                placeholder="Pilihan, pisahkan dengan koma"
+                                className="h-7 text-xs"
+                                aria-label="Pilihan isian"
+                              />
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 ) : null}
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="Bobot progress">
@@ -652,88 +911,90 @@ function TemplateEditor({
                   </label>
                 </div>
 
-                <div className="border-t pt-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <h4 className="text-xs font-semibold">Task default</h4>
-                    <Button variant="outline" size="xs" onClick={addTask}>
-                      <Plus className="size-3" /> Task
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {selected.tasks.length === 0 ? (
-                      <p className="text-muted-foreground text-[11px]">
-                        Belum ada task default.
-                      </p>
-                    ) : (
-                      selected.tasks.map((task) => (
-                        <div
-                          key={task.id}
-                          className="space-y-1.5 rounded-lg border p-2"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Input
-                              value={task.name}
-                              onChange={(event) =>
-                                updateTask(task.id, { name: event.target.value })
-                              }
-                              className="h-7 text-xs"
-                              aria-label="Nama task"
-                            />
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label="Hapus task"
-                              onClick={() =>
-                                updateStage(selected.id, {
-                                  tasks: selected.tasks.filter(
-                                    (item) => item.id !== task.id,
-                                  ),
-                                })
-                              }
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
+                {selected.kind === "simpro" ? (
+                  <div className="border-t pt-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h4 className="text-xs font-semibold">Task default (usulan)</h4>
+                      <Button variant="outline" size="xs" onClick={addTask}>
+                        <Plus className="size-3" /> Task
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      {selected.tasks.length === 0 ? (
+                        <p className="text-muted-foreground text-[11px]">
+                          Belum ada task default.
+                        </p>
+                      ) : (
+                        selected.tasks.map((task) => (
+                          <div
+                            key={task.id}
+                            className="space-y-1.5 rounded-lg border p-2"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={task.name}
+                                onChange={(event) =>
+                                  updateTask(task.id, { name: event.target.value })
+                                }
+                                className="h-7 text-xs"
+                                aria-label="Nama task"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label="Hapus task"
+                                onClick={() =>
+                                  updateStage(selected.id, {
+                                    tasks: selected.tasks.filter(
+                                      (item) => item.id !== task.id,
+                                    ),
+                                  })
+                                }
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <Input
+                                value={task.role ?? ""}
+                                onChange={(event) =>
+                                  updateTask(task.id, { role: event.target.value })
+                                }
+                                placeholder="Peran"
+                                className="h-7 text-xs"
+                                aria-label="Peran task"
+                              />
+                              <Input
+                                value={task.deliverable ?? ""}
+                                onChange={(event) =>
+                                  updateTask(task.id, {
+                                    deliverable: event.target.value,
+                                  })
+                                }
+                                placeholder="Deliverable"
+                                className="h-7 text-xs"
+                                aria-label="Deliverable task"
+                              />
+                            </div>
+                            <label className="flex items-center gap-2 text-[11px]">
+                              <input
+                                type="checkbox"
+                                className="size-3.5"
+                                checked={task.required}
+                                onChange={(event) =>
+                                  updateTask(task.id, {
+                                    required: event.target.checked,
+                                  })
+                                }
+                              />
+                              Wajib
+                            </label>
                           </div>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <Input
-                              value={task.role ?? ""}
-                              onChange={(event) =>
-                                updateTask(task.id, { role: event.target.value })
-                              }
-                              placeholder="Peran"
-                              className="h-7 text-xs"
-                              aria-label="Peran task"
-                            />
-                            <Input
-                              value={task.deliverable ?? ""}
-                              onChange={(event) =>
-                                updateTask(task.id, {
-                                  deliverable: event.target.value,
-                                })
-                              }
-                              placeholder="Deliverable"
-                              className="h-7 text-xs"
-                              aria-label="Deliverable task"
-                            />
-                          </div>
-                          <label className="flex items-center gap-2 text-[11px]">
-                            <input
-                              type="checkbox"
-                              className="size-3.5"
-                              checked={task.required}
-                              onChange={(event) =>
-                                updateTask(task.id, {
-                                  required: event.target.checked,
-                                })
-                              }
-                            />
-                            Wajib
-                          </label>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
                 <Button
                   variant="destructive"

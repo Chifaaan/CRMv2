@@ -23,17 +23,30 @@ function kolStages() {
   )!.stages;
 }
 
+function completeFormStage(projectId: string, stepKey: string) {
+  usePrototypeStore.getState().setCurrentUser("u-pm1");
+  const entryId = usePrototypeStore
+    .getState()
+    .createFormEntry(projectId, stepKey, { title: "Entri uji" });
+  usePrototypeStore.getState().setCurrentUser("u-manager");
+  usePrototypeStore.getState().assignFormEntry(entryId, "u-assignee1");
+  usePrototypeStore.getState().setCurrentUser("u-assignee1");
+  usePrototypeStore
+    .getState()
+    .saveFormEntry(entryId, { values: {}, photos: [] });
+  usePrototypeStore.getState().submitFormEntry(entryId);
+  usePrototypeStore.getState().setCurrentUser("u-pm1");
+  usePrototypeStore.getState().reviewFormEntry(entryId, "approved", "");
+  usePrototypeStore.getState().completeStep(projectId, stepKey);
+}
+
 function completeFirstThreeKolStages(projectId: string) {
-  const store = usePrototypeStore.getState();
   for (let index = 0; index < 3; index += 1) {
     const step = usePrototypeStore
       .getState()
       .steps.filter((item) => item.projectId === projectId)
       .sort((a, b) => a.order - b.order)[index];
-    for (const task of step.tasks) {
-      store.toggleStageTask(projectId, step.key, task.id);
-    }
-    usePrototypeStore.getState().completeStep(projectId, step.key);
+    completeFormStage(projectId, step.key);
   }
 }
 
@@ -62,8 +75,8 @@ describe("template model", () => {
       .steps.filter((step) => step.projectId === projectId);
     expect(project.templateId).toBe(KOL_TEMPLATE_ID);
     expect(project.structureLocked).toBe(true);
-    expect(steps).toHaveLength(13);
-    expect(steps[0].tasks[0].name).toBe("Catat brief dan KPI");
+    expect(steps).toHaveLength(12);
+    expect(steps[0].formTemplate?.title).toBe("Brief Received");
     expect(steps[0].status).toBe("active");
   });
 
@@ -98,7 +111,7 @@ describe("template model", () => {
       usePrototypeStore
         .getState()
         .templates.find((item) => item.id === KOL_TEMPLATE_ID)!.version,
-    ).toBe(2);
+    ).toBe(template.version + 1);
     const step = usePrototypeStore
       .getState()
       .steps.find(
@@ -256,10 +269,10 @@ describe("progress and permissions", () => {
       templateId: KOL_TEMPLATE_ID,
     });
     completeFirstThreeKolStages(projectId);
-    // 3 completed stages of 12 total weight (9 full + 0.5 + 0.5 + 2 full).
+    // 3 completed form stages of 11 total weight (4 form + 1 gate + 4 simpro + 1 form + 0.5 + 0.5 + 1 payment).
     expect(
       calculateJourneyProgress(usePrototypeStore.getState(), projectId),
-    ).toBe(25);
+    ).toBe(27);
   });
 
   it("allows only Admin and PM to manage templates", () => {

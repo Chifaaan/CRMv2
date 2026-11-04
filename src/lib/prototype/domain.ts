@@ -6,6 +6,7 @@ import {
   STEP_META,
   TASK_STATUS_LABEL,
   type AppState,
+  type FormEntry,
   type FormStepKey,
   type GateResult,
   type Lifecycle,
@@ -52,6 +53,38 @@ export function formFor(
 
 export function formsFor(state: AppState, projectId: string): StepForm[] {
   return state.forms.filter((form) => form.projectId === projectId);
+}
+
+export function formEntriesForStep(
+  state: AppState,
+  projectId: string,
+  stepKey: string,
+): FormEntry[] {
+  return state.formEntries.filter(
+    (entry) =>
+      entry.projectId === projectId &&
+      entry.stepKey === stepKey &&
+      entry.status !== "cancelled",
+  );
+}
+
+export function formEntriesForProject(
+  state: AppState,
+  projectId: string,
+): FormEntry[] {
+  return state.formEntries.filter((entry) => entry.projectId === projectId);
+}
+
+export function formEntryProgress(
+  state: AppState,
+  projectId: string,
+  stepKey: string,
+): { approved: number; total: number } {
+  const entries = formEntriesForStep(state, projectId, stepKey);
+  return {
+    approved: entries.filter((entry) => entry.status === "approved").length,
+    total: entries.length,
+  };
 }
 
 export function pitchingsFor(state: AppState, projectId: string) {
@@ -169,18 +202,36 @@ export function calculateWorkProgress(
 ): number {
   const step = stepFor(state, projectId, stepKey);
   if (step) {
-    if (step.kind === "checklist") {
-      if (step.legacyKey === "pitching" || step.legacyKey === "running") {
-        const tasks = tasksForStep(state, projectId, step.legacyKey);
-        if (tasks.length === 0) return 100;
-        const done = tasks.filter((task) => task.status === "completed").length;
-        return Math.round((done / tasks.length) * 100);
-      }
-      const tasks = step.tasks ?? [];
+    if (step.kind === "simpro") {
+      const tasks = tasksForStep(state, projectId, step.key);
       if (tasks.length === 0) return 100;
-      return Math.round(
-        (tasks.filter((task) => task.done).length / tasks.length) * 100,
-      );
+      const done = tasks.filter((task) => task.status === "completed").length;
+      return Math.round((done / tasks.length) * 100);
+    }
+
+    if (step.kind === "form") {
+      if (step.legacyKey === "survey" && !step.formTemplate) {
+        const form = formFor(state, projectId, "survey");
+        if (form?.status === "approved") return 100;
+        if (form?.status === "submitted") return 50;
+        return 0;
+      }
+      const entries = formEntriesForStep(state, projectId, step.key);
+      if (entries.length === 0) {
+        const legacyTasks = step.tasks ?? [];
+        if (legacyTasks.length > 0) {
+          return Math.round(
+            (legacyTasks.filter((task) => task.done).length /
+              legacyTasks.length) *
+              100,
+          );
+        }
+        return step.noWorkConfirmedAt ? 100 : 0;
+      }
+      const approved = entries.filter(
+        (entry) => entry.status === "approved",
+      ).length;
+      return Math.round((approved / entries.length) * 100);
     }
 
     if (step.kind === "gate") {
@@ -305,20 +356,6 @@ export function evaluateGate(
     };
   }
 
-  if (stepKey === "running") {
-    const tasks = tasksForStep(state, projectId, "running");
-    const noActive = tasks.every((task) => task.status === "completed");
-    return {
-      ready: noActive,
-      requirements: [
-        {
-          label: "Tidak ada task Running yang aktif",
-          met: noActive,
-        },
-      ],
-    };
-  }
-
   if (stepKey === "bast") {
     const form = formFor(state, projectId, "bast");
     const submitted =
@@ -361,17 +398,72 @@ export function evaluateGate(
     };
   }
 
-  if (step.kind === "checklist") {
-    const tasks = step.tasks ?? [];
-    const requiredDone = tasks
-      .filter((task) => task.required)
-      .every((task) => task.done);
+  if (step.kind === "simpro") {
+    const tasks = tasksForStep(state, projectId, step.key);
+    const hasTasks = tasks.length > 0;
+    const noActive = tasks.every((task) => task.status === "completed");
+    const confirmed = Boolean(step.noWorkConfirmedAt);
     return {
-      ready: requiredDone,
+      ready: (hasTasks && noActive) || (!hasTasks && confirmed),
       requirements: [
         {
-          label: "Semua task wajib selesai",
-          met: requiredDone,
+          label: "Tidak ada task tersisa",
+          met: hasTasks && noActive,
+        },
+        {
+          label: "Minimal satu task atau konfirmasi tidak ada pekerjaan",
+          met: hasTasks || confirmed,
+        },
+      ],
+    };
+  }
+
+  if (step.kind === "form") {
+    if (step.legacyKey === "survey" && !step.formTemplate) {
+      const form = formFor(state, projectId, "survey");
+      const approved = form?.status === "approved";
+      return {
+        ready: approved,
+        requirements: [
+          { label: "Form Survey sudah approved", met: approved },
+        ],
+      };
+    }
+    const entries = formEntriesForStep(state, projectId, step.key);
+    if (entries.length === 0) {
+      const legacyTasks = step.tasks ?? [];
+      if (legacyTasks.length > 0) {
+        const requiredDone = legacyTasks
+          .filter((task) => task.required)
+          .every((task) => task.done);
+        return {
+          ready: requiredDone,
+          requirements: [
+            { label: "Semua isian wajib selesai", met: requiredDone },
+          ],
+        };
+      }
+      return {
+        ready: Boolean(step.noWorkConfirmedAt),
+        requirements: [
+          { label: "Minimal satu entri form", met: false },
+          {
+            label: "Konfirmasi tidak ada pekerjaan di tahap ini",
+            met: Boolean(step.noWorkConfirmedAt),
+          },
+        ],
+      };
+    }
+    const approvedCount = entries.filter(
+      (entry) => entry.status === "approved",
+    ).length;
+    const allApproved = approvedCount === entries.length;
+    return {
+      ready: allApproved,
+      requirements: [
+        {
+          label: `${approvedCount} dari ${entries.length} entri disetujui`,
+          met: allApproved,
         },
       ],
     };
@@ -523,6 +615,36 @@ export function validateTemplateStages(
     if (stage.kind === "gate" && !stage.gateKind) {
       errors.push(`Tahap "${stage.name}" harus memilih jenis gerbang.`);
     }
+    if (stage.kind === "form") {
+      if (stage.legacyKey !== "survey" && !stage.formTemplate) {
+        errors.push(`Tahap "${stage.name}" harus punya template form.`);
+      } else if (stage.formTemplate) {
+        if (!stage.formTemplate.title.trim()) {
+          errors.push(`Judul form tahap "${stage.name}" wajib diisi.`);
+        }
+        if (stage.formTemplate.fields.length > 20) {
+          errors.push(`Tahap "${stage.name}" maksimal 20 isian tambahan.`);
+        }
+        const fieldIds = new Set<string>();
+        for (const field of stage.formTemplate.fields) {
+          if (!field.label.trim()) {
+            errors.push(`Tahap "${stage.name}" punya isian tanpa label.`);
+          }
+          if (fieldIds.has(field.id)) {
+            errors.push(`Tahap "${stage.name}" punya isian duplikat.`);
+          }
+          fieldIds.add(field.id);
+          if (
+            (field.type === "select" || field.type === "checklist") &&
+            (field.options ?? []).length === 0
+          ) {
+            errors.push(
+              `Isian "${field.label || field.id}" pada tahap "${stage.name}" butuh pilihan.`,
+            );
+          }
+        }
+      }
+    }
     if (stage.weight <= 0) {
       errors.push(`Bobot tahap "${stage.name}" harus lebih dari 0.`);
     }
@@ -552,8 +674,8 @@ export function canCreateTask(
   project: Project,
 ): boolean {
   if (!canManageProject(user, project)) return false;
-  const step = activeStepKey(state, project.id);
-  return step === "pitching" || step === "running";
+  if (project.status !== "active") return false;
+  return activeSteps(state, project.id).some((step) => step.kind === "simpro");
 }
 
 export function taskTransition(
@@ -657,6 +779,99 @@ export function canSubmitForm(
   return canEditForm(state, user, form) && form.status !== "submitted";
 }
 
+export function canCreateFormEntry(
+  state: AppState,
+  user: User,
+  project: Project,
+  stepKey: string,
+): boolean {
+  if (project.status !== "active") return false;
+  if (!canManageProject(user, project)) return false;
+  const step = stepFor(state, project.id, stepKey);
+  return step?.kind === "form" && step.status === "active";
+}
+
+export function canAssignFormEntry(user: User): boolean {
+  return user.role === "admin" || user.role === "manager";
+}
+
+export function canEditFormEntry(
+  state: AppState,
+  user: User,
+  entry: FormEntry,
+): boolean {
+  if (entry.status === "submitted" || entry.status === "approved") return false;
+  if (entry.status === "cancelled" || entry.status === "unassigned") return false;
+  const project = projectById(state, entry.projectId);
+  if (project?.status !== "active") return false;
+  const step = stepFor(state, entry.projectId, entry.stepKey);
+  if (step?.status !== "active") return false;
+  if (user.role === "admin") return true;
+  return user.role === "assignee" && entry.assigneeId === user.id;
+}
+
+export function canReviewFormEntry(
+  state: AppState,
+  user: User,
+  entry: FormEntry,
+): boolean {
+  if (entry.status !== "submitted") return false;
+  if (user.role === "admin") return true;
+  if (user.role !== "pm") return false;
+  const project = projectById(state, entry.projectId);
+  return project?.createdById === user.id;
+}
+
+export function canCancelFormEntry(
+  state: AppState,
+  user: User,
+  entry: FormEntry,
+): boolean {
+  if (entry.status === "cancelled") return false;
+  const project = projectById(state, entry.projectId);
+  if (!project) return false;
+  return canManageProject(user, project);
+}
+
+export function activeFormEntriesForAssignee(
+  state: AppState,
+  userId: string,
+): FormEntry[] {
+  return state.formEntries.filter(
+    (entry) =>
+      entry.assigneeId === userId &&
+      ["assigned", "draft", "need_revision"].includes(entry.status) &&
+      projectById(state, entry.projectId)?.status === "active",
+  );
+}
+
+/** Badge count: forms this user still has to fill. PM review queue excluded. */
+export function formsNeedingAction(state: AppState, userId: string): number {
+  const entries = activeFormEntriesForAssignee(state, userId).length;
+  const legacy = state.forms.filter(
+    (form) =>
+      form.assigneeId === userId &&
+      form.type === "survey" &&
+      ["assigned", "draft", "need_revision"].includes(form.status) &&
+      projectById(state, form.projectId)?.status === "active",
+  ).length;
+  return entries + legacy;
+}
+
+export function formEntriesNeedingReview(
+  state: AppState,
+  userId: string,
+): FormEntry[] {
+  const user = userById(state, userId);
+  if (!user) return [];
+  return state.formEntries.filter((entry) => {
+    if (entry.status !== "submitted") return false;
+    const project = projectById(state, entry.projectId);
+    if (!project || project.status !== "active") return false;
+    return canReviewFormEntry(state, user, entry);
+  });
+}
+
 export function workloadRows(state: AppState): WorkloadRow[] {
   const assignees = state.users.filter((user) => user.role === "assignee");
   return assignees
@@ -678,9 +893,11 @@ export function workloadRows(state: AppState): WorkloadRow[] {
         const project = projectById(state, task.projectId);
         if (project) projectNames.add(project.name);
       }
+      const activeFormCount = activeFormEntriesForAssignee(state, user.id).length;
       return {
         user,
         activeCount: tasks.length,
+        activeFormCount,
         statusCounts,
         priorityCounts,
         projectNames: [...projectNames],
