@@ -8,12 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  canAssignFormEntry,
   canCancelFormEntry,
   canEditFormEntry,
   canReviewFormEntry,
   formatDate,
   formatDateTime,
+  operationalAssigneeCandidates,
   stepFor,
   userById,
 } from "@/lib/prototype/domain";
@@ -344,7 +344,13 @@ export function FormEntryPage({
 
   const editable = canEditFormEntry(store, currentUser, entry);
   const reviewer = canReviewFormEntry(store, currentUser, entry);
-  const canAssign = canAssignFormEntry(currentUser);
+  const canAssign =
+    operationalAssigneeCandidates(store, currentUser, project).length > 0;
+  const assignCandidates = operationalAssigneeCandidates(
+    store,
+    currentUser,
+    project,
+  );
   const canCancel = canCancelFormEntry(store, currentUser, entry);
   const defaultFields = template?.defaultFields ?? {
     executionDate: { enabled: true, required: true },
@@ -443,13 +449,11 @@ export function FormEntryPage({
               className="w-[220px]"
             >
               <option value="">Pilih assignee</option>
-              {store.users
-                .filter((user) => user.role === "assignee")
-                .map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
+              {assignCandidates.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name}
+                </option>
+              ))}
             </NativeSelect>
             <Button
               size="sm"

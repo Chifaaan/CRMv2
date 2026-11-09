@@ -1103,6 +1103,9 @@ export function createSeedState(): AppState {
       ...project,
       templateId: UMUM_TEMPLATE_ID,
       templateVersion: 2,
+      managerId: ["p-alpha", "p-gamma"].includes(project.id)
+        ? "u-manager"
+        : undefined,
       structureLocked: true,
       lifecycle:
         project.status === "completed"

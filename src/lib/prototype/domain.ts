@@ -525,6 +525,60 @@ export function canManageProject(user: User, project?: Project): boolean {
   return user.role === "admin" || (user.role === "pm" && project?.createdById === user.id);
 }
 
+export function canAssignProjectManager(
+  user: User,
+  project?: Project,
+): boolean {
+  if (!project) return false;
+  return (
+    user.role === "admin" ||
+    (user.role === "pm" && project.createdById === user.id)
+  );
+}
+
+export function isOperationalAssignee(user: User): boolean {
+  return user.role === "assignee" || user.role === "manager";
+}
+
+export function canAssignOperational(
+  user: User,
+  project: Project | undefined,
+  target: User | undefined,
+): boolean {
+  if (!project || !target || !isOperationalAssignee(target)) return false;
+  if (user.role === "admin" || user.role === "manager") return true;
+  if (user.role === "pm" && project.createdById === user.id) {
+    return Boolean(
+      project.managerId &&
+        target.role === "manager" &&
+        target.id === project.managerId,
+    );
+  }
+  return false;
+}
+
+export function operationalAssigneeCandidates(
+  state: AppState,
+  user: User,
+  project: Project | undefined,
+): User[] {
+  if (!project) return [];
+  const eligible = state.users.filter(isOperationalAssignee);
+  if (user.role === "admin" || user.role === "manager") return eligible;
+  if (user.role === "pm" && project.createdById === user.id) {
+    return eligible.filter((candidate) => candidate.id === project.managerId);
+  }
+  return [];
+}
+
+export function canWorkTask(user: User, task: Task): boolean {
+  return isOperationalAssignee(user) && task.assigneeId === user.id;
+}
+
+export function canWorkFormEntry(user: User, entry: FormEntry): boolean {
+  return isOperationalAssignee(user) && entry.assigneeId === user.id;
+}
+
 export function canCancelProject(user: User, project: Project): boolean {
   if (user.role === "admin" || user.role === "manager") return true;
   return user.role === "pm" && project.createdById === user.id;
@@ -688,17 +742,24 @@ export function taskTransition(
     return { ok: false, reason: "Task Completed terkunci." };
   }
 
+  const project = projectById(state, task.projectId);
+
   if (user.role === "admin") return { ok: true };
 
   if (to === "todo") {
     if (task.status !== "backlog") {
       return { ok: false, reason: "Hanya task Backlog yang bisa di-assign." };
     }
-    if (!canAssignTask(user)) {
-      return { ok: false, reason: "Hanya Manager/Admin yang bisa assign." };
-    }
     if (!task.assigneeId) {
       return { ok: false, reason: "Pilih assignee terlebih dahulu." };
+    }
+    const assignee = userById(state, task.assigneeId);
+    if (!canAssignOperational(user, project, assignee)) {
+      return {
+        ok: false,
+        reason:
+          "Hanya Manager/Admin, atau PM pemilik proyek ke Manager proyek, yang bisa assign.",
+      };
     }
     return { ok: true };
   }
@@ -709,7 +770,7 @@ export function taskTransition(
     if (!fromTodo && !fromRevision) {
       return { ok: false, reason: "Task harus To Do atau Need Revision." };
     }
-    if (user.role !== "assignee" || task.assigneeId !== user.id) {
+    if (!canWorkTask(user, task)) {
       return { ok: false, reason: "Hanya assignee task ini yang bisa mulai." };
     }
     return { ok: true };
@@ -719,7 +780,7 @@ export function taskTransition(
     if (task.status !== "in_progress") {
       return { ok: false, reason: "Task harus In Progress." };
     }
-    if (user.role !== "assignee" || task.assigneeId !== user.id) {
+    if (!canWorkTask(user, task)) {
       return { ok: false, reason: "Hanya assignee task ini yang bisa submit." };
     }
     return { ok: true };
@@ -807,7 +868,7 @@ export function canEditFormEntry(
   const step = stepFor(state, entry.projectId, entry.stepKey);
   if (step?.status !== "active") return false;
   if (user.role === "admin") return true;
-  return user.role === "assignee" && entry.assigneeId === user.id;
+  return canWorkFormEntry(user, entry);
 }
 
 export function canReviewFormEntry(
@@ -873,8 +934,10 @@ export function formEntriesNeedingReview(
 }
 
 export function workloadRows(state: AppState): WorkloadRow[] {
-  const assignees = state.users.filter((user) => user.role === "assignee");
-  return assignees
+  const candidates = state.users.filter(
+    (user) => user.role === "assignee" || user.role === "manager",
+  );
+  return candidates
     .map((user) => {
       const tasks = state.tasks.filter(
         (task) =>
@@ -904,7 +967,17 @@ export function workloadRows(state: AppState): WorkloadRow[] {
         overdueCount: tasks.filter((task) => isOverdue(task)).length,
       };
     })
-    .sort((a, b) => b.activeCount - a.activeCount);
+    .filter(
+      (row) =>
+        row.user.role === "assignee" ||
+        row.activeCount + row.activeFormCount > 0,
+    )
+    .sort(
+      (a, b) =>
+        b.activeCount +
+        b.activeFormCount -
+        (a.activeCount + a.activeFormCount),
+    );
 }
 
 export function completionStats(projects: Project[]): {

@@ -13,6 +13,15 @@ Dokumen ini adalah addendum untuk `Docs/PRD-Alur-CRM-Baru.md`. Fokusnya empat ti
 
 Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan isian daftar centang.
 
+## Manager proyek dan assignment operasional
+
+- Proyek memiliki satu Manager penanggung jawab opsional (`managerId`) yang dipilih PM pemilik atau Admin saat membuat/mengedit proyek.
+- Penunjukan Manager tidak mengubah visibilitas proyek; Manager tetap melihat semua proyek.
+- Manager dan Assignee dapat menjadi assignee task SIMPRO dan entri Form.
+- PM pemilik hanya boleh assign ke Manager proyeknya. Manager/Admin boleh assign ke Assignee atau Manager.
+- Manager assignee dapat mengerjakan task/Form miliknya, tetapi tidak mendapat hak review.
+- Task/Form Manager muncul di My Tasks/Forms dan workload Manager.
+
 ## Mesin Form
 
 - Satu tahap Form punya satu template form dan banyak entri.

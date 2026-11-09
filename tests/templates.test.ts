@@ -304,6 +304,7 @@ describe("persistence migration", () => {
         delete copy.templateVersion;
         delete copy.lifecycle;
         delete copy.structureLocked;
+        delete copy.managerId;
         return copy;
       }),
       steps: seed.steps.map((step) => ({
@@ -327,7 +328,8 @@ describe("persistence migration", () => {
         (project) =>
           project.templateId === UMUM_TEMPLATE_ID &&
           project.lifecycle !== undefined &&
-          project.structureLocked === true,
+          project.structureLocked === true &&
+          project.managerId === undefined,
       ),
     ).toBe(true);
     expect(

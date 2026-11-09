@@ -20,7 +20,10 @@ export function projectTeam(
 ) {
   const ids = new Set<string>();
   const project = store.projects.find((item) => item.id === projectId);
-  if (project) ids.add(project.createdById);
+  if (project) {
+    ids.add(project.createdById);
+    if (project.managerId) ids.add(project.managerId);
+  }
   for (const task of store.tasks) {
     if (task.projectId === projectId && task.assigneeId && !task.archivedAt) {
       ids.add(task.assigneeId);

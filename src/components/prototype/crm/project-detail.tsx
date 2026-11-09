@@ -41,8 +41,6 @@ import {
   activeSteps,
   calculateJourneyProgress,
   canApproveGate,
-  canAssignFormEntry,
-  canAssignTask,
   canCancelProject,
   canCreateFormEntry,
   canEditForm,
@@ -56,6 +54,7 @@ import {
   formFor,
   formLabel,
   formsFor,
+  operationalAssigneeCandidates,
   pitchingsFor,
   rolesForPitching,
   tasksForStep,
@@ -612,7 +611,9 @@ function PitchingStep({
   const [taskId, setTaskId] = useState<string | undefined>(undefined);
   const pitchings = pitchingsFor(store, project.id);
   const canManage = currentUser && canManageProject(currentUser, project);
-  const canAssign = Boolean(currentUser && canAssignTask(currentUser));
+  const canAssign =
+    currentUser &&
+    operationalAssigneeCandidates(store, currentUser, project).length > 0;
   const activePitchings = pitchings.filter((pitching) => pitching.status !== "lost");
   const history = pitchings.filter((pitching) => pitching.status === "lost");
   const canEditPitching = (pitchingId: string) =>
@@ -1082,7 +1083,9 @@ function RunningStep({
   const currentUser = userById(store, store.currentUserId);
   const tasks = tasksForStep(store, project.id, "running");
   const active = tasks.filter((task) => task.status !== "completed");
-  const canAssign = Boolean(currentUser && canAssignTask(currentUser));
+  const canAssign =
+    currentUser &&
+    operationalAssigneeCandidates(store, currentUser, project).length > 0;
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskId, setTaskId] = useState<string | undefined>(undefined);
   return (
@@ -1193,7 +1196,11 @@ function EntryAssignControl({
 }) {
   const store = usePrototypeStore();
   const [userId, setUserId] = useState(entry.assigneeId ?? "");
-  const candidates = store.users.filter((user) => user.role === "assignee");
+  const currentUser = userById(store, store.currentUserId);
+  const project = store.projects.find((item) => item.id === entry.projectId);
+  const candidates = currentUser
+    ? operationalAssigneeCandidates(store, currentUser, project)
+    : [];
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <NativeSelect
@@ -1244,7 +1251,9 @@ function FormStagePanel({
       !readOnly &&
       canCreateFormEntry(store, currentUser, project, step.key),
   );
-  const canAssign = Boolean(currentUser && canAssignFormEntry(currentUser));
+  const canAssign =
+    currentUser &&
+    operationalAssigneeCandidates(store, currentUser, project).length > 0;
   const canManage = Boolean(currentUser && canManageProject(currentUser, project));
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -1423,7 +1432,9 @@ function SimproStagePanel({
   const tasks = tasksForStep(store, project.id, step.key);
   const active = tasks.filter((task) => task.status !== "completed").length;
   const canManage = Boolean(currentUser && canManageProject(currentUser, project));
-  const canAssign = Boolean(currentUser && canAssignTask(currentUser));
+  const canAssign =
+    currentUser &&
+    operationalAssigneeCandidates(store, currentUser, project).length > 0;
   const [templateOpen, setTemplateOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
@@ -1971,7 +1982,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
               </div>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight">{project.name}</h1>
               <p className="mt-1 text-sm text-white/75">
-                {project.client || "Tanpa klien"} · PM {userById(store, project.createdById)?.name ?? "—"}
+                {project.client || "Tanpa klien"} · PM {userById(store, project.createdById)?.name ?? "—"} · Manager {userById(store, project.managerId)?.name ?? "Belum ditugaskan"}
               </p>
               {group ? (
                 <p className="mt-1 inline-flex items-center gap-1 text-xs text-white/70">

@@ -31,11 +31,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  canAssignTask,
   canReviewTask,
+  canWorkTask,
   formatDate,
   formatDateTime,
   isGroupableProject,
+  operationalAssigneeCandidates,
   taskTransition,
   userById,
 } from "@/lib/prototype/domain";
@@ -91,6 +92,7 @@ export function ProjectDialog({
   const [startDate, setStartDate] = useState("");
   const [targetEndDate, setTargetEndDate] = useState("");
   const [coverColor, setCoverColor] = useState(COVER_COLORS[0]);
+  const [managerId, setManagerId] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -101,6 +103,7 @@ export function ProjectDialog({
     setStartDate(project?.startDate?.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
     setTargetEndDate(project?.targetEndDate?.slice(0, 10) ?? "");
     setCoverColor(project?.coverColor ?? COVER_COLORS[0]);
+    setManagerId(project?.managerId ?? "");
   }, [open, project]);
 
   const save = () => {
@@ -118,6 +121,7 @@ export function ProjectDialog({
         ? new Date(`${targetEndDate}T00:00:00`).toISOString()
         : "",
       coverColor,
+      managerId,
     };
     if (project) {
       store.updateProject(project.id, input);
@@ -164,6 +168,25 @@ export function ProjectDialog({
           </Field>
           <Field label="Deskripsi" className="sm:col-span-2">
             <Textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Ringkasan proyek" />
+          </Field>
+          <Field
+            label="Manager penanggung jawab"
+            hint="Hanya user role Manager yang dapat dipilih."
+            className="sm:col-span-2"
+          >
+            <NativeSelect
+              value={managerId}
+              onChange={setManagerId}
+            >
+              <option value="">Belum ditugaskan</option>
+              {store.users
+                .filter((user) => user.role === "manager")
+                .map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+            </NativeSelect>
           </Field>
           <Field label="Warna cover" className="sm:col-span-2">
             <div className="flex flex-wrap gap-2">
@@ -500,7 +523,9 @@ export function TaskDialog({
   const task = taskId ? store.tasks.find((item) => item.id === taskId) : undefined;
   const project = store.projects.find((item) => item.id === projectId);
   const currentUser = userById(store, store.currentUserId);
-  const assignees = store.users.filter((user) => user.role === "assignee");
+  const assignees = currentUser
+    ? operationalAssigneeCandidates(store, currentUser, project)
+    : [];
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -526,15 +551,14 @@ export function TaskDialog({
   if (!project) return null;
 
   const isCreate = !task;
-  const canAssign = currentUser ? canAssignTask(currentUser) : false;
+  const canAssign = assignees.length > 0;
   const canReassign =
     canAssign &&
     task !== undefined &&
     task.status !== "awaiting_approval" &&
     task.status !== "completed";
   const canReview = task && currentUser ? canReviewTask(store, currentUser, task) : false;
-  const canWork =
-    task && currentUser?.role === "assignee" && task.assigneeId === currentUser.id;
+  const canWork = task && currentUser ? canWorkTask(currentUser, task) : false;
   const canDelete =
     task && currentUser && (currentUser.role === "admin" || (currentUser.role === "pm" && project.createdById === currentUser.id));
 
@@ -662,6 +686,16 @@ export function TaskDialog({
                   ) : null}
                 </div>
               </Field>
+              {!canReassign &&
+              task &&
+              currentUser?.role === "pm" &&
+              project.createdById === currentUser.id &&
+              !project.managerId ? (
+                <p className="text-muted-foreground text-[11px] sm:col-span-2">
+                  Tetapkan Manager penanggung jawab proyek terlebih dahulu agar
+                  Anda dapat meng-assign task kepada Manager.
+                </p>
+              ) : null}
               <Field label="Prioritas">
                 <PriorityBadge priority={task.priority} />
               </Field>

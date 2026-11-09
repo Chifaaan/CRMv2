@@ -16,12 +16,12 @@ import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   activeSteps,
   calculateJourneyProgress,
-  canAssignTask,
   canCreateTask,
   canManageProject,
   canViewProject,
   formatCurrency,
   formatDate,
+  operationalAssigneeCandidates,
   formFor,
   formsFor,
   tasksForStep,
@@ -105,7 +105,10 @@ function ProjectHeader({
               </span>
             </div>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight">{project.name}</h1>
-            <p className="mt-1 text-sm text-white/75">{project.client || "Tanpa klien"}</p>
+            <p className="mt-1 text-sm text-white/75">
+              {project.client || "Tanpa klien"} · Manager{" "}
+              {userById(store, project.managerId)?.name ?? "Belum ditugaskan"}
+            </p>
           </div>
           {canManage ? (
             <Button variant="secondary" size="sm" onClick={onEdit}>
@@ -530,7 +533,8 @@ export function SimproProjectPage({
       (currentUser.role !== "assignee" || task.assigneeId === currentUser.id),
   );
   const canCreate = canCreateTask(store, currentUser, project);
-  const canAssign = Boolean(currentUser && canAssignTask(currentUser));
+  const canAssign =
+    operationalAssigneeCandidates(store, currentUser, project).length > 0;
 
   const changeStage = (key: string) => {
     setStageKey(key);

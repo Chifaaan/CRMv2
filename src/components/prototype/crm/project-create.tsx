@@ -101,6 +101,7 @@ type Draft = {
   targetEndDate: string;
   coverColor: string;
   templateId: string;
+  managerId: string;
   stages: TemplateStage[];
 };
 
@@ -120,6 +121,7 @@ export function CrmProjectCreate() {
     targetEndDate: "",
     coverColor: COVER_COLORS[0],
     templateId: activeTemplates[0]?.id ?? "",
+    managerId: "",
     stages: cloneStages(activeTemplates[0]?.stages ?? []),
   });
   const [dirty, setDirty] = useState(false);
@@ -132,7 +134,7 @@ export function CrmProjectCreate() {
         const parsed = JSON.parse(raw) as Draft;
         if (parsed?.stages?.length) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
-          setDraft(parsed);
+          setDraft({ ...parsed, managerId: parsed.managerId ?? "" });
           setRestored(true);
         }
       }
@@ -294,6 +296,7 @@ export function CrmProjectCreate() {
         : "",
       coverColor: draft.coverColor,
       templateId: template.id,
+      managerId: draft.managerId,
       stages: draft.stages,
     });
     if (!id) {
@@ -418,6 +421,25 @@ export function CrmProjectCreate() {
                   {item.name} (v{item.version})
                 </option>
               ))}
+            </NativeSelect>
+          </Field>
+          <Field
+            label="Manager penanggung jawab"
+            hint="Hanya user role Manager yang dapat dipilih."
+            className="sm:col-span-2"
+          >
+            <NativeSelect
+              value={draft.managerId}
+              onChange={(value) => patch({ managerId: value })}
+            >
+              <option value="">Belum ditugaskan</option>
+              {store.users
+                .filter((user) => user.role === "manager")
+                .map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
             </NativeSelect>
           </Field>
         </div>

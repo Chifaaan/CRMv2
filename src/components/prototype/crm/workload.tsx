@@ -39,20 +39,24 @@ export function CrmWorkload() {
     <div className="space-y-5">
       <PageHeader
         title="Workload"
-        description="Task card aktif dan form aktif per assignee dihitung terpisah. Form tidak digabung ke jumlah kartu."
+        description="Task card aktif dan form aktif per assignee dan Manager dihitung terpisah. Form tidak digabung ke jumlah kartu."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Task aktif" value={totalActive} sub="To Do, In Progress, Awaiting Approval, Need Revision" icon={Users} />
         <StatCard label="Form aktif" value={rows.reduce((sum, row) => sum + row.activeFormCount, 0)} sub="Ditugaskan, Draft, Perlu revisi" icon={Gauge} accent="from-sky-500 to-blue-600" />
         <StatCard label="Overdue" value={totalOverdue} sub="Task melewati due date" icon={AlertTriangle} accent="from-rose-500 to-red-600" />
-        <StatCard label="Beban tertinggi" value={busiest?.user.name ?? "—"} sub={busiest ? `${busiest.activeCount} task aktif` : "Belum ada"} icon={Gauge} accent="from-amber-500 to-orange-600" />
+        <StatCard label="Beban tertinggi" value={busiest?.user.name ?? "—"} sub={busiest ? `${busiest.activeCount} task · ${busiest.activeFormCount} form` : "Belum ada"} icon={Gauge} accent="from-amber-500 to-orange-600" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {rows.map((row) => {
-          const max = Math.max(1, ...rows.map((item) => item.activeCount));
-          const percent = Math.round((row.activeCount / max) * 100);
+          const totalWork = row.activeCount + row.activeFormCount;
+          const max = Math.max(
+            1,
+            ...rows.map((item) => item.activeCount + item.activeFormCount),
+          );
+          const percent = Math.round((totalWork / max) * 100);
           return (
             <SectionCard
               key={row.user.id}
@@ -64,7 +68,9 @@ export function CrmWorkload() {
                 <div>
                   <div className="mb-1 flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Beban relatif</span>
-                    <span className="font-semibold">{row.activeCount} task</span>
+                    <span className="font-semibold">
+                      {row.activeCount} task · {row.activeFormCount} form
+                    </span>
                   </div>
                   <ProgressBar
                     value={percent}

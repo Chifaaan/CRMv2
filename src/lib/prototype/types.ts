@@ -155,6 +155,7 @@ export type Project = {
   actualEndDate?: string;
   coverColor: string;
   createdById: string;
+  managerId?: string;
   groupId?: string;
   cancelReason?: string;
   createdAt: string;

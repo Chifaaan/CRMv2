@@ -4,7 +4,8 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   activeSteps,
-  canAssignFormEntry,
+  canAssignOperational,
+  canAssignProjectManager,
   canCancelFormEntry,
   canCreateFormEntry,
   canEditFormEntry,
@@ -68,6 +69,7 @@ type ProjectInput = {
   startDate: string;
   targetEndDate: string;
   coverColor: string;
+  managerId?: string;
 };
 
 type CreateProjectInput = ProjectInput & {
@@ -528,6 +530,7 @@ export function migratePersistedState(persisted: unknown): PersistedState {
           ...project,
           templateId: project.templateId ?? UMUM_TEMPLATE_ID,
           templateVersion: template?.version ?? project.templateVersion ?? 1,
+          managerId: project.managerId ?? undefined,
           structureLocked: project.structureLocked ?? true,
           lifecycle:
             project.lifecycle ??
@@ -785,6 +788,10 @@ export const usePrototypeStore = create<PrototypeStore>()(
           state.templates[0];
         if (!template) return "";
         const projectId = uid("p");
+        const manager = input.managerId
+          ? userById(state, input.managerId)
+          : undefined;
+        const managerId = manager?.role === "manager" ? manager.id : undefined;
         const project: Project = {
           id: projectId,
           code: makeProjectCode(input.name, state.projects),
@@ -798,6 +805,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           targetEndDate: input.targetEndDate,
           coverColor: input.coverColor,
           createdById: state.currentUserId,
+          managerId,
           createdAt: now(),
           templateId: template.id,
           templateVersion: template.version,
@@ -823,6 +831,20 @@ export const usePrototypeStore = create<PrototypeStore>()(
             },
           },
         });
+        if (managerId && manager) {
+          events = recordProjectEvent(events, {
+            projectId,
+            step: null,
+            eventType: "project.manager_assigned",
+            actorId: state.currentUserId,
+            summary: `${manager.name} ditunjuk sebagai Manager proyek.`,
+            metadata: {
+              before: { managerId: null },
+              after: { managerId },
+              managerName: manager.name,
+            },
+          });
+        }
         if (stagesDiffer(input.stages, template)) {
           events = recordProjectEvent(events, {
             projectId,
@@ -865,6 +887,19 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: `Proyek ${project.name} dibuat.`,
             }),
           ],
+          notifications:
+            managerId && manager
+              ? [
+                  ...state.notifications,
+                  notify(state, {
+                    userId: managerId,
+                    type: "project_manager_assigned",
+                    title: "Anda ditunjuk sebagai Manager proyek",
+                    body: project.name,
+                    href: `/crm/projects/${projectId}`,
+                  }),
+                ]
+              : state.notifications,
           projectEvents: events,
         });
         return projectId;
@@ -872,8 +907,28 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
       updateProject: (projectId, input) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
         const project = state.projects.find((item) => item.id === projectId);
         if (!project) return;
+        const requestedManager = input.managerId
+          ? userById(state, input.managerId)
+          : undefined;
+        if (input.managerId && requestedManager?.role !== "manager") return;
+        const managerChanged =
+          input.managerId !== undefined &&
+          (requestedManager?.id ?? undefined) !== project.managerId;
+        if (
+          managerChanged &&
+          (!actor || !canAssignProjectManager(actor, project))
+        ) {
+          return;
+        }
+        const managerId = managerChanged
+          ? requestedManager?.id
+          : project.managerId;
+        const nextInput = managerChanged
+          ? { ...input, managerId }
+          : input;
         const before = {
           name: project.name,
           client: project.client,
@@ -881,11 +936,41 @@ export const usePrototypeStore = create<PrototypeStore>()(
           priority: project.priority,
           startDate: project.startDate,
           targetEndDate: project.targetEndDate,
+          managerId: project.managerId ?? null,
         };
-        const after = { ...before, ...input };
+        const after = {
+          ...before,
+          ...nextInput,
+          managerId: managerId ?? null,
+        };
+        let events = projectEvent(state, {
+          projectId,
+          step: null,
+          eventType: "project.updated",
+          summary: "Data proyek diperbarui.",
+          metadata: { before, after },
+        });
+        if (managerChanged) {
+          events = recordProjectEvent(events, {
+            projectId,
+            step: null,
+            eventType: project.managerId
+              ? "project.manager_changed"
+              : "project.manager_assigned",
+            actorId: state.currentUserId,
+            summary: managerId
+              ? `${requestedManager?.name ?? "Manager"} ditunjuk sebagai Manager proyek.`
+              : "Manager proyek dilepas.",
+            metadata: {
+              before: { managerId: project.managerId ?? null },
+              after: { managerId: managerId ?? null },
+              managerName: requestedManager?.name ?? null,
+            },
+          });
+        }
         set({
           projects: state.projects.map((item) =>
-            item.id === projectId ? { ...item, ...input } : item,
+            item.id === projectId ? { ...item, ...nextInput } : item,
           ),
           activityLogs: [
             ...state.activityLogs,
@@ -896,13 +981,22 @@ export const usePrototypeStore = create<PrototypeStore>()(
               message: "Data proyek diperbarui.",
             }),
           ],
-          projectEvents: projectEvent(state, {
-            projectId,
-            step: null,
-            eventType: "project.updated",
-            summary: "Data proyek diperbarui.",
-            metadata: { before, after },
-          }),
+          notifications:
+            managerChanged && managerId
+              ? [
+                  ...state.notifications,
+                  notify(state, {
+                    userId: managerId,
+                    type: project.managerId
+                      ? "project_manager_changed"
+                      : "project_manager_assigned",
+                    title: "Anda ditunjuk sebagai Manager proyek",
+                    body: project.name,
+                    href: `/crm/projects/${projectId}`,
+                  }),
+                ]
+              : state.notifications,
+          projectEvents: events,
         });
       },
 
@@ -1658,8 +1752,15 @@ export const usePrototypeStore = create<PrototypeStore>()(
       assignTask: (taskId, userId) => {
         const state = get();
         const task = state.tasks.find((item) => item.id === taskId);
-        if (!task) return;
+        if (!task || task.status === "completed") return;
+        const actor = userById(state, state.currentUserId);
+        const project = state.projects.find(
+          (item) => item.id === task.projectId,
+        );
         const user = userById(state, userId);
+        if (!actor || !user || !canAssignOperational(actor, project, user)) {
+          return;
+        }
         set({
           tasks: state.tasks.map((item) =>
             item.id === taskId
@@ -1695,6 +1796,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             summary: `Task ${task.code} di-assign ke ${user?.name ?? "user"}.`,
             metadata: {
               taskId,
+              assigneeRole: user.role,
               before: { assigneeId: task.assigneeId ?? null, status: task.status },
               after: { assigneeId: userId, status: "todo" },
             },
@@ -2122,9 +2224,22 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const state = get();
         const actor = userById(state, state.currentUserId);
         const entry = state.formEntries.find((item) => item.id === entryId);
-        if (!actor || !entry || !canAssignFormEntry(actor)) return;
+        const project = entry
+          ? state.projects.find((item) => item.id === entry.projectId)
+          : undefined;
+        if (
+          !actor ||
+          !entry ||
+          !project ||
+          entry.status === "cancelled" ||
+          entry.status === "approved"
+        ) {
+          return;
+        }
         const assignee = userById(state, userId);
-        if (!assignee) return;
+        if (!assignee || !canAssignOperational(actor, project, assignee)) {
+          return;
+        }
         set({
           formEntries: state.formEntries.map((item) =>
             item.id === entryId
@@ -2154,6 +2269,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             summary: `Entri form ${entry.title} di-assign ke ${assignee.name}.`,
             metadata: {
               entryId,
+              assigneeRole: assignee.role,
               before: { assigneeId: entry.assigneeId ?? null, status: entry.status },
               after: { assigneeId: userId, status: "assigned" },
             },
@@ -2790,7 +2906,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
     }),
     {
       name: "crm-simpro:v1",
-      version: 3,
+      version: 4,
       migrate: (persisted) =>
         migratePersistedState(persisted) as unknown as PrototypeStore,
       partialize: (state) => ({
