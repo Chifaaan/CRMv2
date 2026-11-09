@@ -56,6 +56,8 @@ import {
   formsFor,
   operationalAssigneeCandidates,
   pitchingsFor,
+  prospekById,
+  prospekPitchingById,
   rolesForPitching,
   tasksForStep,
   userById,
@@ -2069,6 +2071,77 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
             <X className="size-3.5" />
           </button>
         </div>
+      ) : null}
+
+      {project.prospekId ? (
+        <SectionCard
+          title="Asal Prospek"
+          description="Proyek ini lahir dari Pitching yang menang. Data kontrak dan Termine menjadi acuan pembayaran di Closing."
+        >
+          <div className="space-y-2 text-xs">
+            <p>
+              Prospek:{" "}
+              <a
+                className="text-primary font-medium hover:underline"
+                href={`/crm/prospek/${project.prospekId}`}
+              >
+                {prospekById(store, project.prospekId)?.name ??
+                  project.prospekId}
+              </a>
+            </p>
+            <p>
+              Pitching:{" "}
+              <span className="font-medium">
+                {prospekPitchingById(store, project.pitchingId)?.title ??
+                  project.pitchingId ??
+                  "—"}
+              </span>
+            </p>
+            {project.inheritedRab ? (
+              <p>
+                RAB warisan:{" "}
+                <span className="font-medium">
+                  {formatCurrency(
+                    project.inheritedRab.items.reduce(
+                      (sum, item) => sum + item.qty * item.unitPrice,
+                      0,
+                    ),
+                  )}
+                </span>
+              </p>
+            ) : null}
+            {project.inheritedQuotation?.amount ? (
+              <p>
+                Quotation warisan:{" "}
+                <span className="font-medium">
+                  {formatCurrency(project.inheritedQuotation.amount)}
+                </span>
+              </p>
+            ) : null}
+            {project.prospekContract ? (
+              <div className="rounded-lg border p-2">
+                <p className="font-medium">
+                  Kontrak {project.prospekContract.number} ·{" "}
+                  {formatCurrency(project.prospekContract.value)}
+                </p>
+                <div className="mt-1 space-y-1">
+                  {project.prospekContract.termine.map((termine) => (
+                    <div
+                      key={termine.id}
+                      className="flex flex-wrap items-center justify-between gap-2 text-[11px]"
+                    >
+                      <span>{termine.label}</span>
+                      <span className="text-muted-foreground">
+                        {formatCurrency(termine.amount)} ·{" "}
+                        {formatDate(termine.dueDate)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </SectionCard>
       ) : null}
 
       {project.status === "completed" ? (

@@ -8,12 +8,18 @@ import {
   type AppState,
   type FormEntry,
   type FormStepKey,
+  type FormTemplate,
   type GateResult,
   type Lifecycle,
   type Phase,
+  type PitchingContract,
+  type PitchingQuotation,
+  type PitchingRab,
   type Priority,
   type Project,
   type ProjectStep,
+  type Prospek,
+  type ProspekPitching,
   type Role,
   type StepForm,
   type Task,
@@ -579,6 +585,290 @@ export function canWorkFormEntry(user: User, entry: FormEntry): boolean {
   return isOperationalAssignee(user) && entry.assigneeId === user.id;
 }
 
+export function prospekById(state: AppState, id?: string): Prospek | undefined {
+  return state.prospeks.find((prospek) => prospek.id === id);
+}
+
+export function prospekPitchingById(
+  state: AppState,
+  id?: string,
+): ProspekPitching | undefined {
+  return state.prospekPitchings.find((pitching) => pitching.id === id);
+}
+
+export function prospekPitchingsFor(
+  state: AppState,
+  prospekId: string,
+): ProspekPitching[] {
+  return state.prospekPitchings.filter(
+    (pitching) => pitching.prospekId === prospekId,
+  );
+}
+
+export function pitchingRabFor(
+  state: AppState,
+  pitchingId: string,
+): PitchingRab | undefined {
+  return state.pitchingRabs.find((rab) => rab.pitchingId === pitchingId);
+}
+
+export function pitchingQuotationFor(
+  state: AppState,
+  pitchingId: string,
+): PitchingQuotation | undefined {
+  return state.pitchingQuotations.find(
+    (quotation) => quotation.pitchingId === pitchingId,
+  );
+}
+
+export function canCreateProspek(user: User): boolean {
+  return user.role === "admin" || user.role === "manager" || user.role === "pm";
+}
+
+export function canManageProspek(user: User, prospek?: Prospek): boolean {
+  if (!prospek) return false;
+  if (user.role === "admin" || user.role === "manager") return true;
+  return user.role === "pm" && prospek.createdById === user.id;
+}
+
+export function prospekHasAssigneeWork(
+  state: AppState,
+  userId: string,
+  prospekId: string,
+): boolean {
+  return (
+    state.formEntries.some(
+      (entry) =>
+        entry.prospekId === prospekId && entry.assigneeId === userId,
+    ) ||
+    state.pitchingRabs.some(
+      (rab) =>
+        rab.assigneeId === userId &&
+        state.prospekPitchings.some(
+          (pitching) =>
+            pitching.id === rab.pitchingId && pitching.prospekId === prospekId,
+        ),
+    ) ||
+    state.pitchingQuotations.some(
+      (quotation) =>
+        quotation.assigneeId === userId &&
+        state.prospekPitchings.some(
+          (pitching) =>
+            pitching.id === quotation.pitchingId &&
+            pitching.prospekId === prospekId,
+        ),
+    )
+  );
+}
+
+export function canViewProspek(
+  state: AppState,
+  user: User,
+  prospek?: Prospek,
+): boolean {
+  if (!prospek) return false;
+  if (user.role === "admin" || user.role === "manager") return true;
+  if (user.role === "pm") return prospek.createdById === user.id;
+  if (user.role === "assignee") {
+    return prospekHasAssigneeWork(state, user.id, prospek.id);
+  }
+  return false;
+}
+
+export function visibleProspeks(state: AppState, user?: User): Prospek[] {
+  if (!user) return [];
+  return state.prospeks.filter((prospek) =>
+    canViewProspek(state, user, prospek),
+  );
+}
+
+export function canAssignProspekWork(
+  user: User,
+  prospek?: Prospek,
+): boolean {
+  return canManageProspek(user, prospek);
+}
+
+export function prospekAssigneeCandidates(
+  state: AppState,
+  user: User,
+  prospek?: Prospek,
+): User[] {
+  if (!canAssignProspekWork(user, prospek)) return [];
+  return state.users.filter(isOperationalAssignee);
+}
+
+export function canDecidePitching(
+  user: User,
+  prospek?: Prospek,
+): boolean {
+  if (!prospek) return false;
+  return (
+    user.role === "admin" ||
+    (user.role === "pm" && prospek.createdById === user.id)
+  );
+}
+
+function pitchingWorkLocked(
+  state: AppState,
+  pitching: ProspekPitching,
+): boolean {
+  const prospek = prospekById(state, pitching.prospekId);
+  if (!prospek || prospek.status !== "active") return true;
+  return pitching.status === "lost" || Boolean(pitching.projectId);
+}
+
+export function canEditPitchingRab(
+  state: AppState,
+  user: User,
+  pitching?: ProspekPitching,
+): boolean {
+  if (!pitching || pitchingWorkLocked(state, pitching)) return false;
+  const prospek = prospekById(state, pitching.prospekId);
+  if (user.role === "admin" || user.role === "manager") return true;
+  if (canManageProspek(user, prospek)) return true;
+  const rab = pitchingRabFor(state, pitching.id);
+  return Boolean(rab?.assigneeId === user.id && isOperationalAssignee(user));
+}
+
+export function canEditQuotation(
+  state: AppState,
+  user: User,
+  pitching?: ProspekPitching,
+): boolean {
+  if (!pitching || pitchingWorkLocked(state, pitching)) return false;
+  const prospek = prospekById(state, pitching.prospekId);
+  if (user.role === "admin" || user.role === "manager") return true;
+  if (canManageProspek(user, prospek)) return true;
+  const quotation = pitchingQuotationFor(state, pitching.id);
+  return Boolean(
+    quotation?.assigneeId === user.id && isOperationalAssignee(user),
+  );
+}
+
+export function contractComplete(
+  contract?: PitchingContract,
+): boolean {
+  if (!contract) return false;
+  return Boolean(
+    contract.number.trim() &&
+      contract.date &&
+      contract.value > 0 &&
+      contract.attachment &&
+      contract.termine.length > 0,
+  );
+}
+
+export function canConvertPitching(
+  state: AppState,
+  user: User,
+  pitching?: ProspekPitching,
+): boolean {
+  if (!pitching || pitching.projectId) return false;
+  const prospek = prospekById(state, pitching.prospekId);
+  return (
+    canDecidePitching(user, prospek) &&
+    pitching.status === "won" &&
+    contractComplete(pitching.contract)
+  );
+}
+
+export type ProspekPaguSummary = {
+  pagu: number;
+  rabTotal: number;
+  quotationTotal: number;
+  total: number;
+  exceeds: boolean;
+  remaining: number;
+};
+
+export function prospekPaguSummary(
+  state: AppState,
+  prospek: Prospek,
+): ProspekPaguSummary {
+  let rabTotal = 0;
+  let quotationTotal = 0;
+  for (const pitching of prospekPitchingsFor(state, prospek.id)) {
+    const rab = pitchingRabFor(state, pitching.id);
+    if (rab?.status === "submitted") {
+      rabTotal += rab.items.reduce(
+        (sum, item) => sum + item.qty * item.unitPrice,
+        0,
+      );
+    }
+    const quotation = pitchingQuotationFor(state, pitching.id);
+    if (
+      quotation &&
+      (quotation.status === "submitted" || quotation.status === "approved")
+    ) {
+      quotationTotal += quotation.amount ?? 0;
+    }
+  }
+  const total = rabTotal + quotationTotal;
+  return {
+    pagu: prospek.pagu,
+    rabTotal,
+    quotationTotal,
+    total,
+    exceeds: prospek.pagu > 0 && (rabTotal > prospek.pagu || quotationTotal > prospek.pagu),
+    remaining: prospek.pagu - total,
+  };
+}
+
+export function isProspekComplete(
+  state: AppState,
+  prospekId: string,
+): boolean {
+  const pitchings = prospekPitchingsFor(state, prospekId);
+  if (pitchings.length === 0) return false;
+  return pitchings.every(
+    (pitching) =>
+      pitching.status !== "draft" &&
+      (pitching.status !== "won" || Boolean(pitching.projectId)),
+  );
+}
+
+export function formEntryScope(entry: FormEntry): "project" | "prospek" {
+  return entry.scope ?? "project";
+}
+
+export function pitchingForFormEntry(
+  state: AppState,
+  entry: FormEntry,
+): ProspekPitching | undefined {
+  return entry.pitchingId
+    ? prospekPitchingById(state, entry.pitchingId)
+    : undefined;
+}
+
+export function formEntryTemplate(
+  state: AppState,
+  entry: FormEntry,
+): FormTemplate | undefined {
+  if (formEntryScope(entry) === "prospek") {
+    const pitching = pitchingForFormEntry(state, entry);
+    const template = state.templates.find(
+      (item) => item.id === pitching?.templateId,
+    );
+    return template?.stages.find(
+      (stage) => stage.id === entry.templateStageId,
+    )?.formTemplate;
+  }
+  return entry.projectId
+    ? stepFor(state, entry.projectId, entry.stepKey)?.formTemplate
+    : undefined;
+}
+
+export function canWorkProspekFormEntry(
+  state: AppState,
+  user: User,
+  entry: FormEntry,
+): boolean {
+  const pitching = pitchingForFormEntry(state, entry);
+  if (!pitching) return false;
+  return !pitchingWorkLocked(state, pitching);
+}
+
 export function canCancelProject(user: User, project: Project): boolean {
   if (user.role === "admin" || user.role === "manager") return true;
   return user.role === "pm" && project.createdById === user.id;
@@ -863,6 +1153,13 @@ export function canEditFormEntry(
 ): boolean {
   if (entry.status === "submitted" || entry.status === "approved") return false;
   if (entry.status === "cancelled" || entry.status === "unassigned") return false;
+  if (formEntryScope(entry) === "prospek") {
+    const pitching = pitchingForFormEntry(state, entry);
+    if (!pitching || pitchingWorkLocked(state, pitching)) return false;
+    if (user.role === "admin") return true;
+    return canWorkFormEntry(user, entry);
+  }
+  if (!entry.projectId) return false;
   const project = projectById(state, entry.projectId);
   if (project?.status !== "active") return false;
   const step = stepFor(state, entry.projectId, entry.stepKey);
@@ -879,6 +1176,11 @@ export function canReviewFormEntry(
   if (entry.status !== "submitted") return false;
   if (user.role === "admin") return true;
   if (user.role !== "pm") return false;
+  if (formEntryScope(entry) === "prospek") {
+    const prospek = prospekById(state, entry.prospekId);
+    return prospek?.createdById === user.id;
+  }
+  if (!entry.projectId) return false;
   const project = projectById(state, entry.projectId);
   return project?.createdById === user.id;
 }
@@ -889,9 +1191,27 @@ export function canCancelFormEntry(
   entry: FormEntry,
 ): boolean {
   if (entry.status === "cancelled") return false;
+  if (formEntryScope(entry) === "prospek") {
+    return canManageProspek(user, prospekById(state, entry.prospekId));
+  }
+  if (!entry.projectId) return false;
   const project = projectById(state, entry.projectId);
   if (!project) return false;
   return canManageProject(user, project);
+}
+
+function activeFormEntry(state: AppState, entry: FormEntry): boolean {
+  if (formEntryScope(entry) === "prospek") {
+    const pitching = pitchingForFormEntry(state, entry);
+    return Boolean(
+      pitching &&
+        prospekById(state, pitching.prospekId)?.status === "active" &&
+        !pitchingWorkLocked(state, pitching),
+    );
+  }
+  return entry.projectId
+    ? projectById(state, entry.projectId)?.status === "active"
+    : false;
 }
 
 export function activeFormEntriesForAssignee(
@@ -902,7 +1222,7 @@ export function activeFormEntriesForAssignee(
     (entry) =>
       entry.assigneeId === userId &&
       ["assigned", "draft", "need_revision"].includes(entry.status) &&
-      projectById(state, entry.projectId)?.status === "active",
+      activeFormEntry(state, entry),
   );
 }
 
@@ -927,8 +1247,7 @@ export function formEntriesNeedingReview(
   if (!user) return [];
   return state.formEntries.filter((entry) => {
     if (entry.status !== "submitted") return false;
-    const project = projectById(state, entry.projectId);
-    if (!project || project.status !== "active") return false;
+    if (!activeFormEntry(state, entry)) return false;
     return canReviewFormEntry(state, user, entry);
   });
 }

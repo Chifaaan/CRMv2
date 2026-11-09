@@ -28,6 +28,9 @@ npm test
 
 - Domain rules, gates, progress, permissions, template validation: `src/lib/prototype/domain.ts`
 - Template model and seed templates (Umum, KOL Campaign, Event Program): `src/lib/prototype/templates.ts`
+- Prospek domain helpers, pagu, and form scope: `src/lib/prototype/domain.ts`
+- Prospek audit trail: `src/lib/prototype/prospek-events.ts`
+- Prospek UI: `src/components/prototype/crm/prospek.tsx`, `src/components/prototype/crm/prospek-detail.tsx`
 - Project audit trail (`project_events`, backfill, read/pagination): `src/lib/prototype/events.ts`
 - Step history UI: `src/components/prototype/crm/project-history.tsx`
 - Seed/demo data: `src/lib/prototype/seed.ts`
@@ -36,7 +39,7 @@ npm test
 - Excel import/templates: `src/lib/prototype/excel.ts`
 - Prototype UI: `src/components/prototype/`
 - Routes:
-  - CRM: `/crm`, `/crm/projects`, `/crm/projects/new`, `/crm/projects/[id]`, `/crm/groups`, `/crm/templates`, `/crm/workload`
+  - CRM: `/crm`, `/crm/projects`, `/crm/projects/new`, `/crm/projects/[id]`, `/crm/prospek`, `/crm/prospek/[id]`, `/crm/prospek/[id]/forms/[entryId]`, `/crm/groups`, `/crm/templates`, `/crm/workload`
   - SIMPRO: `/dashboard`, `/projects`, `/projects/[id]/*`, `/my-tasks`, `/forms`
 
 ## Frontend baseline
@@ -59,6 +62,13 @@ Prototype adaptations already made:
 - Journey % is weighted: sum of completed stage weights / sum of non-skipped stage weights. Umum weights (1,1,1,1,0.5,0.5) must produce the exact legacy numbers; a submitted BAST/Invoice still counts before the stage is formally completed.
 - Four stage kinds only: **Form Keuangan, Form, Gerbang, SIMPRO**. Checklist is removed; migrated checklist tasks become a checklist field in a Form template.
 - Proyek memiliki satu Manager penanggung jawab opsional (`managerId`) yang dipilih PM pemilik atau Admin saat membuat/mengedit proyek. Penunjukan ini tidak mengubah visibilitas Manager; Manager tetap melihat semua proyek.
+- Prospek adalah umbrella project di CRM. Satu Prospek berisi banyak Pitching; setiap Pitching punya RAB, Quotation, tugas Form, dan kontrak sendiri.
+- Alur Prospek tetap: Detail → Pitching → RAB → Quotation → Decision → Kontrak. Pitching yang menang dan kontraknya lengkap dikonversi menjadi anak proyek; Pitching yang kalah menjadi riwayat read-only.
+- Prospek dan seluruh pekerjaannya berada di CRM. SIMPRO hanya menerima anak proyek hasil konversi, yang dimulai setelah tahap/fase Prospek selesai.
+- PM membuat dan hanya melihat Prospek miliknya; Manager/Admin melihat semua; Assignee hanya melihat Pitching/Form/RAB/Quotation yang di-assign; Finance tidak mengakses Prospek sampai anak proyek dibuat.
+- Pagu Prospek hanya peringatan, bukan batas keras. Termine kontrak tampil sebagai acuan pembayaran di Closing dan tidak membuat form finance otomatis.
+- Reminder Prospek hanya in-app: penugasan, mendekati due date (3 hari), dan overdue. Tidak ada email.
+- Proyek lama dengan step Pitching dan `ProjectGroup` lama tidak dimigrasikan ke Prospek.
 - Form stages have one form template and many entries. Entries are created by PM, assigned by Manager/Admin, filled by the assignee, and reviewed by PM. All non-cancelled entries must be approved; at least one entry is required unless "no work" is explicitly confirmed and audited.
 - Manager dan Assignee sama-sama dapat menjadi assignee operasional task/Form. PM pemilik hanya boleh assign ke Manager proyeknya; Manager/Admin tetap boleh assign ke Assignee atau Manager. Manager assignee boleh mengerjakan task/Form miliknya tetapi tidak mendapat hak review.
 - SIMPRO stages use Kanban cards. Tasks carry `stageId`; the board filters by stage (default active), shows the stage on cards, and completed stages are read-only. A stage closes when no task remains, with at least one task unless "no work" is confirmed.
@@ -78,4 +88,4 @@ Prototype adaptations already made:
 
 ## Verification
 
-`npm run build`, `npm run lint`, and `npm test` pass. The domain tests cover gates, progress, visibility, task transitions, workload, and Excel validation. `tests/templates.test.ts` covers template copying/independence, validation, structure lock, gate transitions, weighted progress, template permissions, and idempotent persistence migration. `tests/stage-types.test.ts` covers stage type validation, Form/SIMPRO completion rules, form permissions/badge/workload separation, checklist migration, and Pembayaran validation. See `Docs/Stage-Types.md`.
+`npm run build`, `npm run lint`, and `npm test` pass. The domain tests cover gates, progress, visibility, task transitions, workload, and Excel validation. `tests/templates.test.ts` covers template copying/independence, validation, structure lock, gate transitions, weighted progress, template permissions, and idempotent persistence migration. `tests/stage-types.test.ts` covers stage type validation, Form/SIMPRO completion rules, form permissions/badge/workload separation, checklist migration, and Pembayaran validation. `tests/prospek.test.ts` covers Prospek visibility, pagu warnings, RAB/Quotation versions, decisions, contract validation, conversion idempotency, Prospek form scope, reminders, and audit pagination. See `Docs/Stage-Types.md` and `Docs/Prospek.md`.

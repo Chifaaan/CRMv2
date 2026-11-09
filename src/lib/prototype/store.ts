@@ -6,14 +6,30 @@ import {
   activeSteps,
   canAssignOperational,
   canAssignProjectManager,
+  canAssignProspekWork,
   canCancelFormEntry,
+  canConvertPitching,
   canCreateFormEntry,
+  canCreateProspek,
+  canDecidePitching,
   canEditFormEntry,
+  canEditPitchingRab,
+  canEditQuotation,
   canManageProject,
+  canManageProspek,
   canManageTemplates,
   canReviewFormEntry,
+  contractComplete,
   evaluateGate,
+  formEntryScope,
   groupCompleted,
+  isProspekComplete,
+  pitchingForFormEntry,
+  pitchingQuotationFor,
+  pitchingRabFor,
+  prospekAssigneeCandidates,
+  prospekById,
+  prospekPitchingsFor,
   userById,
 } from "./domain";
 import {
@@ -28,6 +44,7 @@ import {
   submitFormVersion,
 } from "./form-versions";
 import { createSeedState } from "./seed";
+import { recordProspekEvent } from "./prospek-events";
 import {
   createSeedTemplates,
   stageTasksForProject,
@@ -43,11 +60,21 @@ import {
   type FormStepKey,
   type FormTemplate,
   type Pitching,
+  type PitchingContract,
+  type PitchingQuotation,
+  type PitchingQuotationMode,
+  type PitchingQuotationSnapshot,
+  type PitchingRab,
+  type PitchingRabItem,
+  type PitchingRabSnapshot,
   type Priority,
   type Project,
   type ProjectEvent,
   type ProjectStep,
   type ProjectTemplate,
+  type Prospek,
+  type ProspekEvent,
+  type ProspekPitching,
   TASK_STATUS_LABEL,
   type StepForm,
   type Task,
@@ -76,6 +103,13 @@ type CreateProjectInput = ProjectInput & {
   templateId?: string;
   /** Stages customized during creation; omitted means an exact template copy. */
   stages?: TemplateStage[];
+  prospekId?: string;
+  pitchingId?: string;
+  inheritedRab?: PitchingRabSnapshot;
+  inheritedQuotation?: PitchingQuotationSnapshot;
+  prospekContract?: PitchingContract;
+  /** Stages already finished before the child project starts (creation-time). */
+  completedStageIds?: string[];
 };
 
 type TemplateInput = {
@@ -90,6 +124,36 @@ type TemplateInput = {
 type GroupInput = {
   name: string;
   description: string;
+};
+
+type ProspekInput = {
+  name: string;
+  description: string;
+  picId?: string;
+  client: string;
+  periodStart: string;
+  periodEnd: string;
+  pagu: number;
+};
+
+type ProspekPitchingInput = {
+  title: string;
+  description: string;
+  templateId: string;
+};
+
+type PitchingRabInput = {
+  items: PitchingRabItem[];
+  notes: string;
+  dueDate?: string;
+};
+
+type PitchingQuotationInput = {
+  mode: PitchingQuotationMode;
+  url?: string;
+  attachment?: Attachment;
+  amount?: number;
+  dueDate?: string;
 };
 
 type PrototypeActions = {
@@ -188,6 +252,49 @@ type PrototypeActions = {
   removeProjectFromGroup: (projectId: string) => void;
   disbandGroup: (groupId: string) => void;
 
+  createProspek: (input: ProspekInput) => string;
+  updateProspek: (prospekId: string, input: Partial<ProspekInput>) => void;
+  cancelProspek: (prospekId: string, reason: string) => void;
+  addProspekPitching: (
+    prospekId: string,
+    input: ProspekPitchingInput,
+  ) => string;
+  updateProspekPitching: (
+    pitchingId: string,
+    input: Partial<ProspekPitchingInput>,
+  ) => void;
+  assignPitchingRab: (pitchingId: string, userId: string) => void;
+  savePitchingRab: (pitchingId: string, input: PitchingRabInput) => void;
+  submitPitchingRab: (pitchingId: string) => void;
+  assignPitchingQuotation: (pitchingId: string, userId: string) => void;
+  savePitchingQuotation: (
+    pitchingId: string,
+    input: PitchingQuotationInput,
+  ) => void;
+  submitPitchingQuotation: (pitchingId: string) => void;
+  reviewPitchingQuotation: (
+    pitchingId: string,
+    decision: "approved" | "need_revision",
+    comment: string,
+  ) => void;
+  decideProspekPitching: (
+    pitchingId: string,
+    decision: "won" | "lost",
+    reason?: string,
+  ) => void;
+  savePitchingContract: (
+    pitchingId: string,
+    contract: PitchingContract,
+  ) => void;
+  convertPitching: (pitchingId: string) => string;
+  createProspekFormEntry: (
+    prospekId: string,
+    pitchingId: string,
+    templateStageId: string,
+    input: { title: string; dueDate?: string },
+  ) => string;
+  syncProspekReminders: () => void;
+
   markNotificationRead: (notificationId: string) => void;
   markAllNotificationsRead: () => void;
 };
@@ -278,6 +385,47 @@ function projectEvent(
   });
 }
 
+function prospekEvent(
+  state: AppState,
+  input: Omit<Parameters<typeof recordProspekEvent>[1], "actorId">,
+): ProspekEvent[] {
+  return recordProspekEvent(state.prospekEvents, {
+    ...input,
+    actorId: state.currentUserId,
+  });
+}
+
+function nextProspekCode(prospeks: Prospek[]): string {
+  let index = prospeks.length + 1;
+  let code = `PRS-${String(index).padStart(3, "0")}`;
+  while (prospeks.some((prospek) => prospek.code === code)) {
+    index += 1;
+    code = `PRS-${String(index).padStart(3, "0")}`;
+  }
+  return code;
+}
+
+function prospekHref(prospekId: string, pitchingId?: string): string {
+  return pitchingId
+    ? `/crm/prospek/${prospekId}?pitching=${pitchingId}`
+    : `/crm/prospek/${prospekId}`;
+}
+
+function prospekStatusAfter(state: AppState, prospekId: string): Prospek[] {
+  return state.prospeks.map((prospek) => {
+    if (prospek.id !== prospekId || prospek.status !== "active") return prospek;
+    return isProspekComplete(state, prospekId)
+      ? { ...prospek, status: "completed" as const, updatedAt: now() }
+      : prospek;
+  });
+}
+
+function addDays(date: string, days: number): string {
+  const value = new Date(date);
+  value.setDate(value.getDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
 function formSnapshot(form: StepForm): Record<string, unknown> {
   const base = {
     status: form.status,
@@ -356,15 +504,23 @@ function stagesForProject(
   projectId: string,
   template: ProjectTemplate,
   overrides?: TemplateStage[],
+  completedStageIds?: string[],
 ): ProjectStep[] {
   const stages =
     overrides && overrides.length > 0 ? overrides : template.stages;
   const sorted = [...stages].sort((a, b) => a.order - b.order);
-  const first = sorted[0];
+  const completed = new Set(completedStageIds ?? []);
+  const firstActiveIndex = sorted.findIndex((stage) => !completed.has(stage.id));
+  const firstActive = sorted[firstActiveIndex];
   return sorted.map((stage, index) => {
+    const isCompleted = completed.has(stage.id);
     const active =
-      index === 0 ||
-      Boolean(first?.parallelGroup && stage.parallelGroup === first.parallelGroup);
+      !isCompleted &&
+      (index === firstActiveIndex ||
+        Boolean(
+          firstActive?.parallelGroup &&
+            stage.parallelGroup === firstActive.parallelGroup,
+        ));
     return {
       id: `step-${projectId}-${stage.id}`,
       projectId,
@@ -373,7 +529,11 @@ function stagesForProject(
       description: stage.description,
       phase: stage.phase,
       order: index + 1,
-      status: active ? ("active" as const) : ("pending" as const),
+      status: isCompleted
+        ? ("completed" as const)
+        : active
+          ? ("active" as const)
+          : ("pending" as const),
       kind: stage.kind,
       required: stage.required,
       weight: stage.weight,
@@ -384,7 +544,8 @@ function stagesForProject(
       legacyKey: stage.legacyKey,
       formTemplate: stage.formTemplate,
       tasks: stageTasksForProject(stage.tasks),
-      startedAt: active ? now() : undefined,
+      startedAt: isCompleted || active ? now() : undefined,
+      completedAt: isCompleted ? now() : undefined,
     };
   });
 }
@@ -612,8 +773,20 @@ export function migratePersistedState(persisted: unknown): PersistedState {
     steps,
     tasks,
     formEntries: Array.isArray(state.formEntries)
-      ? (state.formEntries as FormEntry[])
+      ? (state.formEntries as FormEntry[]).map((entry) => ({
+          ...entry,
+          scope: entry.scope ?? ("project" as const),
+        }))
       : [],
+    prospeks: Array.isArray(state.prospeks) ? state.prospeks : [],
+    prospekPitchings: Array.isArray(state.prospekPitchings)
+      ? state.prospekPitchings
+      : [],
+    pitchingRabs: Array.isArray(state.pitchingRabs) ? state.pitchingRabs : [],
+    pitchingQuotations: Array.isArray(state.pitchingQuotations)
+      ? state.pitchingQuotations
+      : [],
+    prospekEvents: Array.isArray(state.prospekEvents) ? state.prospekEvents : [],
   };
 }
 
@@ -810,8 +983,18 @@ export const usePrototypeStore = create<PrototypeStore>()(
           templateId: template.id,
           templateVersion: template.version,
           structureLocked: true,
+          prospekId: input.prospekId,
+          pitchingId: input.pitchingId,
+          inheritedRab: input.inheritedRab,
+          inheritedQuotation: input.inheritedQuotation,
+          prospekContract: input.prospekContract,
         };
-        const steps = stagesForProject(projectId, template, input.stages);
+        const steps = stagesForProject(
+          projectId,
+          template,
+          input.stages,
+          input.completedStageIds,
+        );
         const forms = FORM_STEP_KEYS.map((key) => defaultForm(projectId, key));
         let events = projectEvent(state, {
           projectId,
@@ -860,7 +1043,8 @@ export const usePrototypeStore = create<PrototypeStore>()(
             },
           });
         }
-        const first = steps[0];
+        const first =
+          steps.find((step) => step.status === "active") ?? steps[0];
         if (first) {
           events = recordProjectEvent(events, {
             projectId,
@@ -2187,6 +2371,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
         if (!step || !input.title.trim()) return "";
         const entry: FormEntry = {
           id: uid("fentry"),
+          scope: "project",
           projectId,
           stepKey,
           templateStageId: step.id,
@@ -2224,22 +2409,55 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const state = get();
         const actor = userById(state, state.currentUserId);
         const entry = state.formEntries.find((item) => item.id === entryId);
+        const isProspek = Boolean(entry && formEntryScope(entry) === "prospek");
         const project = entry
           ? state.projects.find((item) => item.id === entry.projectId)
+          : undefined;
+        const prospek = entry?.prospekId
+          ? prospekById(state, entry.prospekId)
+          : undefined;
+        const pitching = entry?.pitchingId
+          ? state.prospekPitchings.find((item) => item.id === entry.pitchingId)
           : undefined;
         if (
           !actor ||
           !entry ||
-          !project ||
           entry.status === "cancelled" ||
           entry.status === "approved"
         ) {
           return;
         }
-        const assignee = userById(state, userId);
-        if (!assignee || !canAssignOperational(actor, project, assignee)) {
+        if (isProspek) {
+          if (
+            !prospek ||
+            prospek.status !== "active" ||
+            !pitching ||
+            pitching.status === "lost" ||
+            pitching.projectId
+          ) {
+            return;
+          }
+        } else if (!project) {
           return;
         }
+        const assignee = userById(state, userId);
+        if (!assignee) return;
+        if (isProspek) {
+          if (
+            !prospek ||
+            !prospekAssigneeCandidates(state, actor, prospek).some(
+              (user) => user.id === userId,
+            )
+          ) {
+            return;
+          }
+        } else if (!project || !canAssignOperational(actor, project, assignee)) {
+          return;
+        }
+        const href =
+          isProspek && prospek && pitching
+            ? prospekHref(prospek.id, pitching.id)
+            : `/forms?entry=${entry.id}`;
         set({
           formEntries: state.formEntries.map((item) =>
             item.id === entryId
@@ -2259,21 +2477,44 @@ export const usePrototypeStore = create<PrototypeStore>()(
               type: "form_entry_assigned",
               title: "Form baru di-assign",
               body: entry.title,
-              href: `/forms?entry=${entry.id}`,
+              href,
             }),
           ],
-          projectEvents: projectEvent(state, {
-            projectId: entry.projectId,
-            step: entry.stepKey,
-            eventType: "form_entry.assigned",
-            summary: `Entri form ${entry.title} di-assign ke ${assignee.name}.`,
-            metadata: {
-              entryId,
-              assigneeRole: assignee.role,
-              before: { assigneeId: entry.assigneeId ?? null, status: entry.status },
-              after: { assigneeId: userId, status: "assigned" },
-            },
-          }),
+          ...(isProspek && prospek
+            ? {
+                prospekEvents: prospekEvent(state, {
+                  prospekId: prospek.id,
+                  pitchingId: entry.pitchingId,
+                  eventType: "pitching.form_assigned",
+                  summary: `Entri form ${entry.title} di-assign ke ${assignee.name}.`,
+                  metadata: {
+                    entryId,
+                    assigneeRole: assignee.role,
+                    before: {
+                      assigneeId: entry.assigneeId ?? null,
+                      status: entry.status,
+                    },
+                    after: { assigneeId: userId, status: "assigned" },
+                  },
+                }),
+              }
+            : {
+                projectEvents: projectEvent(state, {
+                  projectId: entry.projectId ?? "",
+                  step: entry.stepKey,
+                  eventType: "form_entry.assigned",
+                  summary: `Entri form ${entry.title} di-assign ke ${assignee.name}.`,
+                  metadata: {
+                    entryId,
+                    assigneeRole: assignee.role,
+                    before: {
+                      assigneeId: entry.assigneeId ?? null,
+                      status: entry.status,
+                    },
+                    after: { assigneeId: userId, status: "assigned" },
+                  },
+                }),
+              }),
         });
       },
 
@@ -2282,6 +2523,8 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const actor = userById(state, state.currentUserId);
         const entry = state.formEntries.find((item) => item.id === entryId);
         if (!actor || !entry || !canEditFormEntry(state, actor, entry)) return;
+        const isProspek = formEntryScope(entry) === "prospek";
+        const prospek = prospekById(state, entry.prospekId);
         set({
           formEntries: state.formEntries.map((item) =>
             item.id === entryId
@@ -2294,13 +2537,25 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 }
               : item,
           ),
-          projectEvents: projectEvent(state, {
-            projectId: entry.projectId,
-            step: entry.stepKey,
-            eventType: "form_entry.updated",
-            summary: `Entri form ${entry.title} disimpan sebagai draft.`,
-            metadata: { entryId },
-          }),
+          ...(isProspek && prospek
+            ? {
+                prospekEvents: prospekEvent(state, {
+                  prospekId: prospek.id,
+                  pitchingId: entry.pitchingId,
+                  eventType: "pitching.form_saved",
+                  summary: `Entri form ${entry.title} disimpan sebagai draft.`,
+                  metadata: { entryId },
+                }),
+              }
+            : {
+                projectEvents: projectEvent(state, {
+                  projectId: entry.projectId ?? "",
+                  step: entry.stepKey,
+                  eventType: "form_entry.updated",
+                  summary: `Entri form ${entry.title} disimpan sebagai draft.`,
+                  metadata: { entryId },
+                }),
+              }),
         });
       },
 
@@ -2309,8 +2564,19 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const actor = userById(state, state.currentUserId);
         const entry = state.formEntries.find((item) => item.id === entryId);
         if (!actor || !entry || !canEditFormEntry(state, actor, entry)) return;
+        const isProspek = formEntryScope(entry) === "prospek";
+        const prospek = prospekById(state, entry.prospekId);
+        const pitching = pitchingForFormEntry(state, entry);
         const submittedAt = now();
         const versionNumber = entry.versions.length + 1;
+        const ownerId = isProspek
+          ? (prospek?.createdById ?? actor.id)
+          : (state.projects.find((item) => item.id === entry.projectId)
+              ?.createdById ?? actor.id);
+        const href =
+          isProspek && prospek && pitching
+            ? prospekHref(prospek.id, pitching.id)
+            : `/crm/projects/${entry.projectId}?step=${entry.stepKey}`;
         set({
           formEntries: state.formEntries.map((item) =>
             item.id === entryId
@@ -2338,22 +2604,32 @@ export const usePrototypeStore = create<PrototypeStore>()(
           notifications: [
             ...state.notifications,
             notify(state, {
-              userId:
-                state.projects.find((item) => item.id === entry.projectId)
-                  ?.createdById ?? actor.id,
+              userId: ownerId,
               type: "form_entry_submitted",
               title: "Entri form menunggu review",
               body: entry.title,
-              href: `/crm/projects/${entry.projectId}?step=${entry.stepKey}`,
+              href,
             }),
           ],
-          projectEvents: projectEvent(state, {
-            projectId: entry.projectId,
-            step: entry.stepKey,
-            eventType: "form_entry.submitted",
-            summary: `Entri form ${entry.title} disubmit (v${versionNumber}).`,
-            metadata: { entryId, versionNumber },
-          }),
+          ...(isProspek && prospek
+            ? {
+                prospekEvents: prospekEvent(state, {
+                  prospekId: prospek.id,
+                  pitchingId: entry.pitchingId,
+                  eventType: "pitching.form_submitted",
+                  summary: `Entri form ${entry.title} disubmit (v${versionNumber}).`,
+                  metadata: { entryId, versionNumber },
+                }),
+              }
+            : {
+                projectEvents: projectEvent(state, {
+                  projectId: entry.projectId ?? "",
+                  step: entry.stepKey,
+                  eventType: "form_entry.submitted",
+                  summary: `Entri form ${entry.title} disubmit (v${versionNumber}).`,
+                  metadata: { entryId, versionNumber },
+                }),
+              }),
         });
       },
 
@@ -2363,7 +2639,14 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const entry = state.formEntries.find((item) => item.id === entryId);
         if (!actor || !entry || !canReviewFormEntry(state, actor, entry)) return;
         if (decision === "need_revision" && !comment.trim()) return;
+        const isProspek = formEntryScope(entry) === "prospek";
+        const prospek = prospekById(state, entry.prospekId);
+        const pitching = pitchingForFormEntry(state, entry);
         const reviewedAt = now();
+        const href =
+          isProspek && prospek && pitching
+            ? prospekHref(prospek.id, pitching.id)
+            : `/forms?entry=${entry.id}`;
         set({
           formEntries: state.formEntries.map((item) =>
             item.id === entryId
@@ -2392,23 +2675,41 @@ export const usePrototypeStore = create<PrototypeStore>()(
                       ? "Entri form disetujui"
                       : "Entri form perlu revisi",
                   body: comment || entry.title,
-                  href: `/forms?entry=${entry.id}`,
+                  href,
                 }),
               ]
             : state.notifications,
-          projectEvents: projectEvent(state, {
-            projectId: entry.projectId,
-            step: entry.stepKey,
-            eventType:
-              decision === "approved"
-                ? "form_entry.approved"
-                : "form_entry.need_revision",
-            summary:
-              decision === "approved"
-                ? `Entri form ${entry.title} disetujui.`
-                : `Entri form ${entry.title} perlu revisi.`,
-            metadata: { entryId, reviewComment: comment.trim() },
-          }),
+          ...(isProspek && prospek
+            ? {
+                prospekEvents: prospekEvent(state, {
+                  prospekId: prospek.id,
+                  pitchingId: entry.pitchingId,
+                  eventType:
+                    decision === "approved"
+                      ? "pitching.form_approved"
+                      : "pitching.form_revision",
+                  summary:
+                    decision === "approved"
+                      ? `Entri form ${entry.title} disetujui.`
+                      : `Entri form ${entry.title} perlu revisi.`,
+                  metadata: { entryId, reviewComment: comment.trim() },
+                }),
+              }
+            : {
+                projectEvents: projectEvent(state, {
+                  projectId: entry.projectId ?? "",
+                  step: entry.stepKey,
+                  eventType:
+                    decision === "approved"
+                      ? "form_entry.approved"
+                      : "form_entry.need_revision",
+                  summary:
+                    decision === "approved"
+                      ? `Entri form ${entry.title} disetujui.`
+                      : `Entri form ${entry.title} perlu revisi.`,
+                  metadata: { entryId, reviewComment: comment.trim() },
+                }),
+              }),
         });
       },
 
@@ -2432,13 +2733,25 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 }
               : item,
           ),
-          projectEvents: projectEvent(state, {
-            projectId: entry.projectId,
-            step: entry.stepKey,
-            eventType: "form_entry.cancelled",
-            summary: `Entri form ${entry.title} dibatalkan: ${reason.trim()}`,
-            metadata: { entryId, reason: reason.trim() },
-          }),
+          ...(formEntryScope(entry) === "prospek" && entry.prospekId
+            ? {
+                prospekEvents: prospekEvent(state, {
+                  prospekId: entry.prospekId,
+                  pitchingId: entry.pitchingId,
+                  eventType: "pitching.form_cancelled",
+                  summary: `Entri form ${entry.title} dibatalkan: ${reason.trim()}`,
+                  metadata: { entryId, reason: reason.trim() },
+                }),
+              }
+            : {
+                projectEvents: projectEvent(state, {
+                  projectId: entry.projectId ?? "",
+                  step: entry.stepKey,
+                  eventType: "form_entry.cancelled",
+                  summary: `Entri form ${entry.title} dibatalkan: ${reason.trim()}`,
+                  metadata: { entryId, reason: reason.trim() },
+                }),
+              }),
         });
       },
 
@@ -2882,6 +3195,952 @@ export const usePrototypeStore = create<PrototypeStore>()(
         });
       },
 
+      createProspek: (input) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        if (!actor || !canCreateProspek(actor)) return "";
+        if (!input.name.trim() || !input.client.trim()) return "";
+        if (
+          input.periodStart &&
+          input.periodEnd &&
+          input.periodEnd < input.periodStart
+        ) {
+          return "";
+        }
+        const prospek: Prospek = {
+          id: uid("prs"),
+          code: nextProspekCode(state.prospeks),
+          name: input.name.trim(),
+          description: input.description.trim(),
+          picId: input.picId || undefined,
+          client: input.client.trim(),
+          periodStart: input.periodStart,
+          periodEnd: input.periodEnd,
+          pagu: Math.max(0, input.pagu || 0),
+          status: "active",
+          createdById: actor.id,
+          createdAt: now(),
+        };
+        set({
+          prospeks: [...state.prospeks, prospek],
+          prospekEvents: prospekEvent(state, {
+            prospekId: prospek.id,
+            eventType: "prospek.created",
+            summary: `Prospek ${prospek.name} dibuat.`,
+            metadata: {
+              code: prospek.code,
+              client: prospek.client,
+              pagu: prospek.pagu,
+            },
+          }),
+        });
+        return prospek.id;
+      },
+
+      updateProspek: (prospekId, input) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const prospek = state.prospeks.find((item) => item.id === prospekId);
+        if (!actor || !prospek || !canManageProspek(actor, prospek)) return;
+        if (prospek.status !== "active") return;
+        if (input.name !== undefined && !input.name.trim()) return;
+        if (input.client !== undefined && !input.client.trim()) return;
+        const nextPeriodStart = input.periodStart ?? prospek.periodStart;
+        const nextPeriodEnd = input.periodEnd ?? prospek.periodEnd;
+        if (nextPeriodStart && nextPeriodEnd && nextPeriodEnd < nextPeriodStart) {
+          return;
+        }
+        const before = {
+          name: prospek.name,
+          description: prospek.description,
+          picId: prospek.picId ?? null,
+          client: prospek.client,
+          periodStart: prospek.periodStart,
+          periodEnd: prospek.periodEnd,
+          pagu: prospek.pagu,
+        };
+        const after = {
+          ...before,
+          ...input,
+          picId: input.picId === "" ? null : (input.picId ?? before.picId),
+          pagu: input.pagu !== undefined ? Math.max(0, input.pagu) : before.pagu,
+        };
+        set({
+          prospeks: state.prospeks.map((item) =>
+            item.id === prospekId
+              ? {
+                  ...item,
+                  ...input,
+                  picId: input.picId === "" ? undefined : (input.picId ?? item.picId),
+                  pagu:
+                    input.pagu !== undefined
+                      ? Math.max(0, input.pagu)
+                      : item.pagu,
+                  updatedAt: now(),
+                }
+              : item,
+          ),
+          prospekEvents: prospekEvent(state, {
+            prospekId,
+            eventType: "prospek.updated",
+            summary: `Detail prospek ${prospek.name} diperbarui.`,
+            metadata: { before, after },
+          }),
+        });
+      },
+
+      cancelProspek: (prospekId, reason) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const prospek = state.prospeks.find((item) => item.id === prospekId);
+        if (
+          !actor ||
+          !prospek ||
+          prospek.status !== "active" ||
+          !reason.trim() ||
+          !canManageProspek(actor, prospek)
+        ) {
+          return;
+        }
+        set({
+          prospeks: state.prospeks.map((item) =>
+            item.id === prospekId
+              ? {
+                  ...item,
+                  status: "cancelled" as const,
+                  cancelReason: reason.trim(),
+                  updatedAt: now(),
+                }
+              : item,
+          ),
+          prospekEvents: prospekEvent(state, {
+            prospekId,
+            eventType: "prospek.cancelled",
+            summary: `Prospek ${prospek.name} dibatalkan: ${reason.trim()}`,
+            metadata: { reason: reason.trim() },
+          }),
+        });
+      },
+
+      addProspekPitching: (prospekId, input) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const prospek = state.prospeks.find((item) => item.id === prospekId);
+        if (
+          !actor ||
+          !prospek ||
+          prospek.status !== "active" ||
+          !canManageProspek(actor, prospek) ||
+          !input.title.trim() ||
+          !input.templateId
+        ) {
+          return "";
+        }
+        const template = state.templates.find(
+          (item) => item.id === input.templateId,
+        );
+        if (!template) return "";
+        const pitching: ProspekPitching = {
+          id: uid("pp"),
+          prospekId,
+          title: input.title.trim(),
+          description: input.description.trim(),
+          templateId: template.id,
+          templateVersion: template.version,
+          status: "draft",
+          createdById: actor.id,
+          createdAt: now(),
+        };
+        const rab: PitchingRab = {
+          id: uid("prab"),
+          pitchingId: pitching.id,
+          items: [],
+          notes: "",
+          status: "unassigned",
+          versions: [],
+        };
+        const quotation: PitchingQuotation = {
+          id: uid("pq"),
+          pitchingId: pitching.id,
+          mode: "link",
+          status: "unassigned",
+          versions: [],
+        };
+        set({
+          prospekPitchings: [...state.prospekPitchings, pitching],
+          pitchingRabs: [...state.pitchingRabs, rab],
+          pitchingQuotations: [...state.pitchingQuotations, quotation],
+          prospekEvents: prospekEvent(state, {
+            prospekId,
+            pitchingId: pitching.id,
+            eventType: "pitching.created",
+            summary: `Pitching ${pitching.title} ditambahkan.`,
+            metadata: {
+              templateId: template.id,
+              templateVersion: template.version,
+            },
+          }),
+        });
+        return pitching.id;
+      },
+
+      updateProspekPitching: (pitchingId, input) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const prospek = prospekById(state, pitching?.prospekId);
+        if (
+          !actor ||
+          !pitching ||
+          !prospek ||
+          prospek.status !== "active" ||
+          !canManageProspek(actor, prospek)
+        ) {
+          return;
+        }
+        if (input.title !== undefined && !input.title.trim()) return;
+        const template =
+          input.templateId && pitching.status === "draft"
+            ? state.templates.find((item) => item.id === input.templateId)
+            : undefined;
+        if (input.templateId && pitching.status === "draft" && !template) {
+          return;
+        }
+        set({
+          prospekPitchings: state.prospekPitchings.map((item) =>
+            item.id === pitchingId
+              ? {
+                  ...item,
+                  ...(input.title !== undefined
+                    ? { title: input.title.trim() }
+                    : {}),
+                  ...(input.description !== undefined
+                    ? { description: input.description.trim() }
+                    : {}),
+                  ...(template
+                    ? {
+                        templateId: template.id,
+                        templateVersion: template.version,
+                      }
+                    : {}),
+                }
+              : item,
+          ),
+          prospekEvents: prospekEvent(state, {
+            prospekId: pitching.prospekId,
+            pitchingId,
+            eventType: "pitching.updated",
+            summary: `Pitching ${pitching.title} diperbarui.`,
+            metadata: { before: pitching, after: input },
+          }),
+        });
+      },
+
+      assignPitchingRab: (pitchingId, userId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const prospek = prospekById(state, pitching?.prospekId);
+        const rab = pitchingRabFor(state, pitchingId);
+        const target = userById(state, userId);
+        if (
+          !actor ||
+          !pitching ||
+          !prospek ||
+          !rab ||
+          !target ||
+          !canAssignProspekWork(actor, prospek) ||
+          !prospekAssigneeCandidates(state, actor, prospek).some(
+            (user) => user.id === userId,
+          )
+        ) {
+          return;
+        }
+        set({
+          pitchingRabs: state.pitchingRabs.map((item) =>
+            item.id === rab.id
+              ? {
+                  ...item,
+                  assigneeId: userId,
+                  status: "assigned" as const,
+                  updatedAt: now(),
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          notifications: [
+            ...state.notifications,
+            notify(state, {
+              userId,
+              type: "prospek_assigned",
+              title: "RAB Pitching di-assign",
+              body: pitching.title,
+              href: prospekHref(prospek.id, pitching.id),
+            }),
+          ],
+          prospekEvents: prospekEvent(state, {
+            prospekId: prospek.id,
+            pitchingId,
+            eventType: "pitching.rab_assigned",
+            summary: `RAB ${pitching.title} di-assign ke ${target.name}.`,
+            metadata: { assigneeId: userId },
+          }),
+        });
+      },
+
+      savePitchingRab: (pitchingId, input) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const rab = pitchingRabFor(state, pitchingId);
+        if (!actor || !pitching || !rab || !canEditPitchingRab(state, actor, pitching)) {
+          return;
+        }
+        const items = input.items.filter(
+          (item) => item.description.trim() && item.qty > 0,
+        );
+        set({
+          pitchingRabs: state.pitchingRabs.map((item) =>
+            item.id === rab.id
+              ? {
+                  ...item,
+                  items,
+                  notes: input.notes,
+                  dueDate: input.dueDate ?? item.dueDate,
+                  status: "draft" as const,
+                  updatedAt: now(),
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          prospekEvents: prospekEvent(state, {
+            prospekId: pitching.prospekId,
+            pitchingId,
+            eventType: "pitching.rab_saved",
+            summary: `RAB ${pitching.title} disimpan sebagai draft.`,
+            metadata: { itemCount: items.length },
+          }),
+        });
+        get().syncProspekReminders();
+      },
+
+      submitPitchingRab: (pitchingId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const rab = pitchingRabFor(state, pitchingId);
+        if (!actor || !pitching || !rab || !canEditPitchingRab(state, actor, pitching)) {
+          return;
+        }
+        if (rab.items.length === 0) return;
+        const submittedAt = now();
+        const versionNumber = rab.versions.length + 1;
+        set({
+          pitchingRabs: state.pitchingRabs.map((item) =>
+            item.id === rab.id
+              ? {
+                  ...item,
+                  status: "submitted" as const,
+                  submittedAt,
+                  submittedById: actor.id,
+                  versions: [
+                    ...item.versions,
+                    {
+                      id: uid("prabv"),
+                      rabId: rab.id,
+                      versionNumber,
+                      status: "submitted" as const,
+                      items: rab.items,
+                      notes: rab.notes,
+                      createdAt: submittedAt,
+                      createdById: actor.id,
+                    },
+                  ],
+                  updatedAt: submittedAt,
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          prospekEvents: prospekEvent(state, {
+            prospekId: pitching.prospekId,
+            pitchingId,
+            eventType: "pitching.rab_submitted",
+            summary: `RAB ${pitching.title} disubmit (v${versionNumber}).`,
+            metadata: { versionNumber },
+          }),
+        });
+      },
+
+      assignPitchingQuotation: (pitchingId, userId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const prospek = prospekById(state, pitching?.prospekId);
+        const quotation = pitchingQuotationFor(state, pitchingId);
+        const target = userById(state, userId);
+        if (
+          !actor ||
+          !pitching ||
+          !prospek ||
+          !quotation ||
+          !target ||
+          !canAssignProspekWork(actor, prospek) ||
+          !prospekAssigneeCandidates(state, actor, prospek).some(
+            (user) => user.id === userId,
+          )
+        ) {
+          return;
+        }
+        set({
+          pitchingQuotations: state.pitchingQuotations.map((item) =>
+            item.id === quotation.id
+              ? {
+                  ...item,
+                  assigneeId: userId,
+                  status: "assigned" as const,
+                  updatedAt: now(),
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          notifications: [
+            ...state.notifications,
+            notify(state, {
+              userId,
+              type: "prospek_assigned",
+              title: "Quotation Pitching di-assign",
+              body: pitching.title,
+              href: prospekHref(prospek.id, pitching.id),
+            }),
+          ],
+          prospekEvents: prospekEvent(state, {
+            prospekId: prospek.id,
+            pitchingId,
+            eventType: "pitching.quotation_assigned",
+            summary: `Quotation ${pitching.title} di-assign ke ${target.name}.`,
+            metadata: { assigneeId: userId },
+          }),
+        });
+      },
+
+      savePitchingQuotation: (pitchingId, input) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const quotation = pitchingQuotationFor(state, pitchingId);
+        if (
+          !actor ||
+          !pitching ||
+          !quotation ||
+          !canEditQuotation(state, actor, pitching)
+        ) {
+          return;
+        }
+        set({
+          pitchingQuotations: state.pitchingQuotations.map((item) =>
+            item.id === quotation.id
+              ? {
+                  ...item,
+                  mode: input.mode,
+                  url: input.url,
+                  attachment: input.attachment,
+                  amount: input.amount,
+                  dueDate: input.dueDate ?? item.dueDate,
+                  status: "draft" as const,
+                  updatedAt: now(),
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          prospekEvents: prospekEvent(state, {
+            prospekId: pitching.prospekId,
+            pitchingId,
+            eventType: "pitching.quotation_saved",
+            summary: `Quotation ${pitching.title} disimpan sebagai draft.`,
+            metadata: { mode: input.mode },
+          }),
+        });
+        get().syncProspekReminders();
+      },
+
+      submitPitchingQuotation: (pitchingId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const quotation = pitchingQuotationFor(state, pitchingId);
+        if (
+          !actor ||
+          !pitching ||
+          !quotation ||
+          !canEditQuotation(state, actor, pitching)
+        ) {
+          return;
+        }
+        if (quotation.mode === "link") {
+          if (!quotation.url?.trim()) return;
+          try {
+            const url = new URL(quotation.url);
+            if (!["http:", "https:"].includes(url.protocol)) return;
+          } catch {
+            return;
+          }
+        } else if (!quotation.attachment) {
+          return;
+        }
+        const submittedAt = now();
+        const versionNumber = quotation.versions.length + 1;
+        set({
+          pitchingQuotations: state.pitchingQuotations.map((item) =>
+            item.id === quotation.id
+              ? {
+                  ...item,
+                  status: "submitted" as const,
+                  submittedAt,
+                  submittedById: actor.id,
+                  versions: [
+                    ...item.versions,
+                    {
+                      id: uid("pqv"),
+                      quotationId: quotation.id,
+                      versionNumber,
+                      status: "submitted" as const,
+                      mode: quotation.mode,
+                      url: quotation.url,
+                      attachment: quotation.attachment,
+                      amount: quotation.amount,
+                      createdAt: submittedAt,
+                      createdById: actor.id,
+                    },
+                  ],
+                  updatedAt: submittedAt,
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          prospekEvents: prospekEvent(state, {
+            prospekId: pitching.prospekId,
+            pitchingId,
+            eventType: "pitching.quotation_submitted",
+            summary: `Quotation ${pitching.title} disubmit (v${versionNumber}).`,
+            metadata: { versionNumber, mode: quotation.mode },
+          }),
+        });
+      },
+
+      reviewPitchingQuotation: (pitchingId, decision, comment) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const prospek = prospekById(state, pitching?.prospekId);
+        const quotation = pitchingQuotationFor(state, pitchingId);
+        if (
+          !actor ||
+          !pitching ||
+          !prospek ||
+          !quotation ||
+          quotation.status !== "submitted" ||
+          !canDecidePitching(actor, prospek)
+        ) {
+          return;
+        }
+        if (decision === "need_revision" && !comment.trim()) return;
+        const reviewedAt = now();
+        set({
+          pitchingQuotations: state.pitchingQuotations.map((item) =>
+            item.id === quotation.id
+              ? {
+                  ...item,
+                  status: decision,
+                  approvedAt: decision === "approved" ? reviewedAt : undefined,
+                  approvedById: decision === "approved" ? actor.id : undefined,
+                  reviewComment: comment.trim(),
+                  updatedAt: reviewedAt,
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          notifications: quotation.assigneeId
+            ? [
+                ...state.notifications,
+                notify(state, {
+                  userId: quotation.assigneeId,
+                  type:
+                    decision === "approved"
+                      ? "prospek_quotation_approved"
+                      : "prospek_quotation_revision",
+                  title:
+                    decision === "approved"
+                      ? "Quotation disetujui"
+                      : "Quotation perlu revisi",
+                  body: comment || pitching.title,
+                  href: prospekHref(prospek.id, pitching.id),
+                }),
+              ]
+            : state.notifications,
+          prospekEvents: prospekEvent(state, {
+            prospekId: prospek.id,
+            pitchingId,
+            eventType:
+              decision === "approved"
+                ? "pitching.quotation_approved"
+                : "pitching.quotation_revision",
+            summary:
+              decision === "approved"
+                ? `Quotation ${pitching.title} disetujui.`
+                : `Quotation ${pitching.title} perlu revisi.`,
+            metadata: { comment: comment.trim() },
+          }),
+        });
+      },
+
+      decideProspekPitching: (pitchingId, decision, reason) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const prospek = prospekById(state, pitching?.prospekId);
+        const rab = pitchingRabFor(state, pitchingId);
+        const quotation = pitchingQuotationFor(state, pitchingId);
+        if (
+          !actor ||
+          !pitching ||
+          !prospek ||
+          pitching.status !== "draft" ||
+          !canDecidePitching(actor, prospek) ||
+          rab?.status !== "submitted" ||
+          !quotation ||
+          !["submitted", "approved"].includes(quotation.status)
+        ) {
+          return;
+        }
+        if (decision === "lost" && !reason?.trim()) return;
+        const decidedAt = now();
+        const nextPitchings = state.prospekPitchings.map((item) =>
+          item.id === pitchingId
+            ? {
+                ...item,
+                status: decision,
+                decidedAt,
+                decidedById: actor.id,
+                lostReason: decision === "lost" ? reason?.trim() : undefined,
+              }
+            : item,
+        );
+        const nextState = { ...state, prospekPitchings: nextPitchings };
+        set({
+          prospekPitchings: nextPitchings,
+          prospeks: prospekStatusAfter(nextState, prospek.id),
+          prospekEvents: prospekEvent(state, {
+            prospekId: prospek.id,
+            pitchingId,
+            eventType: "pitching.decided",
+            summary:
+              decision === "won"
+                ? `Pitching ${pitching.title} menang.`
+                : `Pitching ${pitching.title} kalah: ${reason?.trim()}`,
+            metadata: { decision, reason: reason?.trim() ?? null },
+          }),
+        });
+      },
+
+      savePitchingContract: (pitchingId, contract) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const prospek = prospekById(state, pitching?.prospekId);
+        if (
+          !actor ||
+          !pitching ||
+          !prospek ||
+          pitching.status !== "won" ||
+          pitching.projectId ||
+          !canDecidePitching(actor, prospek)
+        ) {
+          return;
+        }
+        if (!contractComplete(contract)) return;
+        const savedAt = now();
+        set({
+          prospekPitchings: state.prospekPitchings.map((item) =>
+            item.id === pitchingId
+              ? {
+                  ...item,
+                  contract: {
+                    ...contract,
+                    savedAt,
+                    savedById: actor.id,
+                  },
+                }
+              : item,
+          ),
+          prospekEvents: prospekEvent(state, {
+            prospekId: prospek.id,
+            pitchingId,
+            eventType: "pitching.contract_saved",
+            summary: `Kontrak ${contract.number} disimpan untuk ${pitching.title}.`,
+            metadata: {
+              number: contract.number,
+              value: contract.value,
+              termineCount: contract.termine.length,
+            },
+          }),
+        });
+      },
+
+      convertPitching: (pitchingId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const prospek = prospekById(state, pitching?.prospekId);
+        if (!actor || !pitching || !prospek) return "";
+        if (pitching.projectId) return pitching.projectId;
+        if (!canConvertPitching(state, actor, pitching)) return "";
+        const rab = pitchingRabFor(state, pitchingId);
+        const quotation = pitchingQuotationFor(state, pitchingId);
+        const template = state.templates.find(
+          (item) => item.id === pitching.templateId,
+        );
+        if (!template || !pitching.contract) return "";
+        const pitchingStageIds = template.stages
+          .filter(
+            (stage) =>
+              stage.phase === "prospek" ||
+              stage.legacyKey === "pitching" ||
+              stage.name.toLowerCase() === "pitching",
+          )
+          .map((stage) => stage.id);
+        const manager = userById(state, prospek.picId);
+        const projectId = get().createProject({
+          name: pitching.title,
+          client: prospek.client,
+          description: pitching.description || prospek.description,
+          priority: "medium",
+          startDate: now(),
+          targetEndDate: prospek.periodEnd,
+          coverColor: "#6366f1",
+          managerId: manager?.role === "manager" ? manager.id : undefined,
+          templateId: template.id,
+          prospekId: prospek.id,
+          pitchingId: pitching.id,
+          inheritedRab: rab
+            ? {
+                items: rab.items,
+                notes: rab.notes,
+                submittedAt: rab.submittedAt,
+                submittedById: rab.submittedById,
+              }
+            : undefined,
+          inheritedQuotation: quotation
+            ? {
+                mode: quotation.mode,
+                url: quotation.url,
+                attachment: quotation.attachment,
+                amount: quotation.amount,
+                approvedAt: quotation.approvedAt,
+                approvedById: quotation.approvedById,
+              }
+            : undefined,
+          prospekContract: pitching.contract,
+          completedStageIds: pitchingStageIds,
+        });
+        if (!projectId) return "";
+        const convertedAt = now();
+        const nextPitchings = state.prospekPitchings.map((item) =>
+          item.id === pitchingId
+            ? { ...item, projectId, convertedAt }
+            : item,
+        );
+        const nextState = {
+          ...get(),
+          prospekPitchings: nextPitchings,
+        };
+        set({
+          prospekPitchings: nextPitchings,
+          prospeks: prospekStatusAfter(nextState, prospek.id),
+          prospekEvents: prospekEvent(state, {
+            prospekId: prospek.id,
+            pitchingId,
+            eventType: "pitching.converted",
+            summary: `Pitching ${pitching.title} menjadi proyek ${projectId}.`,
+            metadata: {
+              prospekId: prospek.id,
+              pitchingId,
+              projectId,
+            },
+          }),
+        });
+        return projectId;
+      },
+
+      createProspekFormEntry: (
+        prospekId,
+        pitchingId,
+        templateStageId,
+        input,
+      ) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const prospek = state.prospeks.find((item) => item.id === prospekId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        if (
+          !actor ||
+          !prospek ||
+          prospek.status !== "active" ||
+          !pitching ||
+          pitching.prospekId !== prospekId ||
+          pitching.status === "lost" ||
+          pitching.projectId ||
+          !canManageProspek(actor, prospek) ||
+          !input.title.trim()
+        ) {
+          return "";
+        }
+        const template = state.templates.find(
+          (item) => item.id === pitching.templateId,
+        );
+        const stage = template?.stages.find(
+          (item) => item.id === templateStageId && item.kind === "form",
+        );
+        if (!stage) return "";
+        const entry: FormEntry = {
+          id: uid("fentry"),
+          scope: "prospek",
+          prospekId,
+          pitchingId,
+          stepKey: templateStageId,
+          templateStageId,
+          title: input.title.trim(),
+          dueDate: input.dueDate,
+          status: "unassigned",
+          payload: { values: {}, photos: [] },
+          versions: [],
+          createdById: actor.id,
+          createdAt: now(),
+        };
+        set({
+          formEntries: [...state.formEntries, entry],
+          prospekEvents: prospekEvent(state, {
+            prospekId,
+            pitchingId,
+            eventType: "pitching.form_created",
+            summary: `Form ${entry.title} dibuat dari ${stage.name}.`,
+            metadata: { entryId: entry.id, templateStageId },
+          }),
+        });
+        return entry.id;
+      },
+
+      syncProspekReminders: () => {
+        const state = get();
+        const today = now().slice(0, 10);
+        const dueSoonLimit = addDays(today, 3);
+        const additions: AppState["notifications"] = [];
+        const seen = new Set(
+          state.notifications
+            .filter((item) => item.createdAt.slice(0, 10) === today)
+            .map((item) => `${item.userId}|${item.type}|${item.href}`),
+        );
+        const push = (input: {
+          userId: string;
+          type: string;
+          title: string;
+          body: string;
+          href: string;
+        }) => {
+          const key = `${input.userId}|${input.type}|${input.href}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          additions.push(notify(state, input));
+        };
+        for (const prospek of state.prospeks) {
+          if (prospek.status !== "active") continue;
+          for (const pitching of prospekPitchingsFor(state, prospek.id)) {
+            if (pitching.status === "lost" || pitching.projectId) continue;
+            const href = prospekHref(prospek.id, pitching.id);
+            const reminders: {
+              assigneeId?: string;
+              dueDate?: string;
+              label: string;
+            }[] = [];
+            const rab = pitchingRabFor(state, pitching.id);
+            if (rab?.assigneeId) {
+              reminders.push({
+                assigneeId: rab.assigneeId,
+                dueDate: rab.dueDate,
+                label: `RAB ${pitching.title}`,
+              });
+            }
+            const quotation = pitchingQuotationFor(state, pitching.id);
+            if (quotation?.assigneeId) {
+              reminders.push({
+                assigneeId: quotation.assigneeId,
+                dueDate: quotation.dueDate,
+                label: `Quotation ${pitching.title}`,
+              });
+            }
+            for (const entry of state.formEntries) {
+              if (entry.pitchingId !== pitching.id || !entry.assigneeId) {
+                continue;
+              }
+              if (!["assigned", "draft", "need_revision"].includes(entry.status)) {
+                continue;
+              }
+              reminders.push({
+                assigneeId: entry.assigneeId,
+                dueDate: entry.dueDate,
+                label: entry.title,
+              });
+            }
+            for (const reminder of reminders) {
+              if (!reminder.assigneeId || !reminder.dueDate) continue;
+              const due = reminder.dueDate.slice(0, 10);
+              const type =
+                due < today
+                  ? "prospek_overdue"
+                  : due <= dueSoonLimit
+                    ? "prospek_due_soon"
+                    : null;
+              if (!type) continue;
+              push({
+                userId: reminder.assigneeId,
+                type,
+                title:
+                  type === "prospek_overdue"
+                    ? "Pekerjaan Prospek overdue"
+                    : "Pekerjaan Prospek mendekati due date",
+                body: reminder.label,
+                href,
+              });
+            }
+          }
+        }
+        if (additions.length === 0) return;
+        set({ notifications: [...state.notifications, ...additions] });
+      },
+
       markNotificationRead: (notificationId) => {
         const state = get();
         set({
@@ -2906,7 +4165,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
     }),
     {
       name: "crm-simpro:v1",
-      version: 4,
+      version: 5,
       migrate: (persisted) =>
         migratePersistedState(persisted) as unknown as PrototypeStore,
       partialize: (state) => ({
@@ -2922,6 +4181,11 @@ export const usePrototypeStore = create<PrototypeStore>()(
         forms: state.forms,
         formEntries: state.formEntries,
         groups: state.groups,
+        prospeks: state.prospeks,
+        prospekPitchings: state.prospekPitchings,
+        pitchingRabs: state.pitchingRabs,
+        pitchingQuotations: state.pitchingQuotations,
+        prospekEvents: state.prospekEvents,
         notifications: state.notifications,
         activityLogs: state.activityLogs,
         projectEvents: state.projectEvents,
@@ -2940,6 +4204,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             });
         state.setProjectEvents(linkProjectsToTemplate(events, state.projects));
         state.setForms(migrateFormVersions(state));
+        state.syncProspekReminders();
         state.setHydrated(true);
       },
     },

@@ -11,9 +11,14 @@ import {
   canCancelFormEntry,
   canEditFormEntry,
   canReviewFormEntry,
+  formEntryScope,
+  formEntryTemplate,
   formatDate,
   formatDateTime,
   operationalAssigneeCandidates,
+  pitchingForFormEntry,
+  prospekAssigneeCandidates,
+  prospekById,
   stepFor,
   userById,
 } from "@/lib/prototype/domain";
@@ -267,11 +272,23 @@ export function FormEntryPage({
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
   const entry = store.formEntries.find((item) => item.id === entryId);
-  const project = entry
-    ? store.projects.find((item) => item.id === entry.projectId)
+  const isProspek = entry ? formEntryScope(entry) === "prospek" : false;
+  const project =
+    !isProspek && entry?.projectId
+      ? store.projects.find((item) => item.id === entry.projectId)
+      : undefined;
+  const prospek = entry?.prospekId
+    ? prospekById(store, entry.prospekId)
     : undefined;
-  const step = entry ? stepFor(store, entry.projectId, entry.stepKey) : undefined;
-  const template = step?.formTemplate;
+  const pitching = entry ? pitchingForFormEntry(store, entry) : undefined;
+  const step =
+    !isProspek && entry?.projectId
+      ? stepFor(store, entry.projectId, entry.stepKey)
+      : undefined;
+  const template = entry ? formEntryTemplate(store, entry) : undefined;
+  const contextCode = isProspek ? prospek?.code : project?.code;
+  const contextName = isProspek ? prospek?.name : project?.name;
+  const contextStage = isProspek ? pitching?.title : step?.name;
   const [payload, setPayload] = useState<FormEntryPayload>(
     entry?.payload ?? { values: {}, photos: [] },
   );
@@ -327,7 +344,7 @@ export function FormEntryPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry?.id]);
 
-  if (!entry || !project || !currentUser || !step) {
+  if (!entry || !currentUser || !template) {
     return (
       <EmptyState
         icon={FileUp}
@@ -342,15 +359,30 @@ export function FormEntryPage({
     );
   }
 
+  if (isProspek ? !prospek || !pitching : !project || !step) {
+    return (
+      <EmptyState
+        icon={FileUp}
+        title="Entri form tidak ditemukan"
+        description="Entri mungkin sudah dihapus atau bukan bagian dari Prospek Anda."
+        action={
+          <Button variant="outline" size="sm" onClick={onBack}>
+            Kembali ke Forms
+          </Button>
+        }
+      />
+    );
+  }
+
   const editable = canEditFormEntry(store, currentUser, entry);
   const reviewer = canReviewFormEntry(store, currentUser, entry);
-  const canAssign =
-    operationalAssigneeCandidates(store, currentUser, project).length > 0;
-  const assignCandidates = operationalAssigneeCandidates(
-    store,
-    currentUser,
-    project,
-  );
+  const assignCandidates =
+    isProspek && prospek
+      ? prospekAssigneeCandidates(store, currentUser, prospek)
+      : project
+        ? operationalAssigneeCandidates(store, currentUser, project)
+        : [];
+  const canAssign = assignCandidates.length > 0;
   const canCancel = canCancelFormEntry(store, currentUser, entry);
   const defaultFields = template?.defaultFields ?? {
     executionDate: { enabled: true, required: true },
@@ -410,12 +442,12 @@ export function FormEntryPage({
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={entry.status} />
             <span className="text-muted-foreground text-[10px]">
-              {project.code} · {step.name}
+              {contextCode} · {contextStage}
             </span>
           </div>
           <h1 className="mt-1 truncate text-xl font-semibold">{entry.title}</h1>
           <p className="text-muted-foreground text-xs">
-            {project.name} · Assignee{" "}
+            {contextName} · Assignee{" "}
             {userById(store, entry.assigneeId)?.name ?? "Belum di-assign"}
             {entry.dueDate ? ` · Tenggat ${formatDate(entry.dueDate)}` : ""}
           </p>
@@ -472,7 +504,7 @@ export function FormEntryPage({
 
       <SectionCard
         title={template?.title ?? "Form"}
-        description={`Isi form untuk ${project.name}.`}
+        description={`Isi form untuk ${contextName}.`}
       >
         <div className="space-y-3">
           {errors.length > 0 ? (

@@ -192,6 +192,7 @@ export function SimproFormsPage() {
 
     for (const entry of store.formEntries) {
       if (currentUser.role === "finance") continue;
+      if (!entry.projectId) continue;
       if (!visibleIds.has(entry.projectId)) continue;
       if (currentUser.role === "assignee" && entry.assigneeId !== currentUser.id) {
         continue;

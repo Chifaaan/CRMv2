@@ -298,6 +298,16 @@ describe("persistence migration", () => {
     const legacy = {
       ...seed,
       templates: undefined,
+      prospeks: undefined,
+      prospekPitchings: undefined,
+      pitchingRabs: undefined,
+      pitchingQuotations: undefined,
+      prospekEvents: undefined,
+      formEntries: seed.formEntries.map((entry) => {
+        const copy = { ...entry };
+        delete copy.scope;
+        return copy;
+      }),
       projects: seed.projects.map((project) => {
         const copy = { ...project };
         delete copy.templateId;
@@ -341,6 +351,14 @@ describe("persistence migration", () => {
     expect(
       twice.steps?.find((step) => step.key === "pitching")?.phase,
     ).toBe("prospek");
+    expect(twice.prospeks).toEqual([]);
+    expect(twice.prospekPitchings).toEqual([]);
+    expect(twice.pitchingRabs).toEqual([]);
+    expect(twice.pitchingQuotations).toEqual([]);
+    expect(twice.prospekEvents).toEqual([]);
+    expect(
+      twice.formEntries?.every((entry) => entry.scope === "project"),
+    ).toBe(true);
     expect(JSON.stringify(twice)).toBe(JSON.stringify(migratePersistedState(twice)));
   });
 });

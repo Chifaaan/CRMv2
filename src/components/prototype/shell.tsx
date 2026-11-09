@@ -14,6 +14,7 @@ import {
   LayoutTemplate,
   ListTodo,
   RotateCcw,
+  Target,
   Users,
   X,
 } from "lucide-react";
@@ -50,10 +51,17 @@ const NAV_SIMPRO = [
 const NAV_CRM = [
   { href: "/crm", label: "Dashboard", icon: LayoutDashboard },
   { href: "/crm/projects", label: "Projects", icon: FolderKanban },
+  { href: "/crm/prospek", label: "Prospek", icon: Target },
   { href: "/crm/groups", label: "Groups", icon: Users },
   { href: "/crm/templates", label: "Templates", icon: LayoutTemplate },
   { href: "/crm/workload", label: "Workload", icon: Gauge },
 ];
+
+const PROSPEK_HREF = "/crm/prospek";
+
+function canAccessProspekPath(role: string, pathname: string): boolean {
+  return role === "assignee" && pathname.startsWith(PROSPEK_HREF);
+}
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/crm") return pathname === "/crm";
@@ -62,6 +70,8 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 function titleForPath(pathname: string): string {
+  if (pathname.startsWith("/crm/prospek/")) return "Detail Prospek";
+  if (pathname === "/crm/prospek") return "Prospek";
   if (pathname.startsWith("/crm/projects/")) return "Detail Proyek";
   if (pathname === "/crm/projects") return "Projects";
   if (pathname === "/crm/groups") return "Groups";
@@ -190,7 +200,14 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
     if (!currentUser) return;
     const isCrm = pathname.startsWith("/crm");
     const isFormsPath = pathname === "/forms" || pathname.startsWith("/forms/");
-    if (isCrm && !roleCanAccessCrm(currentUser.role)) {
+    if (isCrm && currentUser.role === "finance" && pathname.startsWith(PROSPEK_HREF)) {
+      router.replace("/crm");
+    }
+    if (
+      isCrm &&
+      !roleCanAccessCrm(currentUser.role) &&
+      !canAccessProspekPath(currentUser.role, pathname)
+    ) {
       router.replace(landingForRole(currentUser.role));
     }
     if (
@@ -225,7 +242,7 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const showCrm = roleCanAccessCrm(currentUser.role);
+  const showCrm = roleCanAccessCrm(currentUser.role) || currentUser.role === "assignee";
   const showSimpro = roleCanAccessSimpro(currentUser.role);
   const showSimproForms = currentUser.role === "finance";
   const simproNav = showSimpro
@@ -274,6 +291,10 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
                 CRM
               </div>
               {NAV_CRM.filter((item) => {
+                if (item.href === PROSPEK_HREF) {
+                  return currentUser.role !== "finance";
+                }
+                if (currentUser.role === "assignee") return false;
                 if (item.href === "/crm/workload") {
                   return (
                     currentUser.role === "admin" ||
@@ -479,7 +500,12 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
                 onChange={(value) => {
                   store.setCurrentUser(value);
                   const user = userById(store, value);
-                  if (user && !roleCanAccessCrm(user.role) && pathname.startsWith("/crm")) {
+                  if (
+                    user &&
+                    !roleCanAccessCrm(user.role) &&
+                    pathname.startsWith("/crm") &&
+                    !canAccessProspekPath(user.role, pathname)
+                  ) {
                     router.push(landingForRole(user.role));
                   }
                   if (

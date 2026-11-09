@@ -22,6 +22,14 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 - Manager assignee dapat mengerjakan task/Form miliknya, tetapi tidak mendapat hak review.
 - Task/Form Manager muncul di My Tasks/Forms dan workload Manager.
 
+## Prospek dan Termine
+
+- Prospek adalah umbrella project di CRM dengan alur tetap: Detail → Pitching → RAB → Quotation → Decision → Kontrak.
+- Setiap Pitching punya RAB, Quotation, tugas Form, dan kontrak sendiri. Pitching kalah menjadi riwayat read-only.
+- Pitching menang yang kontraknya lengkap dikonversi menjadi anak proyek. Anak proyek memakai template Pitching, menyimpan `prospekId`/`pitchingId`, dan memulai pekerjaan setelah fase Prospek selesai.
+- Termine kontrak tampil sebagai acuan pembayaran pada fase Closing anak proyek dan tidak membuat form Invoice/Pembayaran otomatis.
+- Proyek lama dengan step Pitching dan `ProjectGroup` lama tidak dimigrasikan. Lihat `Docs/Prospek.md`.
+
 ## Mesin Form
 
 - Satu tahap Form punya satu template form dan banyak entri.

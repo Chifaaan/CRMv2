@@ -89,9 +89,14 @@ export type FormEntryVersion = {
   createdById: string;
 };
 
+export type FormEntryScope = "project" | "prospek";
+
 export type FormEntry = {
   id: string;
-  projectId: string;
+  scope?: FormEntryScope;
+  projectId?: string;
+  prospekId?: string;
+  pitchingId?: string;
   stepKey: string;
   templateStageId?: string;
   title: string;
@@ -157,6 +162,11 @@ export type Project = {
   createdById: string;
   managerId?: string;
   groupId?: string;
+  prospekId?: string;
+  pitchingId?: string;
+  inheritedRab?: PitchingRabSnapshot;
+  inheritedQuotation?: PitchingQuotationSnapshot;
+  prospekContract?: PitchingContract;
   cancelReason?: string;
   createdAt: string;
   templateId?: string;
@@ -453,6 +463,167 @@ export type ProjectEvent = {
   groupId?: string;
 };
 
+export type ProspekStatus = "active" | "completed" | "cancelled";
+
+export type Prospek = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  picId?: string;
+  client: string;
+  periodStart: string;
+  periodEnd: string;
+  pagu: number;
+  status: ProspekStatus;
+  cancelReason?: string;
+  createdById: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type ProspekPitchingStatus = "draft" | "won" | "lost";
+
+export type ProspekPitching = {
+  id: string;
+  prospekId: string;
+  title: string;
+  description: string;
+  templateId: string;
+  templateVersion: number;
+  status: ProspekPitchingStatus;
+  createdById: string;
+  createdAt: string;
+  decidedAt?: string;
+  decidedById?: string;
+  lostReason?: string;
+  contract?: PitchingContract;
+  projectId?: string;
+  convertedAt?: string;
+};
+
+export type PitchingRabItemKind = "manpower" | "cost";
+
+export type PitchingRabItem = RabItem & {
+  kind: PitchingRabItemKind;
+};
+
+export type PitchingRabStatus = "unassigned" | "assigned" | "draft" | "submitted";
+
+export type PitchingRabVersion = {
+  id: string;
+  rabId: string;
+  versionNumber: number;
+  status: PitchingRabStatus;
+  items: PitchingRabItem[];
+  notes: string;
+  createdAt: string;
+  createdById: string;
+};
+
+export type PitchingRabSnapshot = {
+  items: PitchingRabItem[];
+  notes: string;
+  submittedAt?: string;
+  submittedById?: string;
+};
+
+export type PitchingRab = {
+  id: string;
+  pitchingId: string;
+  items: PitchingRabItem[];
+  notes: string;
+  status: PitchingRabStatus;
+  assigneeId?: string;
+  dueDate?: string;
+  submittedAt?: string;
+  submittedById?: string;
+  versions: PitchingRabVersion[];
+  updatedAt?: string;
+  updatedById?: string;
+};
+
+export type PitchingQuotationMode = "link" | "pdf";
+
+export type PitchingQuotationStatus =
+  | "unassigned"
+  | "assigned"
+  | "draft"
+  | "submitted"
+  | "approved"
+  | "need_revision";
+
+export type PitchingQuotationVersion = {
+  id: string;
+  quotationId: string;
+  versionNumber: number;
+  status: PitchingQuotationStatus;
+  mode: PitchingQuotationMode;
+  url?: string;
+  attachment?: Attachment;
+  amount?: number;
+  createdAt: string;
+  createdById: string;
+};
+
+export type PitchingQuotationSnapshot = {
+  mode: PitchingQuotationMode;
+  url?: string;
+  attachment?: Attachment;
+  amount?: number;
+  approvedAt?: string;
+  approvedById?: string;
+};
+
+export type PitchingQuotation = {
+  id: string;
+  pitchingId: string;
+  mode: PitchingQuotationMode;
+  url?: string;
+  attachment?: Attachment;
+  amount?: number;
+  assigneeId?: string;
+  dueDate?: string;
+  status: PitchingQuotationStatus;
+  submittedAt?: string;
+  submittedById?: string;
+  approvedAt?: string;
+  approvedById?: string;
+  reviewComment?: string;
+  versions: PitchingQuotationVersion[];
+  updatedAt?: string;
+  updatedById?: string;
+};
+
+export type Termine = {
+  id: string;
+  label: string;
+  amount: number;
+  dueDate: string;
+  note?: string;
+};
+
+export type PitchingContract = {
+  number: string;
+  date: string;
+  value: number;
+  attachment?: Attachment;
+  termine: Termine[];
+  savedAt?: string;
+  savedById?: string;
+};
+
+export type ProspekEvent = {
+  id: string;
+  prospekId: string;
+  pitchingId?: string;
+  eventType: string;
+  actorId: string;
+  occurredAt: string;
+  summary: string;
+  metadata: Record<string, unknown>;
+};
+
 export type AppState = {
   seedVersion: number;
   currentUserId: string;
@@ -466,6 +637,11 @@ export type AppState = {
   forms: StepForm[];
   formEntries: FormEntry[];
   groups: ProjectGroup[];
+  prospeks: Prospek[];
+  prospekPitchings: ProspekPitching[];
+  pitchingRabs: PitchingRab[];
+  pitchingQuotations: PitchingQuotation[];
+  prospekEvents: ProspekEvent[];
   notifications: Notification[];
   activityLogs: ActivityLog[];
   projectEvents: ProjectEvent[];
