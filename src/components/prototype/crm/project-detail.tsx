@@ -42,6 +42,7 @@ import {
   calculateJourneyProgress,
   canApproveGate,
   canAssignFormEntry,
+  canAssignTask,
   canCancelProject,
   canCreateFormEntry,
   canEditForm,
@@ -92,7 +93,7 @@ import {
   TaskStatusBadge,
   UserAvatar,
 } from "../ui";
-import { PitchingDialog, ProjectDialog } from "../dialogs";
+import { PitchingDialog, ProjectDialog, TaskDialog } from "../dialogs";
 import { ProjectStepHistory } from "./project-history";
 import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
 
@@ -607,8 +608,11 @@ function PitchingStep({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskId, setTaskId] = useState<string | undefined>(undefined);
   const pitchings = pitchingsFor(store, project.id);
   const canManage = currentUser && canManageProject(currentUser, project);
+  const canAssign = Boolean(currentUser && canAssignTask(currentUser));
   const activePitchings = pitchings.filter((pitching) => pitching.status !== "lost");
   const history = pitchings.filter((pitching) => pitching.status === "lost");
   const canEditPitching = (pitchingId: string) =>
@@ -762,6 +766,19 @@ function PitchingStep({
                                 {task.code}
                               </span>
                             )}
+                            {canAssign && task.status !== "completed" ? (
+                              <Button
+                                size="xs"
+                                variant="ghost"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setTaskId(task.id);
+                                  setTaskDialogOpen(true);
+                                }}
+                              >
+                                Assign
+                              </Button>
+                            ) : null}
                           </>
                         ) : (
                           <span className="text-muted-foreground text-[10px]">Tanpa task</span>
@@ -855,6 +872,13 @@ function PitchingStep({
         onOpenChange={setDialogOpen}
         projectId={project.id}
         pitching={editingId ? store.pitchings.find((item) => item.id === editingId) : undefined}
+      />
+      <TaskDialog
+        open={taskDialogOpen}
+        onOpenChange={setTaskDialogOpen}
+        projectId={project.id}
+        taskId={taskId}
+        stepKey="pitching"
       />
     </div>
   );
@@ -1055,8 +1079,12 @@ function RunningStep({
   readOnly?: boolean;
 }) {
   const store = usePrototypeStore();
+  const currentUser = userById(store, store.currentUserId);
   const tasks = tasksForStep(store, project.id, "running");
   const active = tasks.filter((task) => task.status !== "completed");
+  const canAssign = Boolean(currentUser && canAssignTask(currentUser));
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskId, setTaskId] = useState<string | undefined>(undefined);
   return (
     <div className="space-y-4">
       <SectionCard
@@ -1086,6 +1114,18 @@ function RunningStep({
                 <span className="min-w-0 flex-1 truncate">{task.title}</span>
                 <TaskStatusBadge status={task.status} />
                 <UserAvatar user={userById(store, task.assigneeId)} size="sm" />
+                {canAssign && task.status !== "completed" ? (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      setTaskId(task.id);
+                      setTaskDialogOpen(true);
+                    }}
+                  >
+                    Assign
+                  </Button>
+                ) : null}
               </div>
             ))
           )}
@@ -1098,6 +1138,13 @@ function RunningStep({
           onComplete={() => store.completeStep(project.id, "running")}
         />
       ) : null}
+      <TaskDialog
+        open={taskDialogOpen}
+        onOpenChange={setTaskDialogOpen}
+        projectId={project.id}
+        taskId={taskId}
+        stepKey="running"
+      />
     </div>
   );
 }
@@ -1376,8 +1423,11 @@ function SimproStagePanel({
   const tasks = tasksForStep(store, project.id, step.key);
   const active = tasks.filter((task) => task.status !== "completed").length;
   const canManage = Boolean(currentUser && canManageProject(currentUser, project));
+  const canAssign = Boolean(currentUser && canAssignTask(currentUser));
   const [templateOpen, setTemplateOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskId, setTaskId] = useState<string | undefined>(undefined);
   const suggestions = step.tasks ?? [];
 
   return (
@@ -1429,6 +1479,18 @@ function SimproStagePanel({
                 <span className="min-w-0 flex-1 truncate">{task.title}</span>
                 <TaskStatusBadge status={task.status} />
                 <UserAvatar user={userById(store, task.assigneeId)} size="sm" />
+                {canAssign && task.status !== "completed" ? (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      setTaskId(task.id);
+                      setTaskDialogOpen(true);
+                    }}
+                  >
+                    Assign
+                  </Button>
+                ) : null}
               </div>
             ))}
           </div>
@@ -1532,6 +1594,13 @@ function SimproStagePanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <TaskDialog
+        open={taskDialogOpen}
+        onOpenChange={setTaskDialogOpen}
+        projectId={project.id}
+        taskId={taskId}
+        stepKey={step.key}
+      />
     </div>
   );
 }

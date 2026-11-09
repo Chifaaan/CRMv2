@@ -16,6 +16,7 @@ import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   activeSteps,
   calculateJourneyProgress,
+  canAssignTask,
   canCreateTask,
   canManageProject,
   canViewProject,
@@ -246,12 +247,14 @@ function Backlog({
   onTaskClick,
   onNewTask,
   canCreate,
+  canAssign,
 }: {
   project: Project;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onNewTask: () => void;
   canCreate: boolean;
+  canAssign: boolean;
 }) {
   const store = usePrototypeStore();
   const [search, setSearch] = useState("");
@@ -335,7 +338,9 @@ function Backlog({
                 </td>
                 <td className="px-2 py-2">
                   <Button variant="ghost" size="sm" onClick={() => onTaskClick(task)}>
-                    Detail
+                    {canAssign && !task.assigneeId && task.status === "backlog"
+                      ? "Assign"
+                      : "Detail"}
                   </Button>
                 </td>
               </tr>
@@ -525,6 +530,7 @@ export function SimproProjectPage({
       (currentUser.role !== "assignee" || task.assigneeId === currentUser.id),
   );
   const canCreate = canCreateTask(store, currentUser, project);
+  const canAssign = Boolean(currentUser && canAssignTask(currentUser));
 
   const changeStage = (key: string) => {
     setStageKey(key);
@@ -600,6 +606,7 @@ export function SimproProjectPage({
           onTaskClick={openTask}
           onNewTask={openNewTask}
           canCreate={canCreate}
+          canAssign={canAssign}
         />
       ) : null}
       {tab === "rab" ? <RabReadOnly project={project} /> : null}
