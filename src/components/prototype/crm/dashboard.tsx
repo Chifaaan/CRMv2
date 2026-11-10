@@ -56,20 +56,6 @@ export function CrmDashboard() {
   const actions = (() => {
     const items: { title: string; description: string; href: string; tone: string }[] = [];
     if (currentUser.role === "pm" || currentUser.role === "admin") {
-      const drafts = store.pitchings.filter(
-        (pitching) =>
-          pitching.status === "draft" &&
-          projects.some((project) => project.id === pitching.projectId),
-      );
-      for (const pitching of drafts.slice(0, 3)) {
-        const project = store.projects.find((item) => item.id === pitching.projectId);
-        items.push({
-          title: `Pitching ${pitching.title} belum diputuskan`,
-          description: project?.name ?? "",
-          href: `/crm/projects/${pitching.projectId}`,
-          tone: "bg-violet-100 text-violet-700",
-        });
-      }
       const submitted = store.forms.filter(
         (form) =>
           form.status === "submitted" &&
@@ -144,7 +130,7 @@ export function CrmDashboard() {
     <div className="space-y-6">
       <PageHeader
         title={`Selamat datang, ${currentUser.name.split(" ")[0]}`}
-        description="Pantau journey proyek, pitching, form, dan pekerjaan yang menunggu tindakan."
+        description="Pantau journey proyek, form, dan pekerjaan yang menunggu tindakan."
         actions={
           <Link
             href="/crm/projects"
@@ -155,12 +141,11 @@ export function CrmDashboard() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Proyek aktif" value={active.length} sub={`${projects.length} total terlihat`} icon={FolderKanban} />
-        <StatCard label="Prospek" value={phaseCounts.prospek} sub="Brief sampai menang" icon={ClipboardCheck} accent="from-amber-500 to-orange-600" />
         <StatCard label="Planning" value={phaseCounts.planning} sub="Komitmen vendor & venue" icon={ClipboardCheck} accent="from-violet-500 to-indigo-600" />
         <StatCard label="Running" value={phaseCounts.running} sub="Eksekusi di SIMPRO" icon={PlayCircle} accent="from-sky-500 to-blue-600" />
-        <StatCard label="Closing" value={phaseCounts.closing} sub="BAST, Invoice, evaluasi" icon={Wallet} accent="from-emerald-500 to-teal-600" />
+        <StatCard label="Finance" value={phaseCounts.finance} sub="BAST, Invoice, evaluasi" icon={Wallet} accent="from-emerald-500 to-teal-600" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">

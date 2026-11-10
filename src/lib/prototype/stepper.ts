@@ -1,9 +1,12 @@
 import {
   PHASE_LABEL,
   PHASE_ORDER,
+  NEW_PROJECT_PHASES,
   type Phase,
+  type Project,
   type ProjectStep,
 } from "./types";
+import { isNewLifecycleProject } from "./domain";
 
 export function phasesPresent(steps: ProjectStep[]): Phase[] {
   return PHASE_ORDER.filter((phase) =>
@@ -11,9 +14,16 @@ export function phasesPresent(steps: ProjectStep[]): Phase[] {
   );
 }
 
-/** The journey header always lists every fixed phase, even with zero steps. */
-export function headerPhases(): Phase[] {
-  return [...PHASE_ORDER];
+/**
+ * New-lifecycle projects always expose Planning, Running, and Finance even
+ * when a phase has no step. Legacy projects keep their data-driven phases.
+ */
+export function phasesForProject(
+  project: Project | undefined,
+  steps: ProjectStep[],
+): Phase[] {
+  if (project && isNewLifecycleProject(project)) return [...NEW_PROJECT_PHASES];
+  return phasesPresent(steps);
 }
 
 export function phaseStageCounts(

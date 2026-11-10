@@ -28,7 +28,7 @@ import type {
 } from "../src/lib/prototype/types";
 
 function createKolProject() {
-  const projectId = usePrototypeStore.getState().createProject({
+  return usePrototypeStore.getState().createProject({
     name: "KOL Stage Test",
     client: "Klien",
     description: "",
@@ -38,8 +38,6 @@ function createKolProject() {
     coverColor: "#000000",
     templateId: KOL_TEMPLATE_ID,
   });
-  usePrototypeStore.getState().startPhase(projectId, "prospek");
-  return projectId;
 }
 
 function firstStep(projectId: string) {

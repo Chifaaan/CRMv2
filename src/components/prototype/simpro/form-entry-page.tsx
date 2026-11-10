@@ -8,12 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  canAssignFormEntry,
   canCancelFormEntry,
   canEditFormEntry,
   canReviewFormEntry,
+  formEntryTemplate,
   formatDate,
   formatDateTime,
+  operationalAssigneeCandidates,
   stepFor,
   userById,
 } from "@/lib/prototype/domain";
@@ -267,11 +268,16 @@ export function FormEntryPage({
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
   const entry = store.formEntries.find((item) => item.id === entryId);
-  const project = entry
+  const project = entry?.projectId
     ? store.projects.find((item) => item.id === entry.projectId)
     : undefined;
-  const step = entry ? stepFor(store, entry.projectId, entry.stepKey) : undefined;
-  const template = step?.formTemplate;
+  const step = entry?.projectId
+    ? stepFor(store, entry.projectId, entry.stepKey)
+    : undefined;
+  const template = entry ? formEntryTemplate(store, entry) : undefined;
+  const contextCode = project?.code;
+  const contextName = project?.name;
+  const contextStage = step?.name;
   const [payload, setPayload] = useState<FormEntryPayload>(
     entry?.payload ?? { values: {}, photos: [] },
   );
@@ -327,7 +333,22 @@ export function FormEntryPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry?.id]);
 
-  if (!entry || !project || !currentUser || !step) {
+  if (!entry || !currentUser || !template) {
+    return (
+      <EmptyState
+        icon={FileUp}
+        title="Entri form tidak ditemukan"
+        description="Entri mungkin sudah dihapus atau bukan bagian dari proyek Anda."
+        action={
+          <Button variant="outline" size="sm" onClick={onBack}>
+            Kembali ke Forms
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (!project || !step) {
     return (
       <EmptyState
         icon={FileUp}
@@ -344,7 +365,10 @@ export function FormEntryPage({
 
   const editable = canEditFormEntry(store, currentUser, entry);
   const reviewer = canReviewFormEntry(store, currentUser, entry);
-  const canAssign = canAssignFormEntry(currentUser);
+  const assignCandidates = project
+    ? operationalAssigneeCandidates(store, currentUser, project)
+    : [];
+  const canAssign = assignCandidates.length > 0;
   const canCancel = canCancelFormEntry(store, currentUser, entry);
   const defaultFields = template?.defaultFields ?? {
     executionDate: { enabled: true, required: true },
@@ -404,12 +428,12 @@ export function FormEntryPage({
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={entry.status} />
             <span className="text-muted-foreground text-[10px]">
-              {project.code} · {step.name}
+              {contextCode} · {contextStage}
             </span>
           </div>
           <h1 className="mt-1 truncate text-xl font-semibold">{entry.title}</h1>
           <p className="text-muted-foreground text-xs">
-            {project.name} · Assignee{" "}
+            {contextName} · Assignee{" "}
             {userById(store, entry.assigneeId)?.name ?? "Belum di-assign"}
             {entry.dueDate ? ` · Tenggat ${formatDate(entry.dueDate)}` : ""}
           </p>
@@ -443,15 +467,11 @@ export function FormEntryPage({
               className="w-[220px]"
             >
               <option value="">Pilih assignee</option>
-              {store.users
-                .filter((user) =>
-                  user.role === "assignee" || user.role === "media",
-                )
-                .map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
+              {assignCandidates.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name}
+                </option>
+              ))}
             </NativeSelect>
             <Button
               size="sm"
@@ -470,7 +490,7 @@ export function FormEntryPage({
 
       <SectionCard
         title={template?.title ?? "Form"}
-        description={`Isi form untuk ${project.name}.`}
+        description={`Isi form untuk ${contextName}.`}
       >
         <div className="space-y-3">
           {errors.length > 0 ? (

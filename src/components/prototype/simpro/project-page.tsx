@@ -15,17 +15,18 @@ import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   activeSteps,
+  boardVisibleStages,
   calculateJourneyProgress,
   canCreateTask,
   canManageProject,
   canViewProject,
   formatCurrency,
   formatDate,
+  operationalAssigneeCandidates,
   formFor,
   formsFor,
   tasksForStep,
   userById,
-  visibleBoardSteps,
   workProgressForProject,
 } from "@/lib/prototype/domain";
 import {
@@ -105,7 +106,10 @@ function ProjectHeader({
               </span>
             </div>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight">{project.name}</h1>
-            <p className="mt-1 text-sm text-white/75">{project.client || "Tanpa klien"}</p>
+            <p className="mt-1 text-sm text-white/75">
+              {project.client || "Tanpa klien"} · Manager{" "}
+              {userById(store, project.managerId)?.name ?? "Belum ditugaskan"}
+            </p>
           </div>
           {canManage ? (
             <Button variant="secondary" size="sm" onClick={onEdit}>
@@ -160,8 +164,7 @@ function Overview({ project }: { project: Project }) {
     (task) =>
       task.projectId === project.id &&
       !task.archivedAt &&
-      (!["assignee", "media"].includes(currentUser?.role ?? "") ||
-        task.assigneeId === currentUser?.id),
+      (currentUser?.role !== "assignee" || task.assigneeId === currentUser.id),
   );
   const done = tasks.filter((task) => task.status === "completed").length;
   const open = tasks.length - done;
@@ -248,12 +251,14 @@ function Backlog({
   onTaskClick,
   onNewTask,
   canCreate,
+  canAssign,
 }: {
   project: Project;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onNewTask: () => void;
   canCreate: boolean;
+  canAssign: boolean;
 }) {
   const store = usePrototypeStore();
   const [search, setSearch] = useState("");
@@ -326,14 +331,7 @@ function Backlog({
                 <td className="px-2 py-2">{formatDate(task.dueDate)}</td>
                 <td className="px-2 py-2">
                   {task.assigneeId ? (
-                    <div className="space-y-0.5">
-                      <UserAvatar user={userById(store, task.assigneeId)} size="sm" showName />
-                      {task.managerId ? (
-                        <p className="text-muted-foreground text-[10px]">
-                          Manager: {userById(store, task.managerId)?.name}
-                        </p>
-                      ) : null}
-                    </div>
+                    <UserAvatar user={userById(store, task.assigneeId)} size="sm" showName />
                   ) : task.requestedAssigneeId ? (
                     <span className="text-muted-foreground text-[10px]">
                       Requested: {userById(store, task.requestedAssigneeId)?.name}
@@ -344,7 +342,9 @@ function Backlog({
                 </td>
                 <td className="px-2 py-2">
                   <Button variant="ghost" size="sm" onClick={() => onTaskClick(task)}>
-                    Detail
+                    {canAssign && !task.assigneeId && task.status === "backlog"
+                      ? "Assign"
+                      : "Detail"}
                   </Button>
                 </td>
               </tr>
@@ -502,10 +502,7 @@ export function SimproProjectPage({
     );
   }
 
-  if (
-    (currentUser.role === "assignee" || currentUser.role === "media") &&
-    (tab === "backlog" || tab === "rab")
-  ) {
+  if (currentUser.role === "assignee" && (tab === "backlog" || tab === "rab")) {
     return (
       <EmptyState
         icon={FolderKanban}
@@ -515,31 +512,29 @@ export function SimproProjectPage({
     );
   }
 
-  const allSimproStages = store.steps
-    .filter((step) => step.projectId === project.id && step.kind === "simpro")
-    .sort((a, b) => a.order - b.order);
-  const simproStages = visibleBoardSteps(store, currentUser, project.id);
-  const hiddenStages = allSimproStages.length - simproStages.length;
+  const simproStages = boardVisibleStages(store, project.id);
   const selectedStage =
     simproStages.find((step) => step.key === stageKey) ??
     simproStages.find((step) => step.status === "active") ??
+    [...simproStages].reverse().find((step) => step.status === "completed") ??
     simproStages[0];
   const isBoardStep = Boolean(selectedStage);
   const stageTasks = selectedStage
     ? tasksForStep(store, project.id, selectedStage.key)
     : [];
   const tasks =
-    currentUser.role === "assignee" || currentUser.role === "media"
+    currentUser.role === "assignee"
       ? stageTasks.filter((task) => task.assigneeId === currentUser.id)
       : stageTasks;
   const projectTasks = store.tasks.filter(
     (task) =>
       task.projectId === project.id &&
       !task.archivedAt &&
-      (!["assignee", "media"].includes(currentUser.role) ||
-        task.assigneeId === currentUser.id),
+      (currentUser.role !== "assignee" || task.assigneeId === currentUser.id),
   );
   const canCreate = canCreateTask(store, currentUser, project);
+  const canAssign =
+    operationalAssigneeCandidates(store, currentUser, project).length > 0;
 
   const changeStage = (key: string) => {
     setStageKey(key);
@@ -572,12 +567,6 @@ export function SimproProjectPage({
             title={`Board · ${selectedStage.name}`}
             description="Filter tahap SIMPRO. Drag card sesuai aturan role."
           >
-            {hiddenStages > 0 ? (
-              <p className="text-muted-foreground mb-3 rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-[11px]">
-                {hiddenStages} tahap belum berjalan disembunyikan. Tahap akan
-                muncul di board setelah fase berjalan.
-              </p>
-            ) : null}
             <div className="mb-3 flex flex-wrap items-end gap-2">
               <label className="text-xs font-medium">
                 Tahap
@@ -609,14 +598,8 @@ export function SimproProjectPage({
         ) : (
           <EmptyState
             icon={ClipboardList}
-            title={
-              hiddenStages > 0 ? "Tahap belum berjalan" : "Board tidak tersedia"
-            }
-            description={
-              hiddenStages > 0
-                ? "Tahap akan muncul di board setelah fase berjalan."
-                : "Proyek ini tidak memiliki tahap SIMPRO."
-            }
+            title="Belum ada tahap berjalan"
+            description="Tahap SIMPRO muncul di Board setelah berjalan di CRM. Tahap yang sudah selesai tetap dapat dibuka read-only."
           />
         )
       ) : null}
@@ -627,6 +610,7 @@ export function SimproProjectPage({
           onTaskClick={openTask}
           onNewTask={openNewTask}
           canCreate={canCreate}
+          canAssign={canAssign}
         />
       ) : null}
       {tab === "rab" ? <RabReadOnly project={project} /> : null}

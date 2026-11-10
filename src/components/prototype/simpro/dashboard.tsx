@@ -14,12 +14,10 @@ import {
   calculateJourneyProgress,
   formatDate,
   isOverdue,
-  taskCountsByStatus,
   userById,
   visibleProjects,
   workloadRows,
 } from "@/lib/prototype/domain";
-import { TASK_STATUSES } from "@/lib/prototype/types";
 import {
   EmptyState,
   ProgressBar,
@@ -28,6 +26,7 @@ import {
   TaskStatusBadge,
   UserAvatar,
 } from "../ui";
+import { TaskProgressPanels } from "./task-progress";
 
 export function SimproDashboard() {
   const store = usePrototypeStore();
@@ -39,11 +38,9 @@ export function SimproDashboard() {
     (task) =>
       !task.archivedAt &&
       projectIds.has(task.projectId) &&
-      (!["assignee", "media"].includes(currentUser?.role ?? "") ||
-        task.assigneeId === currentUser?.id),
+      (currentUser?.role !== "assignee" || task.assigneeId === currentUser.id),
   );
-  const counts = taskCountsByStatus(tasks);
-  const completed = counts.completed;
+  const completed = tasks.filter((task) => task.status === "completed").length;
   const openTasks = tasks.length - completed;
   const myTasks = tasks
     .filter(
@@ -92,60 +89,11 @@ export function SimproDashboard() {
         <StatCard label="Total task" value={tasks.length} sub={`${openTasks} task belum selesai`} icon={ListTodo} accent="from-emerald-500 to-teal-600" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Distribusi task" description="Status task di proyek yang Anda akses.">
-          <div className="space-y-2">
-            {TASK_STATUSES.map((status) => {
-              const value = counts[status];
-              const percent = tasks.length === 0 ? 0 : Math.round((value / tasks.length) * 100);
-              return (
-                <div key={status} className="flex items-center gap-3">
-                  <span className="w-36 shrink-0">
-                    <TaskStatusBadge status={status} />
-                  </span>
-                  <div className="flex-1">
-                    <ProgressBar value={percent} />
-                  </div>
-                  <span className="w-16 text-right text-xs tabular-nums">
-                    {value} <span className="text-muted-foreground">({percent}%)</span>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Progress overview" description="Ringkasan penyelesaian task.">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border p-3">
-              <p className="text-muted-foreground text-[11px] uppercase">Completed</p>
-              <p className="mt-1 text-2xl font-semibold">{completed}</p>
-            </div>
-            <div className="rounded-xl border p-3">
-              <p className="text-muted-foreground text-[11px] uppercase">Open</p>
-              <p className="mt-1 text-2xl font-semibold">{openTasks}</p>
-            </div>
-            <div className="rounded-xl border p-3">
-              <p className="text-muted-foreground text-[11px] uppercase">Overdue</p>
-              <p className="mt-1 text-2xl font-semibold text-rose-600">
-                {tasks.filter((task) => isOverdue(task)).length}
-              </p>
-            </div>
-          </div>
-          <div className="mt-4">
-            <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Task selesai</span>
-              <span className="font-semibold">
-                {tasks.length === 0 ? 0 : Math.round((completed / tasks.length) * 100)}%
-              </span>
-            </div>
-            <ProgressBar
-              value={tasks.length === 0 ? 0 : Math.round((completed / tasks.length) * 100)}
-              tone="bg-emerald-500"
-            />
-          </div>
-        </SectionCard>
-      </div>
+      <TaskProgressPanels
+        tasks={tasks}
+        distributionDescription="Status task di proyek yang Anda akses."
+        progressDescription="Ringkasan penyelesaian task."
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard title="Task saya" description="Task aktif yang di-assign ke Anda.">

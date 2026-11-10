@@ -43,10 +43,12 @@ import { clearPrototypeFiles } from "@/lib/prototype/files";
 import { NativeSelect, UserAvatar } from "./ui";
 
 const NAV_SIMPRO = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/my-tasks", label: "My tasks", icon: ListTodo },
   { href: "/forms", label: "Forms", icon: CheckCheck },
+];
+
+const NAV_BUSINESS = [
+  { href: "/business", label: "Business", icon: ChartNoAxesCombined },
 ];
 
 const NAV_CRM = [
@@ -57,9 +59,14 @@ const NAV_CRM = [
   { href: "/crm/workload", label: "Workload", icon: Gauge },
 ];
 
-const NAV_BUSINESS = [
-  { href: "/business", label: "Business", icon: ChartNoAxesCombined },
-];
+
+function isFinanceWorkPath(pathname: string): boolean {
+  return (
+    pathname === "/my-tasks" ||
+    pathname === "/forms" ||
+    pathname.startsWith("/forms/")
+  );
+}
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/crm") return pathname === "/crm";
@@ -73,12 +80,11 @@ function titleForPath(pathname: string): string {
   if (pathname === "/crm/groups") return "Groups";
   if (pathname === "/crm/templates") return "Templates";
   if (pathname === "/crm/workload") return "Workload";
-  if (pathname.startsWith("/business")) return "Business";
   if (pathname.startsWith("/crm")) return "CRM";
   if (pathname.startsWith("/projects/")) return "Detail Proyek";
   if (pathname === "/projects") return "Projects";
   if (pathname === "/my-tasks") return "My tasks";
-  if (pathname === "/forms" || pathname.startsWith("/forms/")) return "Forms";
+  if (pathname === "/forms") return "Forms";
   return "Dashboard";
 }
 
@@ -197,18 +203,20 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
     if (!currentUser) return;
     const isCrm = pathname.startsWith("/crm");
     const isBusiness = pathname.startsWith("/business");
-    const isFormsPath = pathname === "/forms" || pathname.startsWith("/forms/");
-    if (isCrm && !roleCanAccessCrm(currentUser.role)) {
-      router.replace(landingForRole(currentUser.role));
+    const isFinanceWork = isFinanceWorkPath(pathname);
+    if (isBusiness) {
+      if (!roleCanAccessBusiness(currentUser.role)) {
+        router.replace(landingForRole(currentUser.role));
+      }
+      return;
     }
-    if (isBusiness && !roleCanAccessBusiness(currentUser.role)) {
+    if (isCrm && !roleCanAccessCrm(currentUser.role)) {
       router.replace(landingForRole(currentUser.role));
     }
     if (
       !isCrm &&
-      !isBusiness &&
       !roleCanAccessSimpro(currentUser.role) &&
-      !(currentUser.role === "finance" && isFormsPath)
+      !(currentUser.role === "finance" && isFinanceWork)
     ) {
       router.replace(landingForRole(currentUser.role));
     }
@@ -239,15 +247,15 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
 
   const showCrm = roleCanAccessCrm(currentUser.role);
   const showSimpro = roleCanAccessSimpro(currentUser.role);
-  const showBusiness = roleCanAccessBusiness(currentUser.role);
   const showSimproForms = currentUser.role === "finance";
   const simproNav = showSimpro
     ? NAV_SIMPRO
     : showSimproForms
-      ? NAV_SIMPRO.filter((item) => item.href === "/forms")
+      ? NAV_SIMPRO.filter(
+          (item) => item.href === "/forms" || item.href === "/my-tasks",
+        )
       : [];
   const isCrm = pathname.startsWith("/crm");
-  const isBusinessPath = pathname.startsWith("/business");
 
   return (
     <div className="bg-background text-foreground flex h-full min-h-0 flex-1 overflow-hidden">
@@ -282,12 +290,23 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
               ))}
             </div>
           ) : null}
+          {roleCanAccessBusiness(currentUser.role) ? (
+            <div className="flex flex-col gap-0.5">
+              <div className="text-muted-foreground px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]">
+                BUSINESS
+              </div>
+              {NAV_BUSINESS.map((item) => (
+                <NavItem key={item.href} {...item} pathname={pathname} />
+              ))}
+            </div>
+          ) : null}
           {showCrm ? (
             <div className="flex flex-col gap-0.5">
               <div className="text-muted-foreground px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]">
                 CRM
               </div>
               {NAV_CRM.filter((item) => {
+                if (currentUser.role === "assignee") return false;
                 if (item.href === "/crm/workload") {
                   return (
                     currentUser.role === "admin" ||
@@ -301,16 +320,6 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
                 }
                 return true;
               }).map((item) => (
-                <NavItem key={item.href} {...item} pathname={pathname} />
-              ))}
-            </div>
-          ) : null}
-          {showBusiness ? (
-            <div className="flex flex-col gap-0.5">
-              <div className="text-muted-foreground px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]">
-                Business
-              </div>
-              {NAV_BUSINESS.map((item) => (
                 <NavItem key={item.href} {...item} pathname={pathname} />
               ))}
             </div>
@@ -365,7 +374,7 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
               >
                 <Boxes className="text-primary size-4" />
                 <span className="text-xs font-semibold">
-                  {isBusinessPath ? "BUSINESS" : isCrm ? "CRM" : "SIMPRO"}
+                  {isCrm ? "CRM" : "SIMPRO"}
                 </span>
                 <ChevronDown
                   className={cn(
@@ -404,25 +413,13 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
                       <ModuleMenuItem
                         icon={Gauge}
                         title="CRM"
-                        subtitle="Journey, pitching, form, dan finance"
+                        subtitle="Journey, form, dan finance"
                         active={isCrm}
                         disabled={!showCrm}
                         onClick={() => {
                           setModuleOpen(false);
                           if (isCrm) return;
                           router.push("/crm");
-                        }}
-                      />
-                      <ModuleMenuItem
-                        icon={ChartNoAxesCombined}
-                        title="Business"
-                        subtitle="Revenue, cost, dan margin per unit bisnis"
-                        active={isBusinessPath}
-                        disabled={!showBusiness}
-                        onClick={() => {
-                          setModuleOpen(false);
-                          if (isBusinessPath) return;
-                          router.push("/business");
                         }}
                       />
                     </div>
@@ -515,13 +512,18 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
                 onChange={(value) => {
                   store.setCurrentUser(value);
                   const user = userById(store, value);
-                  if (user && !roleCanAccessCrm(user.role) && pathname.startsWith("/crm")) {
+                  if (
+                    user &&
+                    !roleCanAccessCrm(user.role) &&
+                    pathname.startsWith("/crm")
+                  ) {
                     router.push(landingForRole(user.role));
                   }
                   if (
                     user &&
                     !roleCanAccessSimpro(user.role) &&
-                    !pathname.startsWith("/crm")
+                    !pathname.startsWith("/crm") &&
+                    !(user.role === "finance" && isFinanceWorkPath(pathname))
                   ) {
                     router.push("/crm");
                   }

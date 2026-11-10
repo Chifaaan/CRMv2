@@ -12,24 +12,26 @@ Katalog tetap untuk rilis ini:
 | `makerspace-video` | Makerspace Video |
 | `spektrum` | Spektrum |
 
-Setiap item RAB dan MO wajib punya satu `businessUnitId`. Item lama tanpa unit tetap terbaca dan diberi badge "Belum dipetakan" sampai dipetakan.
+Setiap item RAB dan MO wajib dipetakan ke satu `businessUnitId` agar dihitung komersial. Item tanpa unit tetap tersimpan dan ditandai "Belum dipetakan"; item tersebut dikecualikan dari revenue, cost, margin, dan baseline sampai dipetakan.
 
 ## RAB
 
 - `RabPayload` berisi `items: RabItem[]` dan `notes`.
 - `RabItem` berisi `id`, `description`, `category`, `qty`, `unit`, `unitPrice`, dan `businessUnitId`.
 - Total RAB = jumlah `qty × unitPrice`.
-- RAB tetap bisa diedit sampai baseline terkunci oleh gerbang menang; setelah itu read-only.
+- RAB berada pada step Form Keuangan Finance dan editable selama step-nya aktif; RAB yang sudah `approved` menjadi acuan biaya.
 - RAB yang sudah `approved` menjadi **planned cost baseline** di dashboard.
 
 ## Media Order (MO)
 
-- MO menempel pada satu proyek; satu proyek boleh punya banyak MO.
+- MO menempel pada satu proyek; satu proyek boleh punya banyak MO. MO dikelola dari tab **Media Order** di detail proyek CRM.
 - `MediaOrder` berisi `id`, `projectId`, `number`, `title`, `status`, `items`, `notes`, `createdById`, `createdAt`, `updatedAt`, `updatedById`.
 - Status MO: `draft`, `final`, `cancelled`. MO `cancelled` tidak dihitung di dashboard.
 - `MediaOrderItem` berisi `id`, `description`, `qty`, `unit`, `clientUnitPrice`, `vendorUnitCost`, dan `businessUnitId`.
-- MO read-only saat proyek `done`, `lost`, atau `cancelled`.
-- MO proyek yang masuk group ikut ter-roll up ke umbrella group tersebut; proyek tanpa group dihitung standalone.
+- MO read-only saat proyek `done`, `lost`, atau `cancelled`, dan bagi role Assignee, Media, atau BOD.
+- Tab Media Order tampil untuk Admin, Manager, PM, dan Finance.
+- MO proyek yang masuk group ikut ter-roll up ke umbrella group tersebut (group dikelola dari halaman Groups); proyek tanpa group dihitung standalone.
+- MO dan kontrak tidak membuat step atau form Finance otomatis.
 
 ## Rumus
 
@@ -46,6 +48,7 @@ Setiap item RAB dan MO wajib punya satu `businessUnitId`. Item lama tanpa unit t
 - Route `/business`, hanya untuk role `bod` dan `admin`, read-only.
 - Menampilkan revenue, cost, margin, margin %, jumlah item, planned RAB, dan variance per unit bisnis.
 - Filter: semua umbrella, satu group, atau proyek standalone; periode semua, bulan ini, atau 3 bulan terakhir.
+- Hanya Admin dan BOD yang dapat membuka dashboard; role lain diarahkan ke landing page masing-masing.
 - Data komersial diambil dari MO non-cancelled dan RAB approved; tidak ada aksi edit dari dashboard.
 
 ## Audit

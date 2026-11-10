@@ -20,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  assignableUsersForForm,
   canAssignForm,
   canEditForm,
   canReviewForm,
@@ -57,7 +56,11 @@ import type {
   StepForm,
   User,
 } from "@/lib/prototype/types";
-import { PAYMENT_STATUS_LABEL, BUSINESS_UNITS, BUSINESS_UNIT_LABEL } from "@/lib/prototype/types";
+import {
+  BUSINESS_UNITS,
+  BUSINESS_UNIT_LABEL,
+  PAYMENT_STATUS_LABEL,
+} from "@/lib/prototype/types";
 import { putPrototypeFile } from "@/lib/prototype/files";
 import { cn } from "@/lib/utils";
 import {
@@ -244,10 +247,10 @@ function RabEditor({
           <thead className="bg-muted/40 text-muted-foreground text-[10px] uppercase tracking-wide">
             <tr>
               <th className="px-2 py-2">Kategori</th>
-              <th className="px-2 py-2">Unit bisnis</th>
               <th className="px-2 py-2">Item</th>
               <th className="px-2 py-2">Qty</th>
               <th className="px-2 py-2">Satuan</th>
+              <th className="px-2 py-2">Unit bisnis</th>
               <th className="px-2 py-2">Harga</th>
               <th className="px-2 py-2 text-right">Subtotal</th>
               <th className="px-2 py-2" />
@@ -364,37 +367,6 @@ function FragmentRows({
                 </td>
                 <td className="px-2 py-1.5">
                   {readOnly ? (
-                    item.businessUnitId ? (
-                      <span>{BUSINESS_UNIT_LABEL[item.businessUnitId]}</span>
-                    ) : (
-                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-800">
-                        Belum dipetakan
-                      </span>
-                    )
-                  ) : (
-                    <NativeSelect
-                      id={`rab-item-${item.id}-businessUnit`}
-                      value={item.businessUnitId ?? ""}
-                      onChange={(value) =>
-                        onUpdate(item.id, {
-                          businessUnitId: value
-                            ? (value as RabItem["businessUnitId"])
-                            : undefined,
-                        })
-                      }
-                      className="h-8 w-36 text-[11px]"
-                    >
-                      <option value="">Pilih unit</option>
-                      {BUSINESS_UNITS.map((unit) => (
-                        <option key={unit.id} value={unit.id}>
-                          {unit.label}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  )}
-                </td>
-                <td className="px-2 py-1.5">
-                  {readOnly ? (
                     <span>{item.description || "—"}</span>
                   ) : (
                     <Input
@@ -451,6 +423,34 @@ function FragmentRows({
                       className="h-8 w-20"
                       aria-label="Satuan"
                     />
+                  )}
+                </td>
+                <td className="px-2 py-1.5">
+                  {readOnly ? (
+                    <span>
+                      {item.businessUnitId
+                        ? BUSINESS_UNIT_LABEL[item.businessUnitId]
+                        : "—"}
+                    </span>
+                  ) : (
+                    <NativeSelect
+                      value={item.businessUnitId ?? ""}
+                      onChange={(value) =>
+                        onUpdate(item.id, {
+                          businessUnitId: value
+                            ? (value as RabItem["businessUnitId"])
+                            : undefined,
+                        })
+                      }
+                      className="h-8 w-32 text-[11px]"
+                    >
+                      <option value="">Pilih unit</option>
+                      {BUSINESS_UNITS.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
                   )}
                 </td>
                 <td className="px-2 py-1.5">
@@ -1406,9 +1406,8 @@ function PanelInner({
     toast.success("Versi terbaru dimuat.");
   };
 
-  const candidates = assignableUsersForForm(store, form);
-  const canAssign =
-    canAssignForm(currentUser) && project.status === "active";
+  const candidates = store.users.filter((user) => user.role === "finance");
+  const canAssign = canAssignForm(currentUser) && !readOnly;
 
   const selectedVersion =
     versions.find((version) => version.id === selectedVersionId) ?? latestVersion;
@@ -1492,7 +1491,7 @@ function PanelInner({
                       onChange={setAssignUserId}
                       className="h-8 w-[200px] text-xs"
                     >
-                      <option value="">Pilih assignee</option>
+                      <option value="">Pilih Finance</option>
                       {candidates.map((user) => (
                         <option key={user.id} value={user.id}>
                           {user.name}

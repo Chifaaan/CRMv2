@@ -10,6 +10,9 @@ import type {
 export const UMUM_TEMPLATE_ID = "tpl-umum";
 export const KOL_TEMPLATE_ID = "tpl-kol";
 export const EVENT_TEMPLATE_ID = "tpl-event";
+export const UMUM_EXECUTION_TEMPLATE_ID = "tpl-umum-eksekusi";
+export const KOL_EXECUTION_TEMPLATE_ID = "tpl-kol-eksekusi";
+export const EVENT_EXECUTION_TEMPLATE_ID = "tpl-event-eksekusi";
 
 function task(
   id: string,
@@ -44,10 +47,6 @@ function defaultFormTemplate(
     },
     fields,
   };
-}
-
-export function formTemplateForTitle(title: string): FormTemplate {
-  return defaultFormTemplate(title);
 }
 
 function stage(
@@ -92,95 +91,6 @@ function simproStage(
   return stage(id, name, phase, "simpro", extra);
 }
 
-function defaultClosingStages(): TemplateStage[] {
-  return [
-    stage("sys-closing-bast", "BAST", "closing", "finance_form", {
-      financeKind: "bast",
-      weight: 0.5,
-      parallelGroup: "finance",
-    }),
-    stage("sys-closing-invoice", "Invoice", "closing", "finance_form", {
-      financeKind: "invoice",
-      weight: 0.5,
-      parallelGroup: "finance",
-    }),
-    stage("sys-closing-payment", "Pembayaran", "closing", "finance_form", {
-      financeKind: "payment",
-    }),
-  ];
-}
-
-function closingFinanceKind(stage: TemplateStage) {
-  if (stage.financeKind) return stage.financeKind;
-  if (stage.legacyKey === "bast" || stage.legacyKey === "invoice") {
-    return stage.legacyKey;
-  }
-  return undefined;
-}
-
-/**
- * Closing is rule-driven: a template may add its own Closing stages, but the
- * system always guarantees exactly one BAST and one Invoice. Projects without
- * a template fall back to BAST, Invoice, and Pembayaran defaults.
- */
-export function closingStagesFor(template?: ProjectTemplate): TemplateStage[] {
-  const templateStages =
-    template?.stages.filter((stage) => stage.phase === "closing") ?? [];
-  const source =
-    templateStages.length > 0
-      ? templateStages.map((stage) => {
-          const financeKind = closingFinanceKind(stage);
-          return {
-            ...stage,
-            ...(financeKind ? { financeKind } : {}),
-            tasks: stage.tasks.map((task) => ({ ...task })),
-          };
-        })
-      : defaultClosingStages();
-
-  let seenBast = false;
-  let seenInvoice = false;
-  const stages = source.filter((stage) => {
-    if (stage.financeKind === "bast") {
-      if (seenBast) return false;
-      seenBast = true;
-    }
-    if (stage.financeKind === "invoice") {
-      if (seenInvoice) return false;
-      seenInvoice = true;
-    }
-    return true;
-  });
-
-  if (!seenBast) {
-    stages.push(
-      stage("sys-closing-bast", "BAST", "closing", "finance_form", {
-        financeKind: "bast",
-        weight: 0.5,
-        parallelGroup: "finance",
-      }),
-    );
-  }
-  if (!seenInvoice) {
-    stages.push(
-      stage("sys-closing-invoice", "Invoice", "closing", "finance_form", {
-        financeKind: "invoice",
-        weight: 0.5,
-        parallelGroup: "finance",
-      }),
-    );
-  }
-
-  return stages.map((stage, index) => ({
-    ...stage,
-    phase: "closing",
-    order: index + 1,
-    ...(stage.financeKind === "bast" || stage.financeKind === "invoice"
-      ? { weight: 0.5, parallelGroup: "finance" }
-      : {}),
-  }));
-}
-
 /**
  * Template Umum keeps the legacy six steps. Weights and the parallel finance
  * group reproduce the old journey formula exactly (4 full steps + 0.5/0.5).
@@ -200,13 +110,13 @@ function umumStages(): TemplateStage[] {
     simproStage("tpl-umum-running", "Running", "running", {
       legacyKey: "running",
     }),
-    stage("tpl-umum-bast", "BAST", "closing", "finance_form", {
+    stage("tpl-umum-bast", "BAST", "finance", "finance_form", {
       legacyKey: "bast",
       financeKind: "bast",
       weight: 0.5,
       parallelGroup: "finance",
     }),
-    stage("tpl-umum-invoice", "Invoice", "closing", "finance_form", {
+    stage("tpl-umum-invoice", "Invoice", "finance", "finance_form", {
       legacyKey: "invoice",
       financeKind: "invoice",
       weight: 0.5,
@@ -228,33 +138,14 @@ function kolStages(): TemplateStage[] {
       "tpl-kol-listing",
       "KOL Listing",
       "prospek",
-      {
-        entryTypes: [
-          {
-            id: "kol_listing",
-            label: "KOL Listing",
-            defaultRole: "media",
-            kind: "form",
-          },
-        ],
-      },
+      {},
       ["Susun daftar KOL kandidat"],
     ),
     formStage(
       "tpl-kol-rate",
       "Rate Inquiry",
       "prospek",
-      {
-        description: "RAB draf dibentuk di tahap ini.",
-        entryTypes: [
-          {
-            id: "kol_rate",
-            label: "Rate Inquiry",
-            defaultRole: "media",
-            kind: "rab",
-          },
-        ],
-      },
+      { description: "RAB draf dibentuk di tahap ini." },
       ["Minta rate card KOL"],
     ),
     stage("tpl-kol-approval", "KOL Approval", "prospek", "gate", {
@@ -276,21 +167,21 @@ function kolStages(): TemplateStage[] {
     formStage(
       "tpl-kol-report",
       "Final Report",
-      "closing",
+      "finance",
       {},
       ["Susun laporan akhir"],
     ),
-    stage("tpl-kol-bast", "BAST", "closing", "finance_form", {
+    stage("tpl-kol-bast", "BAST", "finance", "finance_form", {
       financeKind: "bast",
       weight: 0.5,
       parallelGroup: "finance",
     }),
-    stage("tpl-kol-invoice", "Invoice", "closing", "finance_form", {
+    stage("tpl-kol-invoice", "Invoice", "finance", "finance_form", {
       financeKind: "invoice",
       weight: 0.5,
       parallelGroup: "finance",
     }),
-    stage("tpl-kol-payment", "Pembayaran", "closing", "finance_form", {
+    stage("tpl-kol-payment", "Pembayaran", "finance", "finance_form", {
       financeKind: "payment",
       description: "Pembayaran invoice dan bukti transfer.",
     }),
@@ -298,108 +189,91 @@ function kolStages(): TemplateStage[] {
 }
 
 function eventStages(): TemplateStage[] {
-  const briefEntries = [
-    {
-      id: "strategy_concept",
-      label: "Create Strategy & Concept",
-      defaultRole: "pm" as const,
-      kind: "form" as const,
-    },
-    {
-      id: "kv_assets",
-      label: "Create KV & Key Visual Assets",
-      defaultRole: "media" as const,
-      kind: "form" as const,
-    },
-    {
-      id: "vendor_contact",
-      label: "Contact Vendor",
-      defaultRole: "media" as const,
-      kind: "form" as const,
-    },
-    {
-      id: "site_survey",
-      label: "Site Survey",
-      defaultRole: "media" as const,
-      kind: "form" as const,
-    },
-    {
-      id: "budget_quotation",
-      label: "Budget & Quotation Review",
-      defaultRole: "finance" as const,
-      kind: "rab" as const,
-    },
-    {
-      id: "vendor_selection",
-      label: "Vendor Selection",
-      defaultRole: "media" as const,
-      kind: "form" as const,
-    },
-  ];
   return [
     formStage(
       "tpl-event-brief",
       "Brief Received",
       "prospek",
-      {
-        description:
-          "Brief klien dan seluruh pekerjaan persiapan: strategi, KV, vendor, survei, anggaran, dan pemilihan vendor.",
-        entryTypes: briefEntries,
-      },
+      {},
       ["Catat brief dan tujuan event"],
+    ),
+    formStage(
+      "tpl-event-strategy",
+      "Create Strategy & Concept",
+      "prospek",
+      {},
+      ["Susun konsep acara"],
+    ),
+    simproStage("tpl-event-kv", "Create KV & Key Visual Assets", "prospek", {
+      costBeforeCommitment: true,
+      description: "Produksi aset sebelum komitmen kontrak.",
+      tasks: [task("evt-t3", "Produksi key visual", "Assignee", "Aset KV")],
+    }),
+    formStage(
+      "tpl-event-vendor",
+      "Contact Vendor",
+      "prospek",
+      {},
+      ["Hubungi vendor kandidat"],
+    ),
+    formStage(
+      "tpl-event-survey",
+      "Site Survey",
+      "prospek",
+      {},
+      ["Survei lokasi acara"],
+    ),
+    stage("tpl-event-budget", "Budget & Quotation Review", "prospek", "finance_form", {
+      financeKind: "rab",
+    }),
+    formStage(
+      "tpl-event-selection",
+      "Vendor Selection",
+      "prospek",
+      {},
+      ["Pilih vendor dan venue"],
     ),
     stage("tpl-event-approval", "Client Approval", "prospek", "gate", {
       gateKind: "client_approval",
       description: "Persetujuan klien atas anggaran dan vendor.",
     }),
     simproStage("tpl-event-confirm", "Confirm Vendor & Venue", "planning", {
-      tasks: [
-        task("evt-t8", "Konfirmasi booking vendor dan venue", "Media", "PO booking"),
-      ],
+      tasks: [task("evt-t8", "Konfirmasi booking vendor dan venue", "PM", "PO booking")],
     }),
     simproStage("tpl-event-production", "Production Preparation", "planning", {
-      tasks: [task("evt-t9", "Siapkan produksi acara", "Media", "Checklist produksi")],
+      tasks: [task("evt-t9", "Siapkan produksi acara", "Assignee", "Checklist produksi")],
     }),
     simproStage("tpl-event-setup", "Event Setup", "planning", {
-      tasks: [task("evt-t10", "Lakukan setup lokasi", "Media", "Foto setup")],
+      tasks: [task("evt-t10", "Lakukan setup lokasi", "Assignee", "Foto setup")],
     }),
     simproStage("tpl-event-execution", "Event Execution", "running", {
-      tasks: [task("evt-t11", "Jalankan acara", "Media", "Laporan harian")],
+      tasks: [task("evt-t11", "Jalankan acara", "PM", "Laporan harian")],
     }),
     formStage(
       "tpl-event-documentation",
       "Documentation",
       "running",
-      {
-        entryTypes: [
-          {
-            id: "documentation",
-            label: "Dokumentasi acara",
-            defaultRole: "media",
-            kind: "form",
-          },
-        ],
-      },
+      {},
       ["Dokumentasikan acara"],
     ),
     formStage(
       "tpl-event-report",
       "Post-Event Report",
-      "closing",
+      "finance",
       {},
       ["Susun laporan pasca-acara"],
     ),
-    stage("tpl-event-bast", "BAST", "closing", "finance_form", {
+    stage("tpl-event-bast", "BAST", "finance", "finance_form", {
       financeKind: "bast",
       weight: 0.5,
       parallelGroup: "finance",
     }),
-    stage("tpl-event-invoice", "Invoice", "closing", "finance_form", {
+    stage("tpl-event-invoice", "Invoice", "finance", "finance_form", {
       financeKind: "invoice",
       weight: 0.5,
       parallelGroup: "finance",
     }),
-    stage("tpl-event-payment", "Pembayaran", "closing", "finance_form", {
+    stage("tpl-event-payment", "Pembayaran", "finance", "finance_form", {
       financeKind: "payment",
       description: "Pembayaran invoice dan bukti transfer.",
     }),
@@ -408,6 +282,64 @@ function eventStages(): TemplateStage[] {
 
 function withOrder(stages: TemplateStage[]): TemplateStage[] {
   return stages.map((item, index) => ({ ...item, order: index + 1 }));
+}
+
+function executionStages(
+  prefix: string,
+  planningName: string,
+  runningName: string,
+): TemplateStage[] {
+  return withOrder([
+    simproStage(`${prefix}-planning`, planningName, "planning", {
+      tasks: [task(`${prefix}-t1`, planningName, "Manager", "Rencana kerja")],
+    }),
+    simproStage(`${prefix}-running`, runningName, "running", {
+      tasks: [task(`${prefix}-t2`, runningName, "Assignee", "Hasil pekerjaan")],
+    }),
+    stage(`${prefix}-bast`, "BAST", "finance", "finance_form", {
+      financeKind: "bast",
+      weight: 0.5,
+      parallelGroup: "finance",
+    }),
+    stage(`${prefix}-invoice`, "Invoice", "finance", "finance_form", {
+      financeKind: "invoice",
+      weight: 0.5,
+      parallelGroup: "finance",
+    }),
+    stage(`${prefix}-payment`, "Pembayaran", "finance", "finance_form", {
+      financeKind: "payment",
+    }),
+  ]);
+}
+
+export function isNewProjectTemplate(template: ProjectTemplate): boolean {
+  const phases = new Set<string>(template.stages.map((stage) => stage.phase));
+  if (phases.has("prospek")) return false;
+  if (!["planning", "running", "finance"].every((phase) => phases.has(phase))) {
+    return false;
+  }
+  const planning = template.stages.filter((stage) => stage.phase === "planning");
+  const running = template.stages.filter((stage) => stage.phase === "running");
+  const finance = template.stages.filter((stage) => stage.phase === "finance");
+  if (planning.length === 0 || running.length === 0 || finance.length === 0) {
+    return false;
+  }
+  if (![...planning, ...running].every((stage) => stage.kind === "simpro")) {
+    return false;
+  }
+  return finance.every(
+    (stage) =>
+      stage.kind === "finance_form" &&
+      ["bast", "invoice", "payment"].includes(stage.financeKind ?? ""),
+  );
+}
+
+export function newProjectTemplates(
+  templates: ProjectTemplate[],
+): ProjectTemplate[] {
+  return templates.filter(
+    (template) => template.status === "active" && isNewProjectTemplate(template),
+  );
 }
 
 export function createSeedTemplates(): ProjectTemplate[] {
@@ -438,7 +370,7 @@ export function createSeedTemplates(): ProjectTemplate[] {
       name: "KOL Campaign",
       description: "Tahap KOL dengan Form, SIMPRO, gerbang menang, dan form keuangan.",
       projectType: "KOL Campaign",
-      version: 3,
+      version: 2,
       status: "active",
       stages: withOrder(kolStages()),
       changelog: [
@@ -446,11 +378,6 @@ export function createSeedTemplates(): ProjectTemplate[] {
         {
           version: 2,
           note: "Checklist dipecah menjadi Form dan SIMPRO.",
-          createdAt,
-        },
-        {
-          version: 3,
-          note: "Listing dan Rate Inquiry punya entri default Media.",
           createdAt,
         },
       ],
@@ -462,7 +389,7 @@ export function createSeedTemplates(): ProjectTemplate[] {
       name: "Event Program",
       description: "Tahap event dengan Form, SIMPRO, gerbang menang, dan form keuangan.",
       projectType: "Event Program",
-      version: 3,
+      version: 2,
       status: "active",
       stages: withOrder(eventStages()),
       changelog: [
@@ -472,11 +399,60 @@ export function createSeedTemplates(): ProjectTemplate[] {
           note: "Checklist dipecah menjadi Form dan SIMPRO.",
           createdAt,
         },
-        {
-          version: 3,
-          note: "Strategi sampai pemilihan vendor menjadi entri Brief Received; Media ditambahkan.",
-          createdAt,
-        },
+      ],
+      createdById: "u-admin",
+      createdAt,
+    },
+    {
+      id: UMUM_EXECUTION_TEMPLATE_ID,
+      name: "Umum Eksekusi",
+      description: "Tiga fase: Planning, Running, dan Finance.",
+      projectType: "Umum Eksekusi",
+      version: 1,
+      status: "active",
+      stages: executionStages(
+        "tpl-umum-eksekusi",
+        "Project Kickoff",
+        "Project Execution",
+      ),
+      changelog: [
+        { version: 1, note: "Template eksekusi pasca-Prospek.", createdAt },
+      ],
+      createdById: "u-admin",
+      createdAt,
+    },
+    {
+      id: KOL_EXECUTION_TEMPLATE_ID,
+      name: "KOL Eksekusi",
+      description: "Eksekusi KOL pasca-Prospek: Planning, Running, Finance.",
+      projectType: "KOL Eksekusi",
+      version: 1,
+      status: "active",
+      stages: executionStages(
+        "tpl-kol-eksekusi",
+        "KOL Briefing",
+        "Content Posting",
+      ),
+      changelog: [
+        { version: 1, note: "Template eksekusi KOL pasca-Prospek.", createdAt },
+      ],
+      createdById: "u-admin",
+      createdAt,
+    },
+    {
+      id: EVENT_EXECUTION_TEMPLATE_ID,
+      name: "Event Eksekusi",
+      description: "Eksekusi event pasca-Prospek: Planning, Running, Finance.",
+      projectType: "Event Eksekusi",
+      version: 1,
+      status: "active",
+      stages: executionStages(
+        "tpl-event-eksekusi",
+        "Confirm Vendor",
+        "Event Execution",
+      ),
+      changelog: [
+        { version: 1, note: "Template eksekusi event pasca-Prospek.", createdAt },
       ],
       createdById: "u-admin",
       createdAt,

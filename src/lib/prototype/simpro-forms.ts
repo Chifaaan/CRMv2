@@ -1,4 +1,3 @@
-import { canOpenFinanceForm } from "./domain";
 import type { AppState, Project, StepForm, User } from "./types";
 
 export const SIMPRO_FINANCE_FORM_TYPES = ["rab", "bast", "invoice"] as const;
@@ -34,9 +33,9 @@ function projectHasFinanceStage(state: AppState, form: StepForm): boolean {
 }
 
 /**
- * Forms SIMPRO visibility for finance forms: the owning PM and Admin keep
- * oversight visibility; Finance sees assigned finance forms; Media sees an
- * assigned BAST. Manager/Assignee do not see finance forms here.
+ * Forms SIMPRO visibility for finance forms: only the assigned Finance user,
+ * the owning PM (reviewer), and Admin. Manager/Assignee do not get assignment
+ * or review on these forms, so they do not see them in this menu.
  */
 export function canSeeFinanceFormInSimpro(
   state: AppState,
@@ -44,9 +43,17 @@ export function canSeeFinanceFormInSimpro(
   form: StepForm,
 ): boolean {
   if (!isFinanceFormType(form.type)) return false;
+  const project = state.projects.find((item) => item.id === form.projectId);
+  if (!project) return false;
   if (!projectHasFinanceStage(state, form)) return false;
-  if (user.role === "manager") return false;
-  return canOpenFinanceForm(state, user, form);
+
+  if (user.role === "admin") return true;
+  if (user.role === "pm") return project.createdById === user.id;
+  if (user.role === "finance") return form.assigneeId === user.id;
+  if (user.role === "media") {
+    return form.type === "bast" && form.assigneeId === user.id;
+  }
+  return false;
 }
 
 export function simproFinanceFormRows(

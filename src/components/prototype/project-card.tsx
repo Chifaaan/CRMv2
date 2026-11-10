@@ -5,8 +5,9 @@ import { CalendarDays, FolderKanban, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  calculateJourneyProgress,
   formatDate,
+  isNewLifecycleProject,
+  projectProgress,
   userById,
   workProgressForProject,
 } from "@/lib/prototype/domain";
@@ -20,7 +21,10 @@ export function projectTeam(
 ) {
   const ids = new Set<string>();
   const project = store.projects.find((item) => item.id === projectId);
-  if (project) ids.add(project.createdById);
+  if (project) {
+    ids.add(project.createdById);
+    if (project.managerId) ids.add(project.managerId);
+  }
   for (const task of store.tasks) {
     if (task.projectId === projectId && task.assigneeId && !task.archivedAt) {
       ids.add(task.assigneeId);
@@ -49,12 +53,17 @@ export function ProjectCard({
   draggable?: boolean;
 }) {
   const store = usePrototypeStore();
-  const journey = calculateJourneyProgress(store, project.id);
+  const progress = projectProgress(store, project.id);
+  const newProject = isNewLifecycleProject(project) && !project.startedAt;
   const work = workProgressForProject(store, project.id);
   const team = projectTeam(project.id, store, includeFinance);
   const group = project.groupId
     ? store.groups.find((item) => item.id === project.groupId)
     : undefined;
+  const attribution = group
+    ? { label: "Umbrella", name: group.name, icon: Users }
+    : null;
+  const AttributionIcon = attribution?.icon;
   const template = project.templateId
     ? store.templates.find((item) => item.id === project.templateId)
     : undefined;
@@ -85,6 +94,11 @@ export function ProjectCard({
         }}
       >
         <div className="absolute top-2 right-2 flex gap-1">
+          {newProject ? (
+            <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800 ring-1 ring-amber-200">
+              NEW Project
+            </span>
+          ) : null}
           {closedLabel ? (
             <span
               className={cn(
@@ -107,6 +121,14 @@ export function ProjectCard({
       </div>
       <div className="space-y-3 p-4">
         <div>
+          {attribution && AttributionIcon ? (
+            <span className="bg-primary/10 text-primary mb-1.5 inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+              <AttributionIcon className="size-3 shrink-0" />
+              <span className="truncate">
+                {attribution.label} · {attribution.name}
+              </span>
+            </span>
+          ) : null}
           <h3 className="line-clamp-1 text-sm font-semibold">{project.name}</h3>
           <p className="text-muted-foreground mt-0.5 line-clamp-1 text-xs">
             {project.client || "Tanpa klien"}
@@ -118,10 +140,10 @@ export function ProjectCard({
 
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[10px]">
-            <span className="text-muted-foreground">Journey</span>
-            <span className="font-semibold">{journey}%</span>
+            <span className="text-muted-foreground">Progress</span>
+            <span className="font-semibold">{progress.label}</span>
           </div>
-          <ProgressBar value={journey} />
+          <ProgressBar value={progress.mode === "percent" ? progress.value : 0} />
           <div className="flex items-center justify-between text-[10px]">
             <span className="text-muted-foreground">Work</span>
             <span className="font-semibold">{work}%</span>

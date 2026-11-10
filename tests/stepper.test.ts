@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import {
-  headerPhases,
   missingPhaseTooltip,
   phaseStageCounts,
   phaseTransitionBanner,
+  phasesForProject,
   phasesPresent,
 } from "../src/lib/prototype/stepper";
 import { phaseOfProject } from "../src/lib/prototype/domain";
@@ -38,25 +38,16 @@ const umumSteps = [
   step("survey", "prospek", 2, "completed", "2026-10-03"),
   step("rab", "prospek", 3, "completed", "2026-10-03"),
   step("running", "running", 4, "active"),
-  step("bast", "closing", 5, "pending"),
-  step("invoice", "closing", 6, "pending"),
+  step("bast", "finance", 5, "pending"),
+  step("invoice", "finance", 6, "pending"),
 ];
 
 describe("data-driven stepper", () => {
-  it("always lists the four fixed phases for the journey header", () => {
-    expect(headerPhases()).toEqual([
-      "prospek",
-      "planning",
-      "running",
-      "closing",
-    ]);
-  });
-
   it("derives three phases for Umum and four for a full template", () => {
     expect(phasesPresent(umumSteps)).toEqual([
       "prospek",
       "running",
-      "closing",
+      "finance",
     ]);
 
     const full = [
@@ -67,7 +58,7 @@ describe("data-driven stepper", () => {
       "prospek",
       "planning",
       "running",
-      "closing",
+      "finance",
     ]);
   });
 
@@ -88,8 +79,30 @@ describe("data-driven stepper", () => {
     expect(phaseStageCounts(umumSteps)).toEqual({
       prospek: 3,
       running: 1,
-      closing: 2,
+      finance: 2,
     });
+  });
+
+  it("always shows Planning, Running, and Finance for new projects", () => {
+    const state = createSeedState();
+    const legacy = state.projects.find((project) => project.id === "p-alpha")!;
+    const manual = { ...legacy, creationMode: "manual" as const };
+
+    expect(phasesForProject(legacy, umumSteps)).toEqual([
+      "prospek",
+      "running",
+      "finance",
+    ]);
+    expect(phasesForProject(manual, [])).toEqual([
+      "planning",
+      "running",
+      "finance",
+    ]);
+    expect(phasesForProject(manual, umumSteps)).toEqual([
+      "planning",
+      "running",
+      "finance",
+    ]);
   });
 });
 
@@ -121,3 +134,4 @@ describe("mixed-template group phase badges", () => {
     expect(PHASE_LABEL[alpha!]).not.toBe(PHASE_LABEL[delta!]);
   });
 });
+

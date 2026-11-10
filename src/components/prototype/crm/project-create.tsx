@@ -18,11 +18,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { usePrototypeStore } from "@/lib/prototype/store";
+import { newProjectTemplates } from "@/lib/prototype/templates";
 import {
   canCreateProject,
-  createManualStage,
-  journeyPhaseErrors,
   userById,
+  validateTemplateStages,
 } from "@/lib/prototype/domain";
 import {
   GATE_KIND_LABEL,
@@ -42,7 +42,7 @@ import {
 import { cn } from "@/lib/utils";
 import { EmptyState, Field, NativeSelect, PageHeader, SectionCard } from "../ui";
 
-const DRAFT_KEY = "crm-project-draft-v2";
+const DRAFT_KEY = "crm-project-draft-v1";
 
 const COVER_COLORS = [
   "#9f1239",
@@ -93,10 +93,6 @@ function normalize(stages: TemplateStage[]): TemplateStage[] {
   return stages.map((stage, index) => ({ ...stage, order: index + 1 }));
 }
 
-function prospekOnly(stages: TemplateStage[]): TemplateStage[] {
-  return cloneStages(stages.filter((stage) => stage.phase === "prospek"));
-}
-
 type Draft = {
   name: string;
   client: string;
@@ -106,6 +102,8 @@ type Draft = {
   targetEndDate: string;
   coverColor: string;
   templateId: string;
+  managerId: string;
+  mode: "template" | "manual";
   stages: TemplateStage[];
 };
 
@@ -113,9 +111,7 @@ export function CrmProjectCreate() {
   const store = usePrototypeStore();
   const router = useRouter();
   const currentUser = userById(store, store.currentUserId);
-  const activeTemplates = store.templates.filter(
-    (template) => template.status === "active",
-  );
+  const activeTemplates = newProjectTemplates(store.templates);
   const [draft, setDraft] = useState<Draft>({
     name: "",
     client: "",
@@ -124,8 +120,10 @@ export function CrmProjectCreate() {
     startDate: new Date().toISOString().slice(0, 10),
     targetEndDate: "",
     coverColor: COVER_COLORS[0],
-    templateId: "",
-    stages: [],
+    templateId: activeTemplates[0]?.id ?? "",
+    managerId: "",
+    mode: "template",
+    stages: cloneStages(activeTemplates[0]?.stages ?? []),
   });
   const [dirty, setDirty] = useState(false);
   const [restored, setRestored] = useState(false);
@@ -135,13 +133,9 @@ export function CrmProjectCreate() {
       const raw = window.localStorage.getItem(DRAFT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Draft;
-        if (parsed && Array.isArray(parsed.stages)) {
+        if (parsed?.stages?.length) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
-          setDraft({
-            ...parsed,
-            templateId: parsed.templateId ?? "",
-            stages: prospekOnly(parsed.stages),
-          });
+          setDraft({ ...parsed, managerId: parsed.managerId ?? "", mode: parsed.mode ?? "template" });
           setRestored(true);
         }
       }
@@ -172,7 +166,12 @@ export function CrmProjectCreate() {
   const template = store.templates.find(
     (item) => item.id === draft.templateId,
   );
-  const validation = journeyPhaseErrors(undefined, "prospek", draft.stages);
+  const validation = validateTemplateStages(draft.stages, {
+    legacy: template?.legacy,
+  });
+  const canSubmit =
+    draft.name.trim().length > 0 &&
+    (draft.mode === "manual" || validation.ok);
 
   const patch = (value: Partial<Draft>) => {
     setDraft((current) => ({ ...current, ...value }));
@@ -180,18 +179,10 @@ export function CrmProjectCreate() {
   };
 
   const chooseTemplate = (templateId: string) => {
-    if (
-      draft.stages.length > 0 &&
-      !window.confirm(
-        "Mengganti pilihan template akan mengganti tahap Prospek saat ini. Lanjutkan?",
-      )
-    ) {
-      return;
-    }
     const next = store.templates.find((item) => item.id === templateId);
     patch({
       templateId,
-      stages: templateId ? prospekOnly(next?.stages ?? []) : [],
+      stages: cloneStages(next?.stages ?? []),
     });
   };
 
@@ -222,12 +213,25 @@ export function CrmProjectCreate() {
   const deleteStage = (id: string) => {
     const target = draft.stages.find((stage) => stage.id === id);
     if (!target) return;
+    if (target.required || target.kind === "gate") {
+      toast.error("Tahap wajib dan gerbang tidak bisa dihapus.");
+      return;
+    }
     patch({ stages: normalize(draft.stages.filter((stage) => stage.id !== id)) });
   };
 
   const addStage = (phase: Phase) => {
-    const order = draft.stages.filter((item) => item.phase === phase).length + 1;
-    const stage = createManualStage(phase, order, uid("stage"));
+    const stage: TemplateStage = {
+      id: uid("stage"),
+      name: `Tahap ${draft.stages.filter((item) => item.phase === phase).length + 1}`,
+      phase,
+      order: 0,
+      kind: "form",
+      formTemplate: formTemplateFor(`Tahap ${draft.stages.filter((item) => item.phase === phase).length + 1}`),
+      required: false,
+      weight: 1,
+      tasks: [],
+    };
     const index = draft.stages.map((item) => item.phase).lastIndexOf(phase);
     const next =
       index === -1
@@ -253,7 +257,7 @@ export function CrmProjectCreate() {
 
   const summary = useMemo(
     () =>
-      PHASE_ORDER.filter((phase) => phase === "prospek").map((phase) => ({
+      PHASE_ORDER.map((phase) => ({
         phase,
         count: draft.stages.filter((stage) => stage.phase === phase).length,
       })),
@@ -275,9 +279,15 @@ export function CrmProjectCreate() {
       toast.error("Nama proyek wajib diisi.");
       return;
     }
-    if (!validation.ok) {
-      toast.error(validation.errors[0] ?? "Tahapan belum valid.");
-      return;
+    if (draft.mode === "template") {
+      if (!template) {
+        toast.error("Pilih template terlebih dahulu.");
+        return;
+      }
+      if (!validation.ok) {
+        toast.error(validation.errors[0] ?? "Tahapan belum valid.");
+        return;
+      }
     }
     const id = store.createProject({
       name: draft.name.trim(),
@@ -291,8 +301,10 @@ export function CrmProjectCreate() {
         ? new Date(`${draft.targetEndDate}T00:00:00`).toISOString()
         : "",
       coverColor: draft.coverColor,
-      templateId: template?.id || undefined,
-      stages: draft.stages,
+      mode: draft.mode,
+      templateId: draft.mode === "template" ? template?.id : undefined,
+      managerId: draft.managerId,
+      stages: draft.mode === "template" ? draft.stages : undefined,
     });
     if (!id) {
       toast.error("Gagal membuat proyek.");
@@ -304,7 +316,7 @@ export function CrmProjectCreate() {
       /* ignore */
     }
     setDirty(false);
-    toast.success("Proyek dibuat.");
+    toast.success("Proyek dibuat dari template.");
     router.push(`/crm/projects/${id}`);
   };
 
@@ -319,9 +331,9 @@ export function CrmProjectCreate() {
 
       <PageHeader
         title="Proyek baru"
-        description="Mulai dari Prospek kosong. Isi tahap dari template sebagai rekomendasi, atau tambah tahap sendiri."
+        description="Pilih template agar tahapan dan step terbentuk otomatis, atau buat manual lalu susun step di Journey Management."
         actions={
-          <Button onClick={submit} disabled={!validation.ok}>
+          <Button onClick={submit} disabled={!canSubmit}>
             <CheckCircle2 className="size-4" /> Buat proyek
           </Button>
         }
@@ -403,15 +415,42 @@ export function CrmProjectCreate() {
             </div>
           </Field>
           <Field
-            label="Template (opsional)"
-            hint="Template hanya mengisi Prospek sebagai rekomendasi. Tahap tetap bisa diubah, diurutkan, atau dihapus."
+            label="Mode proyek"
+            hint="Dari template menyalin tahapan dan step template; Manual dimulai tanpa step."
+            className="sm:col-span-2"
+          >
+            <NativeSelect
+              value={draft.mode}
+              onChange={(value) => {
+                const mode = value as "template" | "manual";
+                if (mode === "manual") {
+                  patch({ mode, stages: [], templateId: "" });
+                  return;
+                }
+                const next =
+                  activeTemplates.find((item) => item.id === draft.templateId) ??
+                  activeTemplates[0];
+                patch({
+                  mode,
+                  templateId: next?.id ?? "",
+                  stages: cloneStages(next?.stages ?? []),
+                });
+              }}
+            >
+              <option value="template">Dari template</option>
+              <option value="manual">Manual</option>
+            </NativeSelect>
+          </Field>
+          <Field
+            label="Template"
+            hint="Satu proyek memakai tepat satu template."
             className="sm:col-span-2"
           >
             <NativeSelect
               value={draft.templateId}
               onChange={chooseTemplate}
+              disabled={draft.mode === "manual"}
             >
-              <option value="">Tanpa template — susun manual</option>
               {activeTemplates.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name} (v{item.version})
@@ -419,43 +458,46 @@ export function CrmProjectCreate() {
               ))}
             </NativeSelect>
           </Field>
+          <Field
+            label="Manager penanggung jawab"
+            hint="Hanya user role Manager yang dapat dipilih."
+            className="sm:col-span-2"
+          >
+            <NativeSelect
+              value={draft.managerId}
+              onChange={(value) => patch({ managerId: value })}
+            >
+              <option value="">Belum ditugaskan</option>
+              {store.users
+                .filter((user) => user.role === "manager")
+                .map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+            </NativeSelect>
+          </Field>
         </div>
       </SectionCard>
 
+      {draft.mode === "template" ? (
       <SectionCard
         title="Sesuaikan tahapan"
-        description="Prospek dimulai kosong. Tambah tahap manual atau isi dari template, lalu atur urutannya."
+        description="Tahap dan task disalin dari template. Perubahan di sini hanya berlaku untuk proyek ini; step tetap dapat diatur di Journey Management."
         actions={
-          <div className="flex flex-wrap gap-2">
-            {template ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => chooseTemplate(template.id)}
-              >
-                <RotateCcw className="size-3.5" /> Isi dari template
-              </Button>
-            ) : null}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (
-                  draft.stages.length > 0 &&
-                  !window.confirm("Kosongkan semua tahap Prospek?")
-                ) {
-                  return;
-                }
-                patch({ stages: [] });
-              }}
-            >
-              <Trash2 className="size-3.5" /> Kosongkan
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              patch({ stages: cloneStages(template?.stages ?? []) })
+            }
+          >
+            <RotateCcw className="size-3.5" /> Kembalikan ke template
+          </Button>
         }
       >
         <div className="space-y-4">
-          {PHASE_ORDER.filter((phase) => phase === "prospek").map((phase) => {
+          {PHASE_ORDER.map((phase) => {
             const phaseStages = draft.stages.filter(
               (stage) => stage.phase === phase,
             );
@@ -523,7 +565,12 @@ export function CrmProjectCreate() {
                             variant="ghost"
                             size="icon-sm"
                             aria-label="Hapus tahap"
-                            title="Hapus tahap"
+                            disabled={stage.required || stage.kind === "gate"}
+                            title={
+                              stage.required || stage.kind === "gate"
+                                ? "Tahap wajib dan gerbang tidak bisa dihapus"
+                                : "Hapus tahap"
+                            }
                             onClick={() => deleteStage(stage.id)}
                           >
                             <Trash2 className="size-3.5" />
@@ -716,10 +763,11 @@ export function CrmProjectCreate() {
           })}
         </div>
       </SectionCard>
+      ) : null}
 
       <SectionCard
         title="Ringkasan sebelum dibuat"
-        description="Prospek tetap bisa diubah sampai Anda memulai journey di Detail Proyek. Fase berikutnya disusun setelah gerbang menang."
+        description="Step dapat diatur lagi di Journey Management setelah proyek dibuat."
       >
         <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
           {summary.map((item) => (
@@ -732,12 +780,11 @@ export function CrmProjectCreate() {
           ))}
         </div>
         <p className="text-muted-foreground mt-3 text-xs">
-          {template
-            ? `Template ${template.name} v${template.version}`
-            : "Tanpa template — journey manual"}{" "}
-          · {draft.stages.length} tahap Prospek.
+          {draft.mode === "template"
+            ? `Template ${template?.name ?? "—"} v${template?.version ?? "—"} · ${draft.stages.length} tahap total.`
+            : "Manual · tanpa step awal; step disusun di Journey Management."}
         </p>
-        {validation.errors.length > 0 ? (
+        {draft.mode === "template" && validation.errors.length > 0 ? (
           <ul className="mt-3 space-y-1 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-800">
             {validation.errors.map((error) => (
               <li key={error}>{error}</li>
@@ -745,7 +792,7 @@ export function CrmProjectCreate() {
           </ul>
         ) : null}
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button onClick={submit} disabled={!validation.ok}>
+          <Button onClick={submit} disabled={!canSubmit}>
             <CheckCircle2 className="size-4" /> Buat proyek
           </Button>
           <Link href="/crm/projects">

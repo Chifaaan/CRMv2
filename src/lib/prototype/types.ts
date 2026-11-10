@@ -7,27 +7,19 @@ export type Role =
   | "media"
   | "bod";
 
+export type BusinessUnitId = "makerspace" | "makerspace-video" | "spektrum";
+
 export type Priority = "low" | "medium" | "high" | "critical";
 
 export type ProjectStatus = "active" | "completed" | "cancelled";
 
-export type Phase = "prospek" | "planning" | "running" | "closing";
+export type Phase = "prospek" | "planning" | "running" | "finance";
 
 export type StageKind = "form" | "finance_form" | "gate" | "simpro";
 
 export type GateKind = "go_no_go" | "client_approval";
 
 export type Lifecycle = "active" | "won" | "lost" | "cancelled" | "done";
-
-export type PhaseState = {
-  authoredAt?: string;
-  startedAt?: string;
-  lockedAt?: string;
-  closingMaterialized?: boolean;
-  sourceTemplateVersion?: number;
-};
-
-export type BusinessUnitId = "makerspace" | "makerspace-video" | "spektrum";
 
 export type StepKey =
   | "pitching"
@@ -111,7 +103,6 @@ export type FormEntry = {
   projectId: string;
   stepKey: string;
   templateStageId?: string;
-  entryType?: string;
   title: string;
   assigneeId?: string;
   dueDate?: string;
@@ -140,8 +131,6 @@ export type TaskStatus =
   | "need_revision"
   | "completed";
 
-export type PitchingStatus = "draft" | "won" | "lost";
-
 export type FormStatus =
   | "unassigned"
   | "assigned"
@@ -160,6 +149,8 @@ export type User = {
   color: string;
 };
 
+export type ProjectCreationMode = "template" | "manual" | "legacy";
+
 export type Project = {
   id: string;
   code: string;
@@ -173,7 +164,13 @@ export type Project = {
   actualEndDate?: string;
   coverColor: string;
   createdById: string;
+  managerId?: string;
   groupId?: string;
+  creationMode?: ProjectCreationMode;
+  startedAt?: string;
+  initialPhase?: "planning" | "running";
+  phaseCompletedAt?: Partial<Record<"planning" | "running" | "finance", string>>;
+  startPromptDismissedAt?: string;
   cancelReason?: string;
   createdAt: string;
   templateId?: string;
@@ -182,7 +179,6 @@ export type Project = {
   lostReason?: string;
   structureLocked?: boolean;
   rabBaselineLockedAt?: string;
-  phaseStates?: Partial<Record<Phase, PhaseState>>;
 };
 
 export type TemplateTask = {
@@ -195,13 +191,6 @@ export type TemplateTask = {
 
 export type StageTask = TemplateTask & {
   done: boolean;
-};
-
-export type StageEntryType = {
-  id: string;
-  label: string;
-  defaultRole: Role;
-  kind: "form" | "rab";
 };
 
 export type GateDecision = {
@@ -226,7 +215,6 @@ export type TemplateStage = {
   gateKind?: GateKind;
   legacyKey?: StepKey;
   formTemplate?: FormTemplate;
-  entryTypes?: StageEntryType[];
   tasks: TemplateTask[];
 };
 
@@ -263,32 +251,13 @@ export type ProjectStep = {
   costBeforeCommitment?: boolean;
   legacyKey?: StepKey;
   formTemplate?: FormTemplate;
-  entryTypes?: StageEntryType[];
   tasks: StageTask[];
+  managerPicId?: string;
   gateDecision?: GateDecision;
   noWorkConfirmedAt?: string;
   noWorkConfirmedById?: string;
   startedAt?: string;
   completedAt?: string;
-};
-
-export type Pitching = {
-  id: string;
-  projectId: string;
-  title: string;
-  description: string;
-  status: PitchingStatus;
-  createdById: string;
-  createdAt: string;
-  decidedAt?: string;
-};
-
-export type PitchingRole = {
-  id: string;
-  pitchingId: string;
-  label: string;
-  requestedUserId?: string;
-  taskId?: string;
 };
 
 export type ChecklistItem = {
@@ -312,30 +281,21 @@ export type Attachment = {
   storageKey?: string;
 };
 
-export type TaskWorkingLink = {
-  url: string;
-  setById: string;
-  setAt: string;
-};
-
 export type Task = {
   id: string;
   code: string;
   projectId: string;
   stepKey: string;
   stageId?: string;
-  pitchingId?: string;
   title: string;
   description: string;
   priority: Priority;
   status: TaskStatus;
   requestedAssigneeId?: string;
   assigneeId?: string;
-  managerId?: string;
   reporterId: string;
   dueDate?: string;
-  workingLink?: TaskWorkingLink;
-  workingLinkHistory?: TaskWorkingLink[];
+  workUrl?: string;
   createdAt: string;
   archivedAt?: string;
   archiveReason?: string;
@@ -523,8 +483,6 @@ export type AppState = {
   projects: Project[];
   steps: ProjectStep[];
   templates: ProjectTemplate[];
-  pitchings: Pitching[];
-  pitchingRoles: PitchingRole[];
   tasks: Task[];
   forms: StepForm[];
   formEntries: FormEntry[];
@@ -566,16 +524,18 @@ export const STEP_META: {
   { key: "survey", label: "Survey", phase: "prospek", order: 2, weight: 1 },
   { key: "rab", label: "RAB", phase: "prospek", order: 3, weight: 1 },
   { key: "running", label: "Running", phase: "running", order: 4, weight: 1 },
-  { key: "bast", label: "BAST", phase: "closing", order: 5, weight: 0.5 },
-  { key: "invoice", label: "Invoice", phase: "closing", order: 6, weight: 0.5 },
+  { key: "bast", label: "BAST", phase: "finance", order: 5, weight: 0.5 },
+  { key: "invoice", label: "Invoice", phase: "finance", order: 6, weight: 0.5 },
 ];
 
 export const PHASE_ORDER: Phase[] = [
   "prospek",
   "planning",
   "running",
-  "closing",
+  "finance",
 ];
+
+export const NEW_PROJECT_PHASES: Phase[] = ["planning", "running", "finance"];
 
 export const STAGE_KIND_LABEL: Record<StageKind, string> = {
   form: "Form",
@@ -646,14 +606,14 @@ export const PHASE_LABEL: Record<Phase, string> = {
   prospek: "Prospek",
   planning: "Planning",
   running: "Running",
-  closing: "Closing",
+  finance: "Finance",
 };
 
 export const PHASE_HINT: Record<Phase, string> = {
   prospek: "Belum ada komitmen kontrak: brief sampai persetujuan klien.",
   planning: "Komitmen mulai berjalan: booking vendor/venue, PO, briefing.",
   running: "Eksekusi pekerjaan dan produksi.",
-  closing: "Laporan akhir, BAST, invoice, pembayaran, evaluasi.",
+  finance: "BAST, invoice, pembayaran, dan penutupan proyek.",
 };
 
 export const LIFECYCLE_LABEL: Record<Lifecycle, string> = {

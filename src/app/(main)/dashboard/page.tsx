@@ -1,7 +1,5 @@
-"use client";
-
-import { SimproDashboard } from "@/components/prototype/simpro/dashboard";
+import { redirect } from "next/navigation";
 
 export default function DashboardPage() {
-  return <SimproDashboard />;
+  redirect("/crm");
 }

@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Check,
@@ -25,26 +25,27 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  canAssignTask,
+  canCancelKanbanTask,
+  canManageProject,
   canReviewTask,
+  canWorkTask,
   formatDate,
   formatDateTime,
   isGroupableProject,
+  isNewLifecycleProject,
+  operationalAssigneeCandidates,
   taskTransition,
   userById,
-  validateWorkingLink,
 } from "@/lib/prototype/domain";
 import { putPrototypeFile } from "@/lib/prototype/files";
 import {
   PRIORITY_LABEL,
   TASK_STATUS_LABEL,
-  type Pitching,
   type Priority,
   type Project,
   type TaskStatus,
@@ -92,6 +93,7 @@ export function ProjectDialog({
   const [startDate, setStartDate] = useState("");
   const [targetEndDate, setTargetEndDate] = useState("");
   const [coverColor, setCoverColor] = useState(COVER_COLORS[0]);
+  const [managerId, setManagerId] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -102,6 +104,7 @@ export function ProjectDialog({
     setStartDate(project?.startDate?.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
     setTargetEndDate(project?.targetEndDate?.slice(0, 10) ?? "");
     setCoverColor(project?.coverColor ?? COVER_COLORS[0]);
+    setManagerId(project?.managerId ?? "");
   }, [open, project]);
 
   const save = () => {
@@ -119,13 +122,14 @@ export function ProjectDialog({
         ? new Date(`${targetEndDate}T00:00:00`).toISOString()
         : "",
       coverColor,
+      managerId,
     };
     if (project) {
       store.updateProject(project.id, input);
       toast.success("Proyek diperbarui.");
     } else {
       store.createProject(input);
-      toast.success("Proyek dibuat. Journey dimulai dari Pitching.");
+      toast.success("Proyek dibuat.");
     }
     onOpenChange(false);
   };
@@ -138,7 +142,7 @@ export function ProjectDialog({
           <DialogDescription>
             {project
               ? "Perbarui informasi dasar proyek."
-              : "Journey 6 step akan dibuat otomatis dan dimulai dari Pitching."}
+              : "Journey 6 step akan dibuat otomatis untuk proyek legacy."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -166,6 +170,25 @@ export function ProjectDialog({
           <Field label="Deskripsi" className="sm:col-span-2">
             <Textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Ringkasan proyek" />
           </Field>
+          <Field
+            label="Manager penanggung jawab"
+            hint="Hanya user role Manager yang dapat dipilih."
+            className="sm:col-span-2"
+          >
+            <NativeSelect
+              value={managerId}
+              onChange={setManagerId}
+            >
+              <option value="">Belum ditugaskan</option>
+              {store.users
+                .filter((user) => user.role === "manager")
+                .map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+            </NativeSelect>
+          </Field>
           <Field label="Warna cover" className="sm:col-span-2">
             <div className="flex flex-wrap gap-2">
               {COVER_COLORS.map((color) => (
@@ -189,150 +212,6 @@ export function ProjectDialog({
             Batal
           </Button>
           <Button onClick={save}>{project ? "Simpan" : "Buat proyek"}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-export function PitchingDialog({
-  open,
-  onOpenChange,
-  projectId,
-  pitching,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  projectId: string;
-  pitching?: Pitching;
-}) {
-  const store = usePrototypeStore();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [roles, setRoles] = useState<{ label: string; requestedUserId: string }[]>([]);
-
-  const assignees = useMemo(
-    () =>
-      store.users.filter((user) =>
-        ["assignee", "media", "manager"].includes(user.role),
-      ),
-    [store.users],
-  );
-
-  useEffect(() => {
-    if (!open) return;
-    setTitle(pitching?.title ?? "");
-    setDescription(pitching?.description ?? "");
-    const currentRoles = pitching
-      ? store.pitchingRoles
-          .filter((role) => role.pitchingId === pitching.id)
-          .map((role) => ({
-            label: role.label,
-            requestedUserId: role.requestedUserId ?? "",
-          }))
-      : [];
-    setRoles(currentRoles.length > 0 ? currentRoles : [{ label: "Pembuat PPT", requestedUserId: "" }]);
-  }, [open, pitching, store.pitchingRoles]);
-
-  const save = () => {
-    if (!title.trim()) {
-      toast.error("Judul pitching wajib diisi.");
-      return;
-    }
-    const payload = {
-      title: title.trim(),
-      description: description.trim(),
-      roles: roles
-        .filter((role) => role.label.trim())
-        .map((role) => ({
-          label: role.label.trim(),
-          requestedUserId: role.requestedUserId || undefined,
-        })),
-    };
-    if (pitching) store.updatePitching(pitching.id, payload);
-    else store.addPitching(projectId, payload);
-    toast.success(pitching ? "Pitching diperbarui." : "Pitching dibuat dan task masuk Backlog.");
-    onOpenChange(false);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{pitching ? "Edit Pitching" : "Pitching Baru"}</DialogTitle>
-          <DialogDescription>
-            Setiap role dengan assignee akan membuat task di SIMPRO dengan status Backlog.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <Field label="Judul pitching">
-            <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Contoh: Konsep Alpha" />
-          </Field>
-          <Field label="Deskripsi">
-            <Textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={2} />
-          </Field>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Role dan requested assignee</Label>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRoles((current) => [...current, { label: "", requestedUserId: "" }])}
-              >
-                <Plus className="size-3.5" /> Role
-              </Button>
-            </div>
-            {roles.map((role, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Input
-                  value={role.label}
-                  onChange={(event) =>
-                    setRoles((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === index ? { ...item, label: event.target.value } : item,
-                      ),
-                    )
-                  }
-                  placeholder="Label role"
-                  className="flex-1"
-                />
-                <NativeSelect
-                  value={role.requestedUserId}
-                  onChange={(value) =>
-                    setRoles((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === index
-                          ? { ...item, requestedUserId: value }
-                          : item,
-                      ),
-                    )
-                  }
-                  className="w-[180px]"
-                >
-                  <option value="">Tanpa assignee</option>
-                  {assignees.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name}
-                    </option>
-                  ))}
-                </NativeSelect>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Hapus role"
-                  onClick={() => setRoles((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Batal
-          </Button>
-          <Button onClick={save}>{pitching ? "Simpan" : "Buat pitching"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -504,29 +383,20 @@ export function TaskDialog({
   const task = taskId ? store.tasks.find((item) => item.id === taskId) : undefined;
   const project = store.projects.find((item) => item.id === projectId);
   const currentUser = userById(store, store.currentUserId);
-  const assignees = store.users.filter((user) =>
-    ["assignee", "media", "manager"].includes(user.role),
-  );
-  const managers = store.users.filter((user) => user.role === "manager");
-  const taskStep = task
-    ? store.steps.find(
-        (step) =>
-          step.projectId === task.projectId &&
-          (step.id === task.stageId || step.key === task.stepKey),
-      )
-    : undefined;
+  const assignees = currentUser
+    ? operationalAssigneeCandidates(store, currentUser, project)
+    : [];
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<Priority>("medium");
   const [dueDate, setDueDate] = useState("");
   const [assignTo, setAssignTo] = useState("");
-  const [targetStatus, setTargetStatus] = useState<TaskStatus>("backlog");
   const [comment, setComment] = useState("");
   const [reviewComment, setReviewComment] = useState("");
+  const [workUrl, setWorkUrl] = useState("");
+  const [pmTarget, setPmTarget] = useState<TaskStatus>("todo");
   const [checklistText, setChecklistText] = useState("");
-  const [workingLinkInput, setWorkingLinkInput] = useState("");
-  const [workingLinkError, setWorkingLinkError] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -535,47 +405,49 @@ export function TaskDialog({
     setPriority(task?.priority ?? "medium");
     setDueDate(task?.dueDate?.slice(0, 10) ?? "");
     setAssignTo(task?.assigneeId ?? "");
-    setTargetStatus(task?.status ?? "backlog");
     setComment("");
     setReviewComment("");
+    setWorkUrl(task?.workUrl ?? "");
+    setPmTarget(task?.status ?? "todo");
     setChecklistText("");
-    setWorkingLinkInput(task?.workingLink?.url ?? "");
-    setWorkingLinkError("");
   }, [open, task]);
 
   if (!project) return null;
 
   const isCreate = !task;
-  const canAssign = currentUser ? canAssignTask(currentUser) : false;
-  const canSetManager = Boolean(
-    currentUser &&
-      (currentUser.role === "admin" ||
-        currentUser.role === "manager" ||
-        (currentUser.role === "pm" && project.createdById === currentUser.id)),
-  );
-  const canMoveAnywhere = Boolean(
-    task &&
-      currentUser &&
-      currentUser.role === "pm" &&
-      project.createdById === currentUser.id,
-  );
+  const canAssign = isNewLifecycleProject(project)
+    ? currentUser?.role === "admin" || currentUser?.role === "manager"
+    : assignees.length > 0;
   const canReassign =
-    (canAssign || (task?.managerId === currentUser?.id)) &&
+    canAssign &&
     task !== undefined &&
-    taskStep?.status === "active" &&
     task.status !== "awaiting_approval" &&
     task.status !== "completed";
   const canReview = task && currentUser ? canReviewTask(store, currentUser, task) : false;
-  const canWork = Boolean(
-    task &&
-      currentUser &&
-      (task.assigneeId === currentUser.id ||
-        task.managerId === currentUser.id ||
-        currentUser.role === "admin" ||
-        canMoveAnywhere),
+  const canWork = task && currentUser ? canWorkTask(currentUser, task) : false;
+  const canMoveAny =
+    Boolean(
+      task &&
+        currentUser &&
+        project &&
+        canManageProject(currentUser, project) &&
+        task.assigneeId &&
+        task.status !== "completed",
+    );
+  const canSeeWorkLink = Boolean(
+    currentUser &&
+      (currentUser.role === "admin" ||
+        currentUser.role === "manager" ||
+        canWork ||
+        (currentUser.role === "pm" && project?.createdById === currentUser.id)),
   );
   const canDelete =
-    task && currentUser && (currentUser.role === "admin" || (currentUser.role === "pm" && project.createdById === currentUser.id));
+    task && currentUser
+      ? isNewLifecycleProject(project)
+        ? canCancelKanbanTask(store, currentUser, task)
+        : currentUser.role === "admin" ||
+          (currentUser.role === "pm" && project?.createdById === currentUser.id)
+      : false;
 
   const saveNew = () => {
     if (!title.trim()) {
@@ -595,31 +467,23 @@ export function TaskDialog({
 
   const move = (to: TaskStatus) => {
     if (!task || !currentUser) return;
-    const link = workingLinkInput.trim() || task.workingLink?.url;
-    if (to === "in_progress") {
-      const validation = validateWorkingLink(link);
-      if (!validation.ok) {
-        setWorkingLinkError(
-          validation.reason ?? "Link kerja wajib diisi sebelum memulai.",
-        );
-        toast.error(validation.reason ?? "Link kerja wajib diisi.");
-        return;
-      }
-      setWorkingLinkError("");
-    }
-    const result = taskTransition(store, currentUser, task, to, link);
+    const result = taskTransition(store, currentUser, task, to);
     if (!result.ok) {
       toast.error(result.reason ?? "Transisi tidak diizinkan.");
       return;
     }
-    if (to === "need_revision" && !canMoveAnywhere && !reviewComment.trim()) {
+    if (to === "need_revision" && !reviewComment.trim()) {
       toast.error("Komentar revisi wajib diisi.");
       return;
     }
-    if (to === "need_revision" && reviewComment.trim()) {
-      store.addComment(task.id, `Revisi: ${reviewComment.trim()}`);
+    if (to === "in_progress" && !workUrl.trim()) {
+      toast.error("Link Pekerjaan wajib diisi sebelum mulai kerja.");
+      return;
     }
-    store.transitionTask(task.id, to, to === "in_progress" ? link : undefined);
+    store.transitionTask(task.id, to, {
+      workUrl: to === "in_progress" ? workUrl : undefined,
+      comment: to === "need_revision" ? reviewComment : undefined,
+    });
     toast.success(`Task dipindahkan ke ${TASK_STATUS_LABEL[to]}.`);
   };
 
@@ -713,121 +577,82 @@ export function TaskDialog({
                   ) : null}
                 </div>
               </Field>
-              <Field label="Manager">
-                <div className="flex items-center gap-2">
-                  <UserAvatar user={userById(store, task.managerId)} showName />
-                  {canSetManager ? (
-                    <NativeSelect
-                      value={task.managerId ?? ""}
-                      onChange={(value) => store.setTaskManager(task.id, value)}
-                      className="flex-1"
-                    >
-                      <option value="">Tanpa Manager</option>
-                      {managers.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.name}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  ) : null}
-                </div>
-              </Field>
+              {!canReassign &&
+              task &&
+              currentUser?.role === "pm" &&
+              project.createdById === currentUser.id &&
+              !project.managerId ? (
+                <p className="text-muted-foreground text-[11px] sm:col-span-2">
+                  Tetapkan Manager penanggung jawab proyek terlebih dahulu agar
+                  Anda dapat meng-assign task kepada Manager.
+                </p>
+              ) : null}
               <Field label="Prioritas">
                 <PriorityBadge priority={task.priority} />
               </Field>
             </div>
 
-            {canMoveAnywhere ? (
+            {((canWork && (task.status === "todo" || task.status === "need_revision")) ||
+              (canMoveAny && pmTarget === "in_progress")) ? (
               <Field
-                label="Ubah status (PM)"
-                hint="Card harus memiliki Assignee atau Manager. Link wajib ada untuk In Progress."
+                label="Link Pekerjaan"
+                hint="Wajib diisi; tidak ada validasi URL. Pastikan dapat diakses PM dan Manager."
               >
-                <div className="flex flex-wrap items-center gap-2">
-                  <NativeSelect
-                    value={targetStatus}
-                    onChange={(value) => setTargetStatus(value as TaskStatus)}
-                    className="h-8 w-[190px] text-xs"
-                  >
-                    {Object.entries(TASK_STATUS_LABEL).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={targetStatus === task.status}
-                    onClick={() => move(targetStatus)}
-                  >
-                    Pindahkan
-                  </Button>
-                </div>
+                <Input
+                  value={workUrl}
+                  onChange={(event) => setWorkUrl(event.target.value)}
+                  placeholder="https://..."
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-1"
+                  disabled={!workUrl.trim()}
+                  onClick={() => {
+                    store.updateTaskWorkUrl(task.id, workUrl);
+                    toast.success("Link Pekerjaan disimpan.");
+                  }}
+                >
+                  Simpan Link
+                </Button>
               </Field>
             ) : null}
 
-            <div className="rounded-lg border bg-muted/20 p-3">
-              <p className="mb-1 text-xs font-medium">Link Pekerjaan</p>
-              {task.workingLink ? (
-                task.workingLink.url.startsWith("http://") ||
-                task.workingLink.url.startsWith("https://") ? (
-                  <a
-                    href={task.workingLink.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-primary break-all text-xs underline"
-                  >
-                    {task.workingLink.url}
-                  </a>
-                ) : (
-                  <p className="break-all text-xs">{task.workingLink.url}</p>
-                )
-              ) : (
-                <p className="text-muted-foreground text-xs">
-                  Belum ada link. Link wajib diisi sebelum task masuk In Progress.
-                </p>
-              )}
-              {canWork ? (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Input
-                    value={workingLinkInput}
-                    onChange={(event) => {
-                      setWorkingLinkInput(event.target.value);
-                      setWorkingLinkError("");
-                    }}
-                    placeholder="https://..."
-                    className="h-8 flex-1 text-xs"
-                    aria-label="Link Pekerjaan"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const validation = validateWorkingLink(workingLinkInput);
-                      if (!validation.ok) {
-                        setWorkingLinkError(validation.reason ?? "Link wajib diisi.");
-                        return;
-                      }
-                      const ok = store.setWorkingLink(task.id, workingLinkInput);
-                      if (ok) {
-                        setWorkingLinkInput(validation.url ?? workingLinkInput);
-                        setWorkingLinkError("");
-                        toast.success("Link kerja disimpan.");
-                      }
-                    }}
-                  >
-                    Simpan Link
-                  </Button>
-                </div>
-              ) : null}
-              <p className="text-muted-foreground mt-1 text-[10px]">
-                Wajib diisi; tidak ada validasi URL. Pastikan dapat diakses PM dan
-                Manager.
+            {canMoveAny ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed p-2">
+                <span className="text-muted-foreground text-[11px]">
+                  PM/Admin: pindahkan card
+                </span>
+                <NativeSelect
+                  value={pmTarget}
+                  onChange={(value) => setPmTarget(value as TaskStatus)}
+                  className="h-8 w-[170px] text-xs"
+                >
+                  {Object.entries(TASK_STATUS_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <Button size="sm" onClick={() => move(pmTarget)}>
+                  Pindahkan
+                </Button>
+              </div>
+            ) : null}
+
+            {task.workUrl && canSeeWorkLink ? (
+              <p className="text-xs">
+                Link Pekerjaan:{" "}
+                <a
+                  href={task.workUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  {task.workUrl}
+                </a>
               </p>
-              {workingLinkError ? (
-                <p className="mt-1 text-xs text-rose-600">{workingLinkError}</p>
-              ) : null}
-            </div>
+            ) : null}
 
             <div className="flex flex-wrap gap-2">
               {canWork && (task.status === "todo" || task.status === "need_revision") ? (
@@ -872,7 +697,8 @@ export function TaskDialog({
               ) : null}
             </div>
 
-            {canReview && task.status === "awaiting_approval" ? (
+            {(canReview && task.status === "awaiting_approval") ||
+            (canMoveAny && pmTarget === "need_revision") ? (
               <Field label="Komentar review (wajib jika minta revisi)">
                 <Textarea
                   value={reviewComment}

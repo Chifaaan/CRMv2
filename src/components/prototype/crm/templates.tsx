@@ -150,7 +150,7 @@ function starterStages(): TemplateStage[] {
     {
       id: uid("stage"),
       name: "Laporan Akhir",
-      phase: "closing",
+      phase: "finance",
       order: 5,
       kind: "form",
       formTemplate: formTemplateFor("Laporan Akhir"),

@@ -10,7 +10,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { CalendarDays, ExternalLink, GripVertical, Plus, User } from "lucide-react";
+import { CalendarDays, GripVertical, Plus, User } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,6 @@ import {
   isOverdue,
   taskTransition,
   userById,
-  validateWorkingLink,
 } from "@/lib/prototype/domain";
 import {
   TASK_STATUSES,
@@ -38,19 +37,6 @@ const COLUMN_TONE: Record<TaskStatus, string> = {
   need_revision: "bg-rose-50 border-rose-200",
   completed: "bg-emerald-50 border-emerald-200",
 };
-
-function httpHref(value?: string): string | undefined {
-  if (!value) return undefined;
-  try {
-    const url = new URL(value);
-    if (url.protocol === "http:" || url.protocol === "https:") {
-      return url.toString();
-    }
-  } catch {
-    /* opaque text */
-  }
-  return undefined;
-}
 
 function BoardCard({
   task,
@@ -70,14 +56,21 @@ function BoardCard({
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
   const assignee = userById(store, task.assigneeId);
-  const manager = userById(store, task.managerId);
   const requested = userById(store, task.requestedAssigneeId);
+  const currentUser = userById(store, store.currentUserId);
+  const project = store.projects.find((item) => item.id === task.projectId);
+  const canSeeWorkLink = Boolean(
+    currentUser &&
+      (currentUser.role === "admin" ||
+        currentUser.role === "manager" ||
+        task.assigneeId === currentUser.id ||
+        (currentUser.role === "pm" && project?.createdById === currentUser.id)),
+  );
   const stage = store.steps.find(
     (step) =>
       step.projectId === task.projectId &&
       (step.id === task.stageId || step.key === task.stepKey),
   );
-  const linkHref = httpHref(task.workingLink?.url);
 
   return (
     <div
@@ -102,21 +95,21 @@ function BoardCard({
       </div>
       <p className="mt-1.5 line-clamp-3 text-xs font-medium leading-snug">{task.title}</p>
       <p className="text-muted-foreground mt-1 text-[10px]">{task.code}</p>
-      {task.workingLink ? (
-        linkHref ? (
+      {task.workUrl && canSeeWorkLink ? (
+        task.workUrl.startsWith("http://") || task.workUrl.startsWith("https://") ? (
           <a
-            href={linkHref}
+            href={task.workUrl}
             target="_blank"
             rel="noreferrer"
             onClick={(event) => event.stopPropagation()}
-            className="text-primary mt-1 inline-flex items-center gap-1 text-[10px] underline"
+            className="text-primary mt-1 block truncate text-[10px] hover:underline"
           >
-            <ExternalLink className="size-3" /> Link kerja
+            Link Pekerjaan
           </a>
         ) : (
-          <p className="text-muted-foreground mt-1 line-clamp-2 text-[10px]">
-            Link kerja: {task.workingLink.url}
-          </p>
+          <span className="text-muted-foreground mt-1 block truncate text-[10px]">
+            Link: {task.workUrl}
+          </span>
         )
       ) : null}
       <div className="mt-2 flex items-center justify-between gap-2">
@@ -132,7 +125,6 @@ function BoardCard({
           ) : (
             "Unassigned"
           )}
-          {manager ? ` · Mgr ${manager.name}` : ""}
         </span>
         {task.dueDate ? (
           <span
@@ -230,30 +222,12 @@ export function TaskBoard({
       toast.error("Buka card untuk mengisi komentar revisi.");
       return;
     }
-    let link: string | undefined;
-    if (to === "in_progress") {
-      link =
-        task.workingLink?.url ??
-        window.prompt(
-          "Tempel link kerja aktif (Google Docs/Slides/Drive) sebelum memulai:",
-          "",
-        ) ??
-        undefined;
-      const validation = validateWorkingLink(link);
-      if (!validation.ok) {
-        toast.error(
-          validation.reason ?? "Link kerja wajib diisi sebelum memulai.",
-        );
-        return;
-      }
-      link = validation.url;
-    }
-    const result = taskTransition(store, currentUser, task, to, link);
+    const result = taskTransition(store, currentUser, task, to);
     if (!result.ok) {
       toast.error(result.reason ?? "Transisi tidak diizinkan.");
       return;
     }
-    store.transitionTask(task.id, to, link);
+    store.transitionTask(task.id, to);
     toast.success(`Task dipindahkan ke ${TASK_STATUS_LABEL[to]}.`);
   };
 

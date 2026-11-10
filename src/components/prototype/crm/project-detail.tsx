@@ -4,19 +4,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
+  useRef,
   useState,
+  type KeyboardEvent,
 } from "react";
 import {
   ArrowLeft,
   CalendarDays,
+  Check,
   CheckCircle2,
   Clock3,
   FolderKanban,
-  History,
   Pencil,
   Plus,
   ShieldCheck,
-  Trophy,
   Users,
   X,
   XCircle,
@@ -38,13 +39,11 @@ import {
   activeSteps,
   calculateJourneyProgress,
   canApproveGate,
-  assignableUsersForForm,
-  canAssignForm,
-  canAssignFormEntry,
   canCancelProject,
   canCreateFormEntry,
   canEditForm,
   canManageProject,
+  canManageProjectSteps,
   evaluateGate,
   formatCurrency,
   formatDate,
@@ -54,20 +53,24 @@ import {
   formFor,
   formLabel,
   formsFor,
-  pitchingsFor,
-  rolesForPitching,
+  isNewLifecycleProject,
+  operationalAssigneeCandidates,
+  projectPhase,
+  projectProgress,
   tasksForStep,
   userById,
   workProgressForProject,
 } from "@/lib/prototype/domain";
 import {
   FORM_ENTRY_STATUS_LABEL,
+  FORM_STATUS_LABEL,
   GATE_KIND_LABEL,
   LIFECYCLE_LABEL,
+  PHASE_HINT,
   PHASE_LABEL,
   PHASE_ORDER,
-  ROLE_LABEL,
   type FormEntry,
+  type FormStepKey,
   type Phase,
   type Project,
   type ProjectStep,
@@ -76,7 +79,9 @@ import {
 import { cn } from "@/lib/utils";
 import {
   missingPhaseTooltip,
+  phaseStageCounts,
   phaseTransitionBanner,
+  phasesForProject,
 } from "@/lib/prototype/stepper";
 import {
   DataRow,
@@ -89,113 +94,402 @@ import {
   TaskStatusBadge,
   UserAvatar,
 } from "../ui";
-import { PitchingDialog, ProjectDialog } from "../dialogs";
-import { JourneyManagement } from "./journey-management";
-import { ProjectOverview } from "./project-overview";
+import { ProjectDialog, TaskDialog } from "../dialogs";
+import { TaskProgressPanels } from "../simpro/task-progress";
 import { ProjectStepHistory } from "./project-history";
 import { ProjectMediaOrders } from "./media-order";
+import {
+  CrmProjectBacklogTab,
+  CrmProjectBoardTab,
+  CrmProjectFormsTab,
+} from "./project-work-panels";
 import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
 
-const HEADER_STEP_STATUS_LABEL: Record<ProjectStep["status"], string> = {
+type StepTone = "done" | "active" | "attention" | "empty";
+
+const STEP_STATUS_TEXT: Record<string, string> = {
   pending: "Belum dimulai",
-  active: "Aktif",
+  active: "Berjalan",
   completed: "Selesai",
   skipped: "Dilewati",
 };
 
-const HEADER_STEP_DOT: Record<ProjectStep["status"], string> = {
-  pending: "bg-white/35",
-  active: "bg-sky-300",
-  completed: "bg-emerald-300",
-  skipped: "bg-amber-300",
+const STEP_TONE_CLASS: Record<
+  StepTone,
+  { dot: string; text: string; pill: string }
+> = {
+  done: {
+    dot: "bg-emerald-300",
+    text: "text-emerald-100/90",
+    pill: "",
+  },
+  active: {
+    dot: "bg-sky-300",
+    text: "text-white",
+    pill: "bg-white/10 px-1.5 py-0.5 ring-1 ring-white/15",
+  },
+  attention: {
+    dot: "bg-amber-300",
+    text: "text-amber-100",
+    pill: "bg-amber-300/15 px-1.5 py-0.5 ring-1 ring-amber-200/30",
+  },
+  empty: {
+    dot: "bg-white/30",
+    text: "text-white/50",
+    pill: "",
+  },
 };
 
-function ProjectPhaseHeader({
+function getStepStatus(
+  step: { status: string },
+  data: { completedData: boolean; needsAttention: boolean },
+): StepTone {
+  if (step.status === "skipped") return "empty";
+  if (step.status === "completed" || data.completedData) return "done";
+  if (step.status === "active") {
+    return data.needsAttention ? "attention" : "active";
+  }
+  return "empty";
+}
+
+function stageSummary(
+  store: ReturnType<typeof usePrototypeStore.getState>,
+  projectId: string,
+  step: ProjectStep,
+): {
+  full: string;
+  emptyValue: boolean;
+  completedData: boolean;
+  needsAttention: boolean;
+} {
+  if (step.status === "completed") {
+    return {
+      full: "Selesai",
+      emptyValue: false,
+      completedData: true,
+      needsAttention: false,
+    };
+  }
+  if (step.status === "pending") {
+    return {
+      full: "Belum dimulai",
+      emptyValue: true,
+      completedData: false,
+      needsAttention: false,
+    };
+  }
+  if (step.kind === "gate") {
+    return {
+      full: step.gateDecision
+        ? step.gateDecision.decision === "approved"
+          ? "Disetujui"
+          : "Ditolak"
+        : "Menunggu keputusan",
+      emptyValue: !step.gateDecision,
+      completedData: step.gateDecision?.decision === "approved",
+      needsAttention: !step.gateDecision,
+    };
+  }
+  if (step.kind === "finance_form") {
+    const form = step.financeKind ? formFor(store, projectId, step.financeKind) : undefined;
+    const text =
+      form && form.status !== "unassigned"
+        ? FORM_STATUS_LABEL[form.status]
+        : "Belum ada PIC";
+    return {
+      full: text,
+      emptyValue: !form || form.status === "unassigned",
+      completedData: form?.status === "approved" || form?.status === "submitted",
+      needsAttention: !form?.assigneeId,
+    };
+  }
+  if (step.kind === "form") {
+    if (step.legacyKey === "survey" && !step.formTemplate) {
+      const form = formFor(store, projectId, "survey");
+      const text =
+        form && form.status !== "unassigned"
+          ? FORM_STATUS_LABEL[form.status]
+          : "Belum ada PIC";
+      return {
+        full: text,
+        emptyValue: !form || form.status === "unassigned",
+        completedData: form?.status === "approved",
+        needsAttention: !form?.assigneeId,
+      };
+    }
+    const progress = formEntryProgress(store, projectId, step.key);
+    return {
+      full:
+        progress.total === 0
+          ? "Belum ada entri"
+          : `${progress.approved}/${progress.total} disetujui`,
+      emptyValue: progress.total === 0,
+      completedData: progress.total > 0 && progress.approved === progress.total,
+      needsAttention: progress.total === 0 || progress.approved < progress.total,
+    };
+  }
+  const tasks = tasksForStep(store, projectId, step.key);
+  const active = tasks.filter((task) => task.status !== "completed").length;
+  return {
+    full: tasks.length === 0 ? "Belum ada task" : `${active} aktif`,
+    emptyValue: tasks.length === 0,
+    completedData: tasks.length > 0 && active === 0,
+    needsAttention: active > 0,
+  };
+}
+
+function ProjectStepper({
   projectId,
   selectedStepKey,
+  selectedPhase,
   onPhaseClick,
   onStepClick,
+  panelId,
 }: {
   projectId: string;
-  selectedStepKey?: string;
+  selectedStepKey: string;
+  selectedPhase: Phase;
   onPhaseClick: (phase: Phase) => void;
-  onStepClick: (step: ProjectStep) => void;
+  onStepClick?: (stepKey: string) => void;
+  panelId: string;
 }) {
   const store = usePrototypeStore();
+  const project = store.projects.find((item) => item.id === projectId);
   const steps = store.steps
     .filter((step) => step.projectId === projectId)
     .sort((a, b) => a.order - b.order);
+  const phases = phasesForProject(project, steps);
+  const counts = phaseStageCounts(steps);
   const activePhase = steps.find((step) => step.status === "active")?.phase;
+  const effectivePhase = phases.includes(selectedPhase)
+    ? selectedPhase
+    : activePhase ?? phases[0];
+  const phaseSteps = effectivePhase
+    ? steps.filter((step) => step.phase === effectivePhase)
+    : [];
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const phaseRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const moveFocus = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    let nextIndex = index;
+    if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % phaseSteps.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + phaseSteps.length) % phaseSteps.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = phaseSteps.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    const nextStep = phaseSteps[nextIndex];
+    tabRefs.current[nextStep.key]?.focus();
+    if (nextStep.status !== "pending") {
+      onStepClick?.(nextStep.key);
+    }
+  };
+
+  const movePhaseFocus = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ) => {
+    if (phases.length === 0) return;
+    let nextIndex = index;
+    if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % phases.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + phases.length) % phases.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = phases.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    const nextPhase = phases[nextIndex];
+    phaseRefs.current[nextPhase]?.focus();
+    onPhaseClick(nextPhase);
+  };
 
   return (
-    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-      {PHASE_ORDER.map((phase) => {
-        const phaseSteps = steps.filter((step) => step.phase === phase);
-        const isActive = activePhase === phase;
-        return (
-          <div
-            key={phase}
-            className={cn(
-              "rounded-lg border p-2",
-              isActive
-                ? "border-white/40 bg-white/12"
-                : "border-white/15 bg-white/5",
-            )}
-          >
+    <div className="space-y-3">
+      <div
+        role="tablist"
+        aria-label={`Fase proyek: ${phases
+          .map((phase) => PHASE_LABEL[phase])
+          .join(", ")}`}
+        className="flex gap-1.5 overflow-x-auto pb-1"
+      >
+        {phases.map((phase, index) => {
+          const isActive = activePhase === phase;
+          const selected = effectivePhase === phase;
+          return (
             <button
+              key={phase}
+              ref={(node) => {
+                phaseRefs.current[phase] = node;
+              }}
               type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-current={isActive ? "step" : undefined}
+              tabIndex={selected ? 0 : -1}
+              title={PHASE_HINT[phase]}
               onClick={() => onPhaseClick(phase)}
-              className="flex w-full items-center justify-between gap-2 text-left"
+              onKeyDown={(event) => movePhaseFocus(event, index)}
+              style={{
+                flexGrow: counts[phase] ?? 1,
+                flexBasis: 0,
+              }}
+              className={cn(
+                "min-w-[110px] rounded-lg px-2 py-1.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none",
+                selected ? "bg-white/15" : "hover:bg-white/10",
+              )}
             >
               <span
                 className={cn(
-                  "text-[10px] font-semibold uppercase tracking-[0.08em]",
-                  isActive ? "text-white" : "text-white/65",
+                  "block text-[10px] font-semibold tracking-[0.08em] uppercase",
+                  isActive ? "text-white" : "text-white/60",
                 )}
               >
                 {PHASE_LABEL[phase]}
               </span>
-              <span className="text-[10px] whitespace-nowrap text-white/55">
+              <span className="block truncate text-[10px] text-white/50">
                 {isActive
                   ? "Sedang berjalan"
-                  : `${phaseSteps.length} Tahap`}
+                  : (counts[phase] ?? 0) === 0
+                    ? "0 Step"
+                    : `${counts[phase]} tahap`}
               </span>
             </button>
+          );
+        })}
+      </div>
 
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {phaseSteps.length === 0 ? (
-                <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-white/40">
-                  0 Tahap
-                </span>
-              ) : (
-                phaseSteps.map((step) => (
-                  <button
-                    key={step.id}
-                    type="button"
-                    title={`${step.name} — ${HEADER_STEP_STATUS_LABEL[step.status]}`}
-                    onClick={() => onStepClick(step)}
-                    className={cn(
-                      "inline-flex max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors hover:bg-white/15",
-                      selectedStepKey === step.key
-                        ? "bg-white/20 text-white"
-                        : "bg-white/10 text-white/75",
-                      step.status === "pending" && "text-white/45",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "size-1.5 shrink-0 rounded-full",
-                        HEADER_STEP_DOT[step.status],
-                      )}
-                    />
-                    <span className="truncate">{step.name}</span>
-                  </button>
-                ))
+      <div
+        role="tablist"
+        aria-label={`Tahap fase ${
+          PHASE_LABEL[effectivePhase ?? "prospek"]
+        }`}
+        className="relative flex gap-2 overflow-x-auto pb-2"
+      >
+        {phaseSteps.map((step, index) => {
+          const done = step.status === "completed";
+          const active = step.status === "active";
+          const skipped = step.status === "skipped";
+          const pending = step.status === "pending";
+          const selected = selectedStepKey === step.key;
+          const summary = skipped
+            ? {
+                full: "Tidak digunakan",
+                emptyValue: false,
+                completedData: false,
+                needsAttention: false,
+              }
+            : stageSummary(store, projectId, step);
+          const tone = getStepStatus(step, {
+            completedData: summary.completedData,
+            needsAttention: active && summary.needsAttention,
+          });
+          const toneClass = STEP_TONE_CLASS[tone];
+          const textClass =
+            summary.emptyValue && tone !== "attention"
+              ? "text-white/50"
+              : toneClass.text;
+          const pillClass =
+            tone === "active" || tone === "attention" ? toneClass.pill : "";
+
+          return (
+            <button
+              key={step.id}
+              ref={(node) => {
+                tabRefs.current[step.key] = node;
+              }}
+              type="button"
+              id={`step-tab-${step.key}`}
+              role="tab"
+              aria-selected={selected}
+              aria-controls={panelId}
+              aria-disabled={pending || undefined}
+              aria-current={active ? "step" : undefined}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => {
+                if (!pending) onStepClick?.(step.key);
+              }}
+              onKeyDown={(event) => moveFocus(event, index)}
+              aria-label={
+                pending ? `${step.name} — Belum dimulai` : `${step.name} — ${summary.full}`
+              }
+              title={pending ? "Belum dimulai" : summary.full}
+              className={cn(
+                "group relative z-10 flex w-[112px] shrink-0 flex-col items-center gap-1 rounded-lg px-1 pb-1 text-center transition-colors hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-none",
+                pending ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+                selected && "bg-white/10",
               )}
-            </div>
-          </div>
-        );
-      })}
+            >
+              <span
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-full text-[11px] font-semibold",
+                  done
+                    ? "bg-white text-primary"
+                    : active
+                      ? "bg-white text-primary ring-4 ring-white/25"
+                      : skipped
+                        ? "border border-dashed border-white/60 bg-white/10 text-white/80"
+                        : "border border-white/40 bg-white/10 text-white/70",
+                )}
+              >
+                {done ? (
+                  <Check className="size-3.5" />
+                ) : skipped ? (
+                  <span className="text-[10px]">–</span>
+                ) : (
+                  step.order
+                )}
+              </span>
+
+              <span
+                className={cn(
+                  "w-full truncate text-[11px] leading-tight",
+                  active
+                    ? "font-semibold text-white"
+                    : done
+                      ? "text-white/85"
+                      : pending
+                        ? "text-white/55"
+                        : "text-white/70",
+                )}
+              >
+                {step.name}
+              </span>
+
+              {step.costBeforeCommitment ? (
+                <span className="rounded bg-amber-300/20 px-1 text-[9px] text-amber-100">
+                  Berbiaya
+                </span>
+              ) : null}
+
+              <span
+                className={cn(
+                  "flex max-w-full min-w-0 items-center justify-center gap-1 text-[10px] leading-tight",
+                  textClass,
+                  pillClass,
+                )}
+                title={summary.full}
+              >
+                <span className={cn("size-1.5 shrink-0 rounded-full", toneClass.dot)} />
+                <span className="truncate">{summary.full}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -265,8 +559,14 @@ function AssignControl({
   const currentUser = userById(store, store.currentUserId);
   const [userId, setUserId] = useState(form.assigneeId ?? "");
   if (!currentUser) return null;
-  const canAssign = canAssignForm(currentUser);
-  const candidates = assignableUsersForForm(store, form);
+  const canAssign = currentUser.role === "admin" || currentUser.role === "manager";
+  const candidates = store.users.filter((user) =>
+    form.type === "survey"
+      ? user.role === "assignee"
+      : form.type === "bast"
+        ? user.role === "finance" || user.role === "media"
+        : user.role === "finance",
+  );
   if (form.assigneeId) {
     return (
       <div className="flex items-center gap-2 text-xs">
@@ -302,272 +602,6 @@ function AssignControl({
       >
         Assign
       </Button>
-    </div>
-  );
-}
-
-function PitchingStep({
-  project,
-  readOnly = false,
-}: {
-  project: Project;
-  readOnly?: boolean;
-}) {
-  const store = usePrototypeStore();
-  const router = useRouter();
-  const currentUser = userById(store, store.currentUserId);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
-  const pitchings = pitchingsFor(store, project.id);
-  const canManage = currentUser && canManageProject(currentUser, project);
-  const activePitchings = pitchings.filter((pitching) => pitching.status !== "lost");
-  const history = pitchings.filter((pitching) => pitching.status === "lost");
-  const canEditPitching = (pitchingId: string) =>
-    rolesForPitching(store, pitchingId).every((role) => {
-      const task = role.taskId
-        ? store.tasks.find((item) => item.id === role.taskId)
-        : undefined;
-      return !task || task.archivedAt || task.status === "backlog";
-    });
-
-  const openPitchingInSimpro = (pitchingId: string) => {
-    if (currentUser?.role === "finance") return;
-    const pitchingTasks = store.tasks.filter(
-      (task) => task.pitchingId === pitchingId && !task.archivedAt,
-    );
-    const task =
-      pitchingTasks.find((item) => item.status !== "completed") ?? pitchingTasks[0];
-    if (task) {
-      router.push(`/projects/${project.id}/board?task=${task.id}`);
-      return;
-    }
-    setEditingId(pitchingId);
-    setDialogOpen(true);
-  };
-
-  if (!currentUser) return null;
-  const canOpenSimpro = currentUser.role !== "finance";
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-semibold">Pitching</h3>
-          <p className="text-muted-foreground text-xs">
-            Jumlah bebas, multiple winners. Yang kalah masuk riwayat.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {canManage && !readOnly ? (
-            <Button
-              size="sm"
-              onClick={() => {
-                setEditingId(null);
-                setDialogOpen(true);
-              }}
-            >
-              <Plus className="size-3.5" /> Pitching
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowHistory((value) => !value)}
-          >
-            <History className="size-3.5" /> Riwayat ({history.length})
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-3 xl:grid-cols-2">
-        {activePitchings.length === 0 ? (
-          <EmptyState icon={Trophy} title="Belum ada pitching" description="Tambahkan pitching untuk memulai." />
-        ) : (
-          activePitchings.map((pitching) => {
-            const roles = rolesForPitching(store, pitching.id);
-            return (
-              <div
-                key={pitching.id}
-                role={canOpenSimpro ? "button" : undefined}
-                tabIndex={canOpenSimpro ? 0 : undefined}
-                onClick={canOpenSimpro ? () => openPitchingInSimpro(pitching.id) : undefined}
-                onKeyDown={
-                  canOpenSimpro
-                    ? (event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          openPitchingInSimpro(pitching.id);
-                        }
-                      }
-                    : undefined
-                }
-                className={cn(
-                  "rounded-xl border bg-card p-3 transition-colors",
-                  canOpenSimpro &&
-                    "hover:border-primary/40 focus-visible:ring-ring/50 cursor-pointer focus-visible:ring-3 focus-visible:outline-none",
-                )}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="truncate text-sm font-semibold">{pitching.title}</h4>
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                          pitching.status === "won"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-100 text-slate-600",
-                        )}
-                      >
-                        {pitching.status === "won" ? "Won" : "Draft"}
-                      </span>
-                    </div>
-                    <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
-                      {pitching.description || "Tanpa deskripsi."}
-                    </p>
-                  </div>
-                  {canManage && !readOnly && pitching.status === "draft" ? (
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Edit pitching"
-                      disabled={!canEditPitching(pitching.id)}
-                      title={
-                        canEditPitching(pitching.id)
-                          ? "Edit pitching"
-                          : "Tidak bisa diedit setelah task keluar dari Backlog"
-                      }
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setEditingId(pitching.id);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      <Pencil className="size-3.5" />
-                    </Button>
-                  ) : null}
-                </div>
-
-                <div className="mt-3 space-y-1.5">
-                  {roles.map((role) => {
-                    const task = role.taskId
-                      ? store.tasks.find((item) => item.id === role.taskId)
-                      : undefined;
-                    return (
-                      <div key={role.id} className="flex items-center gap-2 text-xs">
-                        <UserAvatar user={userById(store, role.requestedUserId)} size="sm" />
-                        <span className="min-w-0 flex-1 truncate">{role.label}</span>
-                        {task ? (
-                          <>
-                            <TaskStatusBadge status={task.status} />
-                            {canOpenSimpro ? (
-                              <Link
-                                href={`/projects/${project.id}/board?task=${task.id}`}
-                                onClick={(event) => event.stopPropagation()}
-                                className="text-primary text-[10px]"
-                              >
-                                {task.code}
-                              </Link>
-                            ) : (
-                              <span className="text-muted-foreground text-[10px]">
-                                {task.code}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground text-[10px]">Tanpa task</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {canManage && !readOnly && pitching.status === "draft" ? (
-                  <div className="mt-3 flex gap-2 border-t pt-3">
-                    <Button
-                      size="sm"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        store.decidePitching(pitching.id, "won");
-                        toast.success("Pitching ditandai menang.");
-                      }}
-                    >
-                      <Trophy className="size-3.5" /> Menang
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        store.decidePitching(pitching.id, "lost");
-                        toast.success("Pitching kalah dan task diarsipkan.");
-                      }}
-                    >
-                      Kalah
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {showHistory ? (
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Riwayat pitching kalah
-          </h4>
-          {history.length === 0 ? (
-            <p className="text-muted-foreground text-xs">Belum ada pitching kalah.</p>
-          ) : (
-            history.map((pitching) => {
-              const lostTasks = store.tasks.filter(
-                (task) => task.pitchingId === pitching.id && task.archivedAt,
-              );
-              return (
-                <div
-                  key={pitching.id}
-                  className="rounded-lg border bg-muted/20 px-3 py-2 text-xs"
-                >
-                  <div className="flex items-center gap-2">
-                    <XCircle className="size-3.5 text-rose-500" />
-                    <span className="min-w-0 flex-1 truncate">{pitching.title}</span>
-                    <span className="text-muted-foreground">Lost</span>
-                  </div>
-                  {lostTasks.length > 0 ? (
-                    <div className="mt-1 space-y-1 pl-5">
-                      {lostTasks.map((task) => (
-                        <div key={task.id} className="flex items-center gap-2 text-[10px]">
-                          <span className="text-muted-foreground">{task.code}</span>
-                          <span className="min-w-0 flex-1 truncate">{task.title}</span>
-                          <TaskStatusBadge status={task.status} />
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })
-          )}
-        </div>
-      ) : null}
-
-      {!readOnly ? (
-        <GatePanel
-          projectId={project.id}
-          stepKey="pitching"
-          onComplete={() => store.completeStep(project.id, "pitching")}
-        />
-      ) : null}
-
-      <PitchingDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        projectId={project.id}
-        pitching={editingId ? store.pitchings.find((item) => item.id === editingId) : undefined}
-      />
     </div>
   );
 }
@@ -767,8 +801,14 @@ function RunningStep({
   readOnly?: boolean;
 }) {
   const store = usePrototypeStore();
+  const currentUser = userById(store, store.currentUserId);
   const tasks = tasksForStep(store, project.id, "running");
   const active = tasks.filter((task) => task.status !== "completed");
+  const canAssign =
+    currentUser &&
+    operationalAssigneeCandidates(store, currentUser, project).length > 0;
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskId, setTaskId] = useState<string | undefined>(undefined);
   return (
     <div className="space-y-4">
       <SectionCard
@@ -798,6 +838,18 @@ function RunningStep({
                 <span className="min-w-0 flex-1 truncate">{task.title}</span>
                 <TaskStatusBadge status={task.status} />
                 <UserAvatar user={userById(store, task.assigneeId)} size="sm" />
+                {canAssign && task.status !== "completed" ? (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      setTaskId(task.id);
+                      setTaskDialogOpen(true);
+                    }}
+                  >
+                    Assign
+                  </Button>
+                ) : null}
               </div>
             ))
           )}
@@ -810,6 +862,13 @@ function RunningStep({
           onComplete={() => store.completeStep(project.id, "running")}
         />
       ) : null}
+      <TaskDialog
+        open={taskDialogOpen}
+        onOpenChange={setTaskDialogOpen}
+        projectId={project.id}
+        taskId={taskId}
+        stepKey="running"
+      />
     </div>
   );
 }
@@ -858,9 +917,11 @@ function EntryAssignControl({
 }) {
   const store = usePrototypeStore();
   const [userId, setUserId] = useState(entry.assigneeId ?? "");
-  const candidates = store.users.filter(
-    (user) => user.role === "assignee" || user.role === "media",
-  );
+  const currentUser = userById(store, store.currentUserId);
+  const project = store.projects.find((item) => item.id === entry.projectId);
+  const candidates = currentUser
+    ? operationalAssigneeCandidates(store, currentUser, project)
+    : [];
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <NativeSelect
@@ -906,30 +967,18 @@ function FormStagePanel({
   const currentUser = userById(store, store.currentUserId);
   const entries = formEntriesForStep(store, project.id, step.key);
   const progress = formEntryProgress(store, project.id, step.key);
-  const entryTypes = step.entryTypes ?? [];
-  const missingTypes = entryTypes.filter(
-    (type) => !entries.some((entry) => entry.entryType === type.id),
-  );
   const canCreate = Boolean(
     currentUser &&
       !readOnly &&
       canCreateFormEntry(store, currentUser, project, step.key),
   );
-  const canAssign = Boolean(currentUser && canAssignFormEntry(currentUser));
+  const canAssign =
+    currentUser &&
+    operationalAssigneeCandidates(store, currentUser, project).length > 0;
   const canManage = Boolean(currentUser && canManageProject(currentUser, project));
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [entryType, setEntryType] = useState("");
   const [dueDate, setDueDate] = useState("");
-
-  const createEntry = (payload: {
-    title: string;
-    entryType?: string;
-    dueDate?: string;
-  }) => {
-    store.createFormEntry(project.id, step.key, payload);
-    toast.success("Entri form dibuat.");
-  };
 
   return (
     <div className="space-y-4">
@@ -964,26 +1013,6 @@ function FormStagePanel({
           />
         </div>
 
-        {canCreate && missingTypes.length > 0 ? (
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {missingTypes.map((type) => (
-              <Button
-                key={type.id}
-                size="xs"
-                variant="outline"
-                onClick={() =>
-                  createEntry({ title: type.label, entryType: type.id })
-                }
-              >
-                <Plus className="size-3" /> {type.label}
-                <span className="text-muted-foreground">
-                  {ROLE_LABEL[type.defaultRole]}
-                </span>
-              </Button>
-            ))}
-          </div>
-        ) : null}
-
         {entries.length === 0 ? (
           <EmptyState
             icon={Clock3}
@@ -992,11 +1021,7 @@ function FormStagePanel({
           />
         ) : (
           <div className="space-y-2">
-            {entries.map((entry) => {
-              const type = entryTypes.find(
-                (item) => item.id === entry.entryType,
-              );
-              return (
+            {entries.map((entry) => (
               <div
                 key={entry.id}
                 className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2"
@@ -1005,7 +1030,6 @@ function FormStagePanel({
                   <p className="truncate text-xs font-medium">{entry.title}</p>
                   <p className="text-muted-foreground text-[10px]">
                     {FORM_ENTRY_STATUS_LABEL[entry.status]}
-                    {type ? ` · ${type.label} (${ROLE_LABEL[type.defaultRole]})` : ""}
                     {entry.dueDate ? ` · Tenggat ${formatDate(entry.dueDate)}` : ""}
                   </p>
                 </div>
@@ -1019,23 +1043,19 @@ function FormStagePanel({
                 <Button
                   size="xs"
                   variant="outline"
-                  onClick={() =>
-                    router.push(
-                      type?.kind === "rab"
-                        ? `/crm/projects/${project.id}/forms/rab`
-                        : `/forms?entry=${entry.id}`,
-                    )
-                  }
+                  onClick={() => router.push(`/forms?entry=${entry.id}`)}
                 >
-                  {type?.kind === "rab" ? "Buka RAB" : "Buka"}
+                  Buka
                 </Button>
               </div>
-              );
-            })}
+            ))}
           </div>
         )}
 
-        {canManage && entries.length === 0 && !step.noWorkConfirmedAt ? (
+        {canManage &&
+        entries.length === 0 &&
+        !step.noWorkConfirmedAt &&
+        !isNewLifecycleProject(project) ? (
           <div className="mt-3 rounded-lg border border-dashed p-2">
             <p className="text-muted-foreground mb-2 text-[11px]">
               Tidak ada pekerjaan di tahap ini? Konfirmasi akan dicatat di audit trail.
@@ -1071,29 +1091,6 @@ function FormStagePanel({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            {entryTypes.length > 0 ? (
-              <div>
-                <label className="text-xs font-medium" htmlFor="entry-type">
-                  Jenis entri
-                </label>
-                <NativeSelect
-                  value={entryType}
-                  onChange={(value) => {
-                    setEntryType(value);
-                    const type = entryTypes.find((item) => item.id === value);
-                    if (type) setTitle(type.label);
-                  }}
-                  className="h-8 text-xs"
-                >
-                  <option value="">Entri umum</option>
-                  {entryTypes.map((type) => (
-                    <option key={type.id} value={type.id}>
-                      {type.label} · {ROLE_LABEL[type.defaultRole]}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </div>
-            ) : null}
             <div>
               <label className="text-xs font-medium" htmlFor="entry-title">
                 Nama entri
@@ -1124,17 +1121,16 @@ function FormStagePanel({
             <Button
               disabled={!title.trim()}
               onClick={() => {
-                createEntry({
+                store.createFormEntry(project.id, step.key, {
                   title,
-                  entryType: entryType || undefined,
                   dueDate: dueDate
                     ? new Date(`${dueDate}T00:00:00`).toISOString()
                     : undefined,
                 });
                 setTitle("");
-                setEntryType("");
                 setDueDate("");
                 setCreateOpen(false);
+                toast.success("Entri form dibuat.");
               }}
             >
               Buat entri
@@ -1160,8 +1156,13 @@ function SimproStagePanel({
   const tasks = tasksForStep(store, project.id, step.key);
   const active = tasks.filter((task) => task.status !== "completed").length;
   const canManage = Boolean(currentUser && canManageProject(currentUser, project));
+  const canAssign =
+    currentUser &&
+    operationalAssigneeCandidates(store, currentUser, project).length > 0;
   const [templateOpen, setTemplateOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskId, setTaskId] = useState<string | undefined>(undefined);
   const suggestions = step.tasks ?? [];
 
   return (
@@ -1202,7 +1203,7 @@ function SimproStagePanel({
           />
         ) : (
           <div className="space-y-1.5">
-            {tasks.slice(0, 8).map((task) => (
+            {tasks.map((task) => (
               <div
                 key={task.id}
                 className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs"
@@ -1213,6 +1214,18 @@ function SimproStagePanel({
                 <span className="min-w-0 flex-1 truncate">{task.title}</span>
                 <TaskStatusBadge status={task.status} />
                 <UserAvatar user={userById(store, task.assigneeId)} size="sm" />
+                {canAssign && task.status !== "completed" ? (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => {
+                      setTaskId(task.id);
+                      setTaskDialogOpen(true);
+                    }}
+                  >
+                    Assign
+                  </Button>
+                ) : null}
               </div>
             ))}
           </div>
@@ -1250,7 +1263,10 @@ function SimproStagePanel({
         />
       ) : null}
 
-      {canManage && tasks.length === 0 && !step.noWorkConfirmedAt ? (
+      {canManage &&
+      tasks.length === 0 &&
+      !step.noWorkConfirmedAt &&
+      !isNewLifecycleProject(project) ? (
         <Button
           size="sm"
           variant="outline"
@@ -1316,6 +1332,13 @@ function SimproStagePanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <TaskDialog
+        open={taskDialogOpen}
+        onOpenChange={setTaskDialogOpen}
+        projectId={project.id}
+        taskId={taskId}
+        stepKey={step.key}
+      />
     </div>
   );
 }
@@ -1498,8 +1521,54 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [selectedStepKey, setSelectedStepKey] = useState<string | null>(null);
-  const [tab, setTab] = useState<"overview" | "journey">("overview");
+  const [selectedPhase, setSelectedPhase] = useState<Phase>("prospek");
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<
+    "overview" | "journey" | "board" | "backlog" | "forms" | "media"
+  >("overview");
+  const [workTaskId, setWorkTaskId] = useState<string | undefined>(undefined);
+  const [workTaskStepKey, setWorkTaskStepKey] = useState<string | undefined>(undefined);
+  const [workTaskOpen, setWorkTaskOpen] = useState(false);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const value = url.searchParams.get("tab");
+    if (
+      value === "journey" ||
+      value === "board" ||
+      value === "backlog" ||
+      value === "forms" ||
+      value === "media"
+    ) {
+      setWorkspaceTab(value);
+      return;
+    }
+    setWorkspaceTab("overview");
+    if (value && value !== "overview") {
+      url.searchParams.delete("tab");
+      window.history.replaceState(null, "", url);
+    }
+  }, []);
+
+  useEffect(() => {
+    const taskId = new URLSearchParams(window.location.search).get("task");
+    if (!taskId) return;
+    if (store.tasks.some((task) => task.id === taskId && task.projectId === projectId)) {
+      setWorkTaskId(taskId);
+      setWorkTaskOpen(true);
+    }
+    // Only react to a new project; the query is a one-shot deep link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  const switchWorkspaceTab = (
+    tab: "overview" | "journey" | "board" | "backlog" | "forms" | "media",
+  ) => {
+    setWorkspaceTab(tab);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState(null, "", url);
+  };
   const transitionBanner = project
     ? phaseTransitionBanner(projectSteps, project.status)
     : null;
@@ -1509,19 +1578,16 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     const fromUrl = new URLSearchParams(window.location.search).get("step");
-    const valid = projectSteps.find(
-      (step) => step.key === fromUrl && step.status !== "pending",
-    );
+    const valid = projectSteps.find((step) => step.key === fromUrl);
     const initial = valid ?? fallbackStep;
     setSelectedStepKey(initial?.key ?? null);
+    setSelectedPhase(
+      initial?.phase ??
+        (isNewLifecycleProject(project) ? "planning" : "prospek"),
+    );
     // Only initialize when the project changes; later store updates must not
     // reset the user's selected step.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
-
-  useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get("tab");
-    setTab(fromUrl === "journey" ? "journey" : "overview");
   }, [projectId]);
 
   useEffect(() => {
@@ -1542,16 +1608,44 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   }
 
   const active = activeSteps(store, project.id);
-  const journey = calculateJourneyProgress(store, project.id);
+  const newLifecycle = isNewLifecycleProject(project);
+  const progress = projectProgress(store, project.id);
+  const journey = progress.value;
   const work = workProgressForProject(store, project.id);
-  const phase = active[0]?.phase;
+  const phase = active[0]?.phase ?? projectPhase(project, projectSteps);
   const group = project.groupId
     ? store.groups.find((item) => item.id === project.groupId)
     : undefined;
   const canManage = canManageProject(currentUser, project);
+  const canManageSteps = canManageProjectSteps(currentUser, project);
+  const managerPicId =
+    project.managerId ?? store.users.find((user) => user.role === "manager")?.id;
+  const currentPhase = projectPhase(project, projectSteps);
+  const currentPhaseSteps = projectSteps.filter(
+    (step) => step.phase === currentPhase,
+  );
+  const phaseReady =
+    currentPhaseSteps.length > 0 &&
+    currentPhaseSteps.every(
+      (step) => step.status === "completed" || step.status === "skipped",
+    );
+  const overviewTasks = store.tasks.filter(
+    (task) =>
+      task.projectId === project.id &&
+      !task.archivedAt &&
+      (currentUser.role !== "assignee" || task.assigneeId === currentUser.id),
+  );
   const canCancel = canCancelProject(currentUser, project);
+  const selectedPhaseSteps = projectSteps.filter(
+    (step) => step.phase === selectedPhase,
+  );
   const selectedStep =
-    projectSteps.find((step) => step.key === selectedStepKey) ?? fallbackStep;
+    selectedPhaseSteps.find((step) => step.key === selectedStepKey) ??
+    selectedPhaseSteps.find((step) => step.status === "active") ??
+    [...selectedPhaseSteps]
+      .reverse()
+      .find((step) => step.status !== "pending") ??
+    selectedPhaseSteps[0];
   const selectedKey = selectedStep?.key;
   const readOnly = project.status !== "active" || selectedStep?.status !== "active";
   const allStepsDone =
@@ -1566,7 +1660,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
 
   const selectStep = (stepKey: string) => {
     const next = projectSteps.find((step) => step.key === stepKey);
-    if (!next || next.status === "pending") return;
+    if (!next) return;
     if (stepKey !== selectedStepKey && hasUnsavedFormChanges()) {
       const proceed = window.confirm(
         "Ada perubahan form yang belum tersimpan. Pindah tahap akan membuang perubahan tersebut. Lanjutkan?",
@@ -1574,51 +1668,42 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
       if (!proceed) return;
     }
     setSelectedStepKey(stepKey);
+    setSelectedPhase(next.phase);
     const url = new URL(window.location.href);
     url.searchParams.set("step", stepKey);
     window.history.replaceState(null, "", url);
   };
 
-  const switchTab = (next: "overview" | "journey") => {
-    setTab(next);
-    const url = new URL(window.location.href);
-    if (next === "overview") url.searchParams.delete("tab");
-    else url.searchParams.set("tab", next);
-    window.history.replaceState(null, "", url);
-  };
-
-  const openHeaderPhase = (nextPhase: Phase) => {
-    switchTab("journey");
-    const candidates = projectSteps.filter((step) => step.phase === nextPhase);
+  const selectPhase = (phase: Phase) => {
+    const candidates = projectSteps.filter((step) => step.phase === phase);
     const next =
       candidates.find((step) => step.status === "active") ??
-      [...candidates].reverse().find((step) => step.status !== "pending");
-    if (next) selectStep(next.key);
+      [...candidates].reverse().find((step) => step.status !== "pending") ??
+      candidates[0];
+    if (next) {
+      selectStep(next.key);
+      return;
+    }
+    if (selectedStep && hasUnsavedFormChanges()) {
+      const proceed = window.confirm(
+        "Ada perubahan form yang belum tersimpan. Pindah fase akan membuang perubahan tersebut. Lanjutkan?",
+      );
+      if (!proceed) return;
+    }
+    setSelectedPhase(phase);
+    setSelectedStepKey(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("step");
+    window.history.replaceState(null, "", url);
   };
-
-  const openHeaderStep = (step: ProjectStep) => {
-    switchTab("journey");
-    if (step.status !== "pending") selectStep(step.key);
-  };
-
-  const activeGate = activeStep
-    ? evaluateGate(store, project.id, activeStep.key)
-    : null;
-  const canCompleteActive = Boolean(
-    canManage &&
-      project.status === "active" &&
-      activeStep &&
-      activeStep.kind !== "gate" &&
-      activeGate?.ready,
-  );
 
   const stepContent = (() => {
     if (!selectedStep) {
       return (
         <EmptyState
           icon={Clock3}
-          title="Prospek belum punya tahap"
-          description="Buka Journey Management di bawah untuk menambah tahap manual atau mengisi dari template."
+          title="Belum ada step"
+          description="Fase ini belum memiliki step. PM/Admin dapat menambahkannya di Kelola fase."
         />
       );
     }
@@ -1645,9 +1730,6 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
       );
     }
     if (selectedStep.kind === "simpro") {
-      if (selectedStep.legacyKey === "pitching") {
-        return <PitchingStep project={project} readOnly={readOnly} />;
-      }
       if (selectedStep.legacyKey === "running") {
         return <RunningStep project={project} readOnly={readOnly} />;
       }
@@ -1721,7 +1803,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
               </div>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight">{project.name}</h1>
               <p className="mt-1 text-sm text-white/75">
-                {project.client || "Tanpa klien"} · PM {userById(store, project.createdById)?.name ?? "—"}
+                {project.client || "Tanpa klien"} · PM {userById(store, project.createdById)?.name ?? "—"} · Manager {userById(store, project.managerId)?.name ?? "Belum ditugaskan"}
               </p>
               {group ? (
                 <p className="mt-1 inline-flex items-center gap-1 text-xs text-white/70">
@@ -1746,8 +1828,8 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           <div className="mt-5 grid gap-3 text-xs sm:grid-cols-2">
             <div>
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-white/70">Journey</span>
-                <span className="font-semibold">{journey}%</span>
+                <span className="text-white/70">Progress</span>
+                <span className="font-semibold">{progress.label}</span>
               </div>
               <ProgressBar value={journey} className="bg-white/20" tone="bg-white" />
             </div>
@@ -1769,19 +1851,275 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           </div>
 
           <div className="mt-5 border-t border-white/15 pt-4">
-            <ProjectPhaseHeader
+            <ProjectStepper
               projectId={project.id}
-              selectedStepKey={selectedKey}
-              onPhaseClick={openHeaderPhase}
-              onStepClick={openHeaderStep}
+              selectedStepKey={selectedKey ?? ""}
+              selectedPhase={selectedPhase}
+              onPhaseClick={selectPhase}
+              onStepClick={selectStep}
+              panelId="project-step-panel"
             />
             <p className="mt-2 text-[10px] text-white/60">
-              Setiap tahap menampilkan step-nya. Fase tanpa step tetap tampil
-              dengan 0 Tahap.
+              Tahapan terkunci setelah proyek dibuat. Klik fase untuk melihat tahap di dalamnya.
             </p>
           </div>
         </div>
       </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1 rounded-lg border bg-muted/30 p-1">
+          {[
+            { key: "overview" as const, label: "Overview" },
+            { key: "journey" as const, label: "Journey Management" },
+            { key: "board" as const, label: "Board" },
+            { key: "backlog" as const, label: "Backlog" },
+            { key: "forms" as const, label: "Forms" },
+            ...(currentUser &&
+            ["admin", "manager", "pm", "finance"].includes(currentUser.role)
+              ? [{ key: "media" as const, label: "Media Order" }]
+              : []),
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => switchWorkspaceTab(item.key)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                workspaceTab === item.key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {canManage && selectedStep?.status === "active" ? (
+          <Button
+            size="sm"
+            onClick={() => {
+              store.completeStep(project.id, selectedStep.key);
+              toast.success(`Tahap ${selectedStep.name} diselesaikan.`);
+            }}
+          >
+            Selesaikan Tahap
+          </Button>
+        ) : null}
+      </div>
+
+      {(workspaceTab === "journey" ||
+        (workspaceTab === "overview" && !project.startedAt)) &&
+      newLifecycle &&
+      !project.startedAt ? (
+        <SectionCard
+          title="Proyek belum dimulai"
+          description={
+            canManage
+              ? "Pilih fase awal. Finance hanya tersedia setelah Running selesai."
+              : "Menunggu PM memulai proyek."
+          }
+        >
+          {canManage ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (!managerPicId) {
+                    toast.error("Tetapkan Manager proyek terlebih dahulu.");
+                    return;
+                  }
+                  const ok = store.startProject(project.id, "planning", {
+                    managerPicId,
+                  });
+                  toast[ok ? "success" : "error"](
+                    ok ? "Proyek dimulai dari Planning." : "Gagal memulai proyek.",
+                  );
+                }}
+              >
+                Mulai dari Planning
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!managerPicId) {
+                    toast.error("Tetapkan Manager proyek terlebih dahulu.");
+                    return;
+                  }
+                  const ok = store.startProject(project.id, "running", {
+                    managerPicId,
+                  });
+                  toast[ok ? "success" : "error"](
+                    ok
+                      ? "Proyek dimulai dari Running; Planning dilewati."
+                      : "Gagal memulai proyek.",
+                  );
+                }}
+              >
+                Langsung ke Running
+              </Button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-xs">
+              Menunggu PM memulai proyek.
+            </p>
+          )}
+        </SectionCard>
+      ) : null}
+
+      {workspaceTab === "journey" && newLifecycle && project.startedAt && canManageSteps ? (
+        <SectionCard
+          title="Kelola fase"
+          description="Tambah step pada fase aktif atau selesaikan fase setelah semua step selesai."
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const name = window.prompt("Nama step baru");
+                  if (!name?.trim()) return;
+                  const phaseValue =
+                    currentPhase === "finance"
+                      ? "finance"
+                      : ((window.prompt(
+                          "Fase step: planning atau running",
+                          currentPhase,
+                        ) ?? currentPhase) as Phase);
+                  if (!["planning", "running", "finance"].includes(phaseValue)) {
+                    toast.error("Fase step tidak valid.");
+                    return;
+                  }
+                  let financeKind: FormStepKey | undefined;
+                  if (phaseValue === "finance") {
+                    const value = window.prompt(
+                      "Jenis form Finance: bast, invoice, atau payment",
+                      "bast",
+                    );
+                    if (!value || !["bast", "invoice", "payment"].includes(value)) {
+                      toast.error("Jenis form Finance tidak valid.");
+                      return;
+                    }
+                    financeKind = value as FormStepKey;
+                  }
+                  const id = store.addProjectStep(project.id, {
+                    name,
+                    phase: phaseValue,
+                    financeKind,
+                    managerPicId,
+                  });
+                  toast[id ? "success" : "error"](
+                    id ? "Step ditambahkan." : "Gagal menambah step.",
+                  );
+                }}
+              >
+                <Plus className="size-3.5" /> Tambah step
+              </Button>
+              <Button
+                size="sm"
+                disabled={!phaseReady || currentPhase === "prospek"}
+                onClick={() => {
+                  const ok = store.completeProjectPhase(
+                    project.id,
+                    currentPhase,
+                  );
+                  toast[ok ? "success" : "error"](
+                    ok
+                      ? `Fase ${PHASE_LABEL[currentPhase]} selesai.`
+                      : "Fase belum siap diselesaikan.",
+                  );
+                }}
+              >
+                Selesaikan fase {PHASE_LABEL[currentPhase]}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-1 text-xs">
+            {currentPhaseSteps.length === 0 ? (
+              <p className="text-muted-foreground">
+                Belum ada step pada fase ini.
+              </p>
+            ) : (
+              currentPhaseSteps
+                .sort((a, b) => a.order - b.order)
+                .map((step) => (
+                  <div
+                    key={step.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded border px-2 py-1"
+                  >
+                    <span>
+                      {step.name} · {step.status}
+                      {step.managerPicId
+                        ? ` · PIC ${userById(store, step.managerPicId)?.name ?? "-"}`
+                        : ""}
+                    </span>
+                    <span className="flex flex-wrap gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[10px]"
+                        onClick={() => {
+                          const name = window.prompt("Nama step", step.name);
+                          if (!name?.trim()) return;
+                          const description = window.prompt(
+                            "Deskripsi step",
+                            step.description ?? "",
+                          );
+                          const manager = window.prompt(
+                            "Manager PIC (user id)",
+                            step.managerPicId ?? managerPicId ?? "",
+                          );
+                          const ok = store.updateProjectStep(project.id, step.id, {
+                            name,
+                            description: description ?? "",
+                            managerPicId: manager ?? "",
+                          });
+                          toast[ok ? "success" : "error"](
+                            ok ? "Step diperbarui." : "Gagal memperbarui step.",
+                          );
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      {step.status === "pending" ? (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-[10px]"
+                            onClick={() =>
+                              store.reorderProjectStep(project.id, step.id, "up")
+                            }
+                          >
+                            ↑
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-[10px]"
+                            onClick={() =>
+                              store.reorderProjectStep(project.id, step.id, "down")
+                            }
+                          >
+                            ↓
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-[10px]"
+                            onClick={() => store.deleteProjectStep(project.id, step.id)}
+                          >
+                            Hapus
+                          </Button>
+                        </>
+                      ) : null}
+                    </span>
+                  </div>
+                ))
+            )}
+          </div>
+        </SectionCard>
+      ) : null}
 
       {transitionBanner && !bannerDismissed ? (
         <div
@@ -1809,118 +2147,100 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
-      <div className="bg-card flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2">
-        <div role="tablist" aria-label="Tampilan proyek" className="flex gap-1">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "overview"}
-            onClick={() => switchTab("overview")}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-              tab === "overview"
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted",
-            )}
+      {workspaceTab === "overview" ? (
+        <div className="space-y-3">
+          <SectionCard
+            title="Penyelesaian Tahap"
+            description="Ringkasan step selesai, dilewati, dan belum selesai."
           >
-            Overview
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "journey"}
-            onClick={() => switchTab("journey")}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-              tab === "journey"
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted",
-            )}
-          >
-            Journey Management
-          </button>
+            <div className="grid gap-2 text-xs sm:grid-cols-3">
+              <p>Selesai: {projectSteps.filter((step) => step.status === "completed").length}</p>
+              <p>Dilewati: {projectSteps.filter((step) => step.status === "skipped").length}</p>
+              <p>Belum selesai: {projectSteps.filter((step) => step.status === "pending" || step.status === "active").length}</p>
+            </div>
+          </SectionCard>
+          <TaskProgressPanels
+            tasks={overviewTasks}
+            distributionDescription="Status task SIMPRO proyek ini."
+            progressDescription="Ringkasan penyelesaian task proyek ini."
+          />
+          <SectionCard title="Riwayat Aktivitas" description="Event proyek terbaru.">
+            <div className="space-y-1 text-[11px]">
+              {store.projectEvents
+                .filter((event) => event.projectId === project.id)
+                .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+                .slice(0, 10)
+                .map((event) => (
+                  <div key={event.id} className="flex flex-wrap gap-2 rounded border px-2 py-1">
+                    <span className="font-semibold">{event.eventType}</span>
+                    <span className="text-muted-foreground">
+                      {formatDateTime(event.occurredAt)}
+                    </span>
+                    <span>{userById(store, event.actorId)?.name ?? "User"}</span>
+                    <span className="text-muted-foreground">{event.summary}</span>
+                  </div>
+                ))}
+            </div>
+          </SectionCard>
         </div>
-        {canManage && project.status === "active" && activeStep ? (
+      ) : null}
+
+      {workspaceTab === "board" ? (
+        <CrmProjectBoardTab
+          project={project}
+          onTaskClick={(task) => {
+            setWorkTaskId(task.id);
+            setWorkTaskStepKey(task.stepKey);
+            setWorkTaskOpen(true);
+          }}
+          onNewTask={(stepKey) => {
+            setWorkTaskId(undefined);
+            setWorkTaskStepKey(stepKey);
+            setWorkTaskOpen(true);
+          }}
+        />
+      ) : null}
+
+      {workspaceTab === "backlog" ? (
+        <CrmProjectBacklogTab
+          project={project}
+          onTaskClick={(task) => {
+            setWorkTaskId(task.id);
+            setWorkTaskStepKey(task.stepKey);
+            setWorkTaskOpen(true);
+          }}
+          onNewTask={(stepKey) => {
+            setWorkTaskId(undefined);
+            setWorkTaskStepKey(stepKey);
+            setWorkTaskOpen(true);
+          }}
+        />
+      ) : null}
+
+      {workspaceTab === "forms" ? <CrmProjectFormsTab project={project} /> : null}
+
+      {workspaceTab === "media" ? <ProjectMediaOrders project={project} /> : null}
+
+      {project.status === "completed" ? (
+        <CompletedSummary project={project} />
+      ) : null}
+
+      {project.status === "active" && allStepsDone && canManage ? (
+        <SectionCard
+          title="Semua tahap selesai"
+          description="Tutup proyek untuk menandai siklus hidup Selesai."
+        >
           <Button
             size="sm"
-            disabled={!canCompleteActive}
-            title={
-              activeStep.kind === "gate"
-                ? "Gerbang diputuskan lewat Journey Management."
-                : canCompleteActive
-                  ? "Selesaikan tahap aktif."
-                  : "Syarat penyelesaian tahap belum terpenuhi."
-            }
             onClick={() => {
-              if (!canCompleteActive) return;
-              store.completeStep(project.id, activeStep.key);
-              toast.success("Tahap diselesaikan.");
+              store.completeProject(project.id);
+              toast.success("Proyek ditandai selesai.");
             }}
           >
-            <CheckCircle2 className="size-3.5" /> Selesaikan Tahap
+            <CheckCircle2 className="size-3.5" /> Selesaikan proyek
           </Button>
-        ) : null}
-      </div>
-
-      {tab === "overview" ? (
-        <ProjectOverview project={project} />
-      ) : (
-        <div className="space-y-4">
-          <JourneyManagement
-            project={project}
-            selectedStepKey={selectedKey}
-            onSelectStep={selectStep}
-          />
-
-          {project.status === "completed" ? (
-            <CompletedSummary project={project} />
-          ) : null}
-
-          {project.status === "active" && allStepsDone && canManage ? (
-            <SectionCard
-              title="Semua tahap selesai"
-              description="Tutup proyek untuk menandai siklus hidup Selesai."
-            >
-              <Button
-                size="sm"
-                onClick={() => {
-                  store.completeProject(project.id);
-                  toast.success("Proyek ditandai selesai.");
-                }}
-              >
-                <CheckCircle2 className="size-3.5" /> Selesaikan proyek
-              </Button>
-            </SectionCard>
-          ) : null}
-
-          {activeStep && selectedStep && selectedStep.status !== "active" ? (
-            <div>
-              <Button
-                variant="link"
-                size="sm"
-                className="h-auto px-0"
-                onClick={() => selectStep(activeStep.key)}
-              >
-                Kembali ke tahap aktif
-              </Button>
-            </div>
-          ) : null}
-
-          <div
-            role="tabpanel"
-            id="project-step-panel"
-            aria-labelledby={
-              selectedKey ? `step-tab-${selectedKey}` : undefined
-            }
-            className="space-y-4"
-          >
-            {stepContent}
-            {selectedKey ? (
-              <ProjectStepHistory projectId={project.id} stepKey={selectedKey} />
-            ) : null}
-          </div>
-        </div>
-      )}
+        </SectionCard>
+      ) : null}
 
       {project.status === "cancelled" ? (
         <SectionCard
@@ -1936,7 +2256,87 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </SectionCard>
       ) : null}
 
-      <ProjectMediaOrders project={project} />
+      {workspaceTab === "journey" && activeStep && selectedStep && selectedStep.status !== "active" ? (
+        <div>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto px-0"
+            onClick={() => selectStep(activeStep.key)}
+          >
+            Kembali ke tahap aktif
+          </Button>
+        </div>
+      ) : null}
+
+      {workspaceTab === "journey" ? (
+        <div
+          role="tabpanel"
+          id="project-step-panel"
+          aria-labelledby={
+            selectedKey ? `step-tab-${selectedKey}` : undefined
+          }
+          className="space-y-4"
+        >
+          {projectSteps.length > 0 ? (
+            <SectionCard
+              title="Pilih step"
+              description="Task di bawah mengikuti step yang dipilih dari Kelola fase."
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <NativeSelect
+                  value={selectedKey ?? ""}
+                  onChange={selectStep}
+                  className="w-full max-w-[360px]"
+                >
+                  <option value="">Pilih step</option>
+                  {PHASE_ORDER.filter((phase) =>
+                    projectSteps.some((step) => step.phase === phase),
+                  ).map((phase) => (
+                    <optgroup key={phase} label={PHASE_LABEL[phase]}>
+                      {projectSteps
+                        .filter((step) => step.phase === phase)
+                        .sort((a, b) => a.order - b.order)
+                        .map((step) => (
+                          <option key={step.id} value={step.key}>
+                            {step.name} ·{" "}
+                            {STEP_STATUS_TEXT[step.status] ?? step.status}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </NativeSelect>
+                <p className="text-muted-foreground text-xs">
+                  {selectedStep
+                    ? `${selectedStep.name} — ${
+                        STEP_STATUS_TEXT[selectedStep.status] ??
+                        selectedStep.status
+                      }`
+                    : "Belum ada step dipilih."}
+                </p>
+              </div>
+            </SectionCard>
+          ) : null}
+          {stepContent}
+          {selectedKey ? (
+            <ProjectStepHistory projectId={project.id} stepKey={selectedKey} />
+          ) : null}
+        </div>
+      ) : null}
+
+      <TaskDialog
+        open={workTaskOpen}
+        onOpenChange={(open) => {
+          setWorkTaskOpen(open);
+          if (!open) {
+            setWorkTaskId(undefined);
+            setWorkTaskStepKey(undefined);
+          }
+        }}
+        projectId={project.id}
+        taskId={workTaskId}
+        stepKey={workTaskStepKey}
+      />
 
       <ProjectDialog open={editOpen} onOpenChange={setEditOpen} project={project} />
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>

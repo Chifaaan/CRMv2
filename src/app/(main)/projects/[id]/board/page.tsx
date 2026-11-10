@@ -1,9 +1,28 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useParams } from "next/navigation";
-import { SimproProjectPage } from "@/components/prototype/simpro/project-page";
+function queryString(
+  searchParams: Record<string, string | string[] | undefined>,
+): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (Array.isArray(value)) {
+      for (const item of value) params.append(key, item);
+    } else if (value !== undefined) {
+      params.set(key, value);
+    }
+  }
+  const value = params.toString();
+  return value ? `&${value}` : "";
+}
 
-export default function ProjectBoardPage() {
-  const params = useParams<{ id: string }>();
-  return <SimproProjectPage projectId={params.id} tab="board" />;
+export default async function ProjectBoardPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const { id } = await params;
+  const query = queryString(await searchParams);
+  redirect(`/crm/projects/${id}?tab=board${query}`);
 }

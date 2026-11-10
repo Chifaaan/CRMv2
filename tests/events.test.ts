@@ -144,38 +144,4 @@ describe("readProjectEvents", () => {
     const assignee = state.users.find((user) => user.id === "u-assignee1")!;
     expect(maskProjectEventForViewer(event!, assignee).metadata).toEqual({});
   });
-
-  it("keeps step-added and manager-changed events project-scoped", () => {
-    const state = createSeedState();
-    let events = recordProjectEvent(state.projectEvents, {
-      projectId: "p-alpha",
-      step: "test-step",
-      eventType: "project.step_added",
-      actorId: "u-pm1",
-      summary: "Tahap ditambahkan.",
-      metadata: { phase: "prospek" },
-    });
-    events = recordProjectEvent(events, {
-      projectId: "p-alpha",
-      step: "test-step",
-      eventType: "task.manager_changed",
-      actorId: "u-manager",
-      summary: "Manager task berubah.",
-      metadata: { taskId: "task-test" },
-    });
-
-    const page = readProjectEvents(
-      { ...state, projectEvents: events },
-      { projectId: "p-alpha", viewerId: "u-pm1", limit: 50 },
-    );
-    expect(
-      page.events.some((event) => event.eventType === "project.step_added"),
-    ).toBe(true);
-    expect(
-      page.events.some((event) => event.eventType === "task.manager_changed"),
-    ).toBe(true);
-    expect(page.events.every((event) => event.projectId === "p-alpha")).toBe(
-      true,
-    );
-  });
 });

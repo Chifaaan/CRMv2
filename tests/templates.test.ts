@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from "vitest";
+﻿import { beforeEach, describe, expect, it } from "vitest";
 import {
   calculateJourneyProgress,
-  canEditPhaseStructure,
+  canEditProjectStructure,
   canManageTemplates,
   canViewProject,
   phaseOfProject,
@@ -74,12 +74,10 @@ describe("template model", () => {
       .getState()
       .steps.filter((step) => step.projectId === projectId);
     expect(project.templateId).toBe(KOL_TEMPLATE_ID);
-    expect(project.structureLocked).toBe(false);
-    expect(project.phaseStates?.prospek?.startedAt).toBeUndefined();
-    expect(steps).toHaveLength(4);
-    expect(steps.every((step) => step.phase === "prospek")).toBe(true);
+    expect(project.structureLocked).toBe(true);
+    expect(steps).toHaveLength(12);
     expect(steps[0].formTemplate?.title).toBe("Brief Received");
-    expect(steps.every((step) => step.status === "pending")).toBe(true);
+    expect(steps[0].status).toBe("active");
   });
 
   it("keeps existing projects independent from later template versions", () => {
@@ -122,7 +120,7 @@ describe("template model", () => {
     expect(step.name).toBe("Brief Received");
   });
 
-  it("allows Prospek edits until start and locks after start", () => {
+  it("rejects structure changes after the project exists", () => {
     const store = usePrototypeStore.getState();
     const projectId = store.createProject({
       name: "KOL Test",
@@ -137,29 +135,7 @@ describe("template model", () => {
     const project = usePrototypeStore
       .getState()
       .projects.find((item) => item.id === projectId)!;
-    expect(canEditPhaseStructure(project, "prospek")).toBe(true);
-    expect(
-      usePrototypeStore.getState().setPhaseStructure(
-        projectId,
-        "prospek",
-        kolStages().filter((stage) => stage.phase === "prospek"),
-      ),
-    ).toBe(true);
-
-    expect(usePrototypeStore.getState().startPhase(projectId, "prospek")).toBe(
-      true,
-    );
-    const started = usePrototypeStore
-      .getState()
-      .projects.find((item) => item.id === projectId)!;
-    expect(canEditPhaseStructure(started, "prospek")).toBe(false);
-    expect(
-      usePrototypeStore.getState().setPhaseStructure(
-        projectId,
-        "prospek",
-        kolStages().filter((stage) => stage.phase === "prospek"),
-      ),
-    ).toBe(false);
+    expect(canEditProjectStructure(project)).toBe(false);
     expect(
       usePrototypeStore.getState().setProjectStructure(projectId, kolStages()),
     ).toBe(false);
@@ -190,7 +166,7 @@ describe("template validation", () => {
     expect(validateTemplateStages(duplicate).ok).toBe(false);
 
     const backward = stages.map((stage, index) =>
-      index === 2 ? { ...stage, phase: "closing" as const } : stage,
+      index === 2 ? { ...stage, phase: "finance" as const } : stage,
     );
     expect(
       validateTemplateStages(backward).errors.some((error) =>
@@ -206,7 +182,7 @@ describe("gate and lifecycle", () => {
   });
 
   function createKolProject() {
-    const projectId = usePrototypeStore.getState().createProject({
+    return usePrototypeStore.getState().createProject({
       name: "KOL Gate",
       client: "Klien",
       description: "",
@@ -216,8 +192,6 @@ describe("gate and lifecycle", () => {
       coverColor: "#000000",
       templateId: KOL_TEMPLATE_ID,
     });
-    usePrototypeStore.getState().startPhase(projectId, "prospek");
-    return projectId;
   }
 
   it("approving the winning gate moves the project to Planning and locks RAB", () => {
@@ -236,36 +210,6 @@ describe("gate and lifecycle", () => {
       .projects.find((item) => item.id === projectId)!;
     expect(project.lifecycle).toBe("won");
     expect(project.rabBaselineLockedAt).toBeTruthy();
-    expect(project.phaseStates?.planning).toBeTruthy();
-    expect(project.phaseStates?.planning?.startedAt).toBeUndefined();
-    expect(
-      usePrototypeStore
-        .getState()
-        .steps.filter(
-          (step) => step.projectId === projectId && step.phase === "planning",
-        ),
-    ).toHaveLength(0);
-
-    const template = usePrototypeStore
-      .getState()
-      .templates.find((item) => item.id === KOL_TEMPLATE_ID)!;
-    expect(
-      usePrototypeStore.getState().setPhaseStructure(
-        projectId,
-        "planning",
-        template.stages.filter((stage) => stage.phase === "planning"),
-      ),
-    ).toBe(true);
-    expect(
-      usePrototypeStore.getState().setPhaseStructure(
-        projectId,
-        "running",
-        template.stages.filter((stage) => stage.phase === "running"),
-      ),
-    ).toBe(true);
-    expect(usePrototypeStore.getState().startPhase(projectId, "planning")).toBe(
-      true,
-    );
     expect(phaseOfProject(usePrototypeStore.getState(), projectId)).toBe(
       "planning",
     );
@@ -324,13 +268,11 @@ describe("progress and permissions", () => {
       coverColor: "#000000",
       templateId: KOL_TEMPLATE_ID,
     });
-    usePrototypeStore.getState().startPhase(projectId, "prospek");
     completeFirstThreeKolStages(projectId);
-    // 3 completed Prospek stages of 4 materialized stages; later phases do
-    // not dilute progress until they are composed.
+    // 3 completed form stages of 11 total weight (4 form + 1 gate + 4 simpro + 1 form + 0.5 + 0.5 + 1 payment).
     expect(
       calculateJourneyProgress(usePrototypeStore.getState(), projectId),
-    ).toBe(75);
+    ).toBe(27);
   });
 
   it("allows only Admin and PM to manage templates", () => {
@@ -356,12 +298,15 @@ describe("persistence migration", () => {
     const legacy = {
       ...seed,
       templates: undefined,
+      mediaOrders: undefined,
+      formEntries: seed.formEntries.map((entry) => ({ ...entry })),
       projects: seed.projects.map((project) => {
         const copy = { ...project };
         delete copy.templateId;
         delete copy.templateVersion;
         delete copy.lifecycle;
         delete copy.structureLocked;
+        delete copy.managerId;
         return copy;
       }),
       steps: seed.steps.map((step) => ({
@@ -379,13 +324,14 @@ describe("persistence migration", () => {
     };
     const once = migratePersistedState(legacy);
     const twice = migratePersistedState(once);
-    expect(twice.templates?.length).toBe(3);
+    expect(twice.templates?.length).toBe(6);
     expect(
       twice.projects?.every(
         (project) =>
           project.templateId === UMUM_TEMPLATE_ID &&
           project.lifecycle !== undefined &&
-          project.structureLocked === true,
+          project.structureLocked === true &&
+          project.managerId === undefined,
       ),
     ).toBe(true);
     expect(
@@ -393,10 +339,46 @@ describe("persistence migration", () => {
     ).toBe(true);
     expect(
       twice.steps?.find((step) => step.key === "bast")?.phase,
-    ).toBe("closing");
+    ).toBe("finance");
     expect(
       twice.steps?.find((step) => step.key === "pitching")?.phase,
     ).toBe("prospek");
+    expect(twice.mediaOrders).toEqual([]);
     expect(JSON.stringify(twice)).toBe(JSON.stringify(migratePersistedState(twice)));
   });
+
+  it("backfills Finance BAST and Invoice idempotently", () => {
+    const seed = createSeedState();
+    const financeProject = {
+      ...seed.projects[0],
+      id: "p-finance-auto",
+      name: "Finance Auto",
+      creationMode: "manual" as const,
+      managerId: "u-manager",
+      phaseCompletedAt: { running: new Date().toISOString() },
+    };
+    const persisted = {
+      ...seed,
+      projects: [...seed.projects, financeProject],
+      steps: seed.steps.filter(
+        (step) => step.projectId !== financeProject.id,
+      ),
+    };
+    const once = migratePersistedState(persisted);
+    const twice = migratePersistedState(once);
+    const financeSteps = (twice.steps ?? [])
+      .filter((step) => step.projectId === financeProject.id)
+      .sort((a, b) => a.order - b.order);
+
+    expect(financeSteps.map((step) => step.financeKind)).toEqual([
+      "bast",
+      "invoice",
+    ]);
+    expect(
+      (migratePersistedState(twice).steps ?? []).filter(
+        (step) => step.projectId === financeProject.id,
+      ),
+    ).toHaveLength(2);
+  });
 });
+
