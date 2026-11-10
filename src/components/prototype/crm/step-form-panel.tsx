@@ -23,10 +23,12 @@ import {
   canAssignForm,
   canEditForm,
   canReviewForm,
+  financeAssigneeCandidates,
   formatCurrency,
   formatDate,
   formatDateTime,
   formFor,
+  reviewerCandidates,
   tasksForStep,
   userById,
 } from "@/lib/prototype/domain";
@@ -1406,7 +1408,7 @@ function PanelInner({
     toast.success("Versi terbaru dimuat.");
   };
 
-  const candidates = store.users.filter((user) => user.role === "finance");
+  const candidates = financeAssigneeCandidates(store, form);
   const canAssign = canAssignForm(currentUser) && !readOnly;
 
   const selectedVersion =
@@ -1435,6 +1437,11 @@ function PanelInner({
             : "";
 
   const unassigned = form.status === "unassigned" && !form.assigneeId;
+  const canSetReviewer =
+    form.status !== "approved" &&
+    (currentUser.role === "admin" ||
+      currentUser.role === "manager" ||
+      (currentUser.role === "pm" && project.createdById === currentUser.id));
 
   return (
     <div className="space-y-4">
@@ -1477,6 +1484,32 @@ function PanelInner({
           ) : null}
         </div>
 
+        {canSetReviewer ? (
+          <div className="flex flex-wrap items-center gap-2 border-b bg-muted/20 px-4 py-2 text-xs">
+            <span className="font-medium">Reviewer</span>
+            <NativeSelect
+              value={form.reviewerId ?? ""}
+              onChange={(value) => {
+                store.setFormReviewer(form.id, value || undefined);
+                toast.success(
+                  value ? "Reviewer ditetapkan." : "Reviewer dihapus.",
+                );
+              }}
+              className="h-8 w-[200px] text-xs"
+            >
+              <option value="">Belum ditentukan</option>
+              {reviewerCandidates(store).map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name}
+                </option>
+              ))}
+            </NativeSelect>
+            <span className="text-muted-foreground text-[10px]">
+              PM, Manager, atau Finance
+            </span>
+          </div>
+        ) : null}
+
         {unassigned ? (
           <div className="p-4">
             <EmptyState
@@ -1491,7 +1524,7 @@ function PanelInner({
                       onChange={setAssignUserId}
                       className="h-8 w-[200px] text-xs"
                     >
-                      <option value="">Pilih Finance</option>
+                      <option value="">Pilih Finance/Media</option>
                       {candidates.map((user) => (
                         <option key={user.id} value={user.id}>
                           {user.name}
@@ -1639,7 +1672,7 @@ function PanelInner({
 
               {mode === "review" && reviewer && form.status === "submitted" ? (
                 <div className="space-y-2 rounded-xl border bg-muted/20 p-3">
-                  <p className="text-xs font-semibold">Review PM</p>
+                  <p className="text-xs font-semibold">Review</p>
                   <Textarea
                     value={reviewComment}
                     onChange={(event) => setReviewComment(event.target.value)}

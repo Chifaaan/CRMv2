@@ -415,25 +415,33 @@ export function TaskDialog({
   if (!project) return null;
 
   const isCreate = !task;
-  const canAssign = isNewLifecycleProject(project)
-    ? currentUser?.role === "admin" || currentUser?.role === "manager"
-    : assignees.length > 0;
+  const isOwner = Boolean(currentUser && canManageProject(currentUser, project));
+  const managers = store.users.filter((user) => user.role === "manager");
+  const canSetManager =
+    isOwner &&
+    isNewLifecycleProject(project) &&
+    task !== undefined &&
+    (task.status === "backlog" || task.status === "todo");
+  const canAssign = task
+    ? isNewLifecycleProject(project)
+      ? currentUser?.role === "admin" ||
+        (currentUser?.role === "manager" && task.managerId === currentUser.id)
+      : assignees.length > 0
+    : false;
   const canReassign =
     canAssign &&
     task !== undefined &&
-    task.status !== "awaiting_approval" &&
-    task.status !== "completed";
+    (task.status === "backlog" || task.status === "todo");
   const canReview = task && currentUser ? canReviewTask(store, currentUser, task) : false;
   const canWork = task && currentUser ? canWorkTask(currentUser, task) : false;
-  const canMoveAny =
-    Boolean(
-      task &&
-        currentUser &&
-        project &&
-        canManageProject(currentUser, project) &&
-        task.assigneeId &&
-        task.status !== "completed",
-    );
+  const canMoveAny = Boolean(
+    task &&
+      currentUser &&
+      project &&
+      canManageProject(currentUser, project) &&
+      (task.managerId || task.assigneeId) &&
+      task.status !== "completed",
+  );
   const canSeeWorkLink = Boolean(
     currentUser &&
       (currentUser.role === "admin" ||
@@ -467,7 +475,10 @@ export function TaskDialog({
 
   const move = (to: TaskStatus) => {
     if (!task || !currentUser) return;
-    const result = taskTransition(store, currentUser, task, to);
+    const result = taskTransition(store, currentUser, task, to, {
+      workUrl: to === "in_progress" ? workUrl : workUrl || undefined,
+      comment: to === "need_revision" ? reviewComment : undefined,
+    });
     if (!result.ok) {
       toast.error(result.reason ?? "Transisi tidak diizinkan.");
       return;
@@ -484,6 +495,13 @@ export function TaskDialog({
       workUrl: to === "in_progress" ? workUrl : undefined,
       comment: to === "need_revision" ? reviewComment : undefined,
     });
+    const updated = usePrototypeStore
+      .getState()
+      .tasks.find((item) => item.id === task.id);
+    if (updated?.status !== to) {
+      toast.error("Transisi tidak diizinkan.");
+      return;
+    }
     toast.success(`Task dipindahkan ke ${TASK_STATUS_LABEL[to]}.`);
   };
 
@@ -524,7 +542,8 @@ export function TaskDialog({
               </Field>
             </div>
             <p className="text-muted-foreground text-xs">
-              Task akan masuk Backlog tanpa assignee. Manager/Admin meng-assign ke assignee.
+              Task masuk Backlog tanpa assignee. PM menetapkan Manager Tugas, lalu
+              Manager memilih assignee.
             </p>
           </div>
         ) : task ? (
@@ -544,6 +563,40 @@ export function TaskDialog({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
+              {isNewLifecycleProject(project) ? (
+                <Field
+                  label="Manager Tugas"
+                  hint="PM menetapkan Manager Tugas; card pindah ke To Do dan assignee dipilih Manager."
+                >
+                  {canSetManager ? (
+                    <NativeSelect
+                      value={task.managerId ?? ""}
+                      onChange={(value) => {
+                        store.setTaskManager(task.id, value || undefined);
+                        const manager = userById(store, value);
+                        toast.success(
+                          manager
+                            ? `Manager Tugas ${manager.name} ditetapkan.`
+                            : "Manager Tugas dihapus.",
+                        );
+                      }}
+                    >
+                      <option value="">Pilih Manager</option>
+                      {managers.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  ) : (
+                    <span className="text-xs">
+                      {task.managerId
+                        ? userById(store, task.managerId)?.name ?? "—"
+                        : "Belum ditetapkan"}
+                    </span>
+                  )}
+                </Field>
+              ) : null}
               <Field label="Assignee">
                 <div className="flex items-center gap-2">
                   <UserAvatar user={userById(store, task.assigneeId)} showName />
@@ -568,7 +621,7 @@ export function TaskDialog({
                         onClick={() => {
                           if (!assignTo) return;
                           store.assignTask(task.id, assignTo);
-                          toast.success("Task di-assign dan masuk To Do.");
+                          toast.success("Task di-assign.");
                         }}
                       >
                         Assign
@@ -581,10 +634,10 @@ export function TaskDialog({
               task &&
               currentUser?.role === "pm" &&
               project.createdById === currentUser.id &&
-              !project.managerId ? (
+              !task.managerId ? (
                 <p className="text-muted-foreground text-[11px] sm:col-span-2">
-                  Tetapkan Manager penanggung jawab proyek terlebih dahulu agar
-                  Anda dapat meng-assign task kepada Manager.
+                  Tetapkan Manager Tugas terlebih dahulu agar Manager dapat memilih
+                  assignee untuk card ini.
                 </p>
               ) : null}
               <Field label="Prioritas">

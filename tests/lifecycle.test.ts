@@ -146,6 +146,7 @@ describe("post-prospek project lifecycle", () => {
     });
     expect(taskId).not.toBe("");
 
+    state().setTaskManager(taskId, "u-manager");
     state().setCurrentUser("u-manager");
     state().assignTask(taskId, "u-assignee1");
     state().setCurrentUser("u-assignee1");
@@ -182,8 +183,118 @@ describe("post-prospek project lifecycle", () => {
     expect(
       steps(projectId).find((step) => step.id === activeStep.id)?.status,
     ).toBe("completed");
-    expect(state().completeProjectPhase(projectId, "planning")).toBe(true);
     expect(project(projectId).phaseCompletedAt?.planning).toBeTruthy();
+    expect(
+      steps(projectId).find((step) => step.status === "active")?.phase,
+    ).toBe("running");
+    expect(state().completeProjectPhase(projectId, "planning")).toBe(false);
+  });
+
+  it("auto-advances a finished phase and recovers a missing Manager PIC", () => {
+    const projectId = createTemplateProject();
+    state().startProject(projectId, "planning", { managerPicId: "u-manager" });
+    const activeStep = steps(projectId).find((step) => step.status === "active")!;
+    const runningFirst = steps(projectId).find(
+      (step) => step.phase === "running",
+    )!;
+    usePrototypeStore.setState({
+      steps: state().steps.map((step) =>
+        step.id === runningFirst.id
+          ? { ...step, managerPicId: undefined }
+          : step,
+      ),
+      tasks: [
+        ...state().tasks,
+        {
+          ...state().tasks[0],
+          id: "task-planning-advance",
+          projectId,
+          stepKey: activeStep.key,
+          stageId: activeStep.id,
+          status: "completed" as const,
+        },
+      ],
+    });
+
+    expect(state().completeStep(projectId, activeStep.key)).toBe(true);
+    expect(project(projectId).phaseCompletedAt?.planning).toBeTruthy();
+    expect(steps(projectId).some((step) => step.status === "active")).toBe(
+      false,
+    );
+    expect(
+      steps(projectId).find((step) => step.id === runningFirst.id)?.status,
+    ).toBe("pending");
+
+    expect(
+      state().updateProjectStep(projectId, runningFirst.id, {
+        managerPicId: "u-manager",
+      }),
+    ).toBe(true);
+    expect(
+      steps(projectId).find((step) => step.id === runningFirst.id)?.status,
+    ).toBe("active");
+  });
+
+  it("hands Prospek over to Planning when its last step finishes", () => {
+    state().setCurrentUser("u-pm1");
+    const projectId = state().createProject({
+      name: "Prospek Handoff",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      mode: "manual",
+      managerId: "u-manager",
+    });
+    const prospekStep = {
+      id: "step-prospek-test",
+      projectId,
+      key: "step-prospek-test",
+      name: "Prospek Test",
+      phase: "prospek" as const,
+      order: 1,
+      status: "pending" as const,
+      kind: "simpro" as const,
+      required: true,
+      weight: 1,
+      tasks: [],
+      managerPicId: "u-manager",
+    };
+    usePrototypeStore.setState({
+      steps: [...state().steps, prospekStep],
+    });
+    expect(
+      state().startProject(projectId, "prospek", {
+        managerPicId: "u-manager",
+      }),
+    ).toBe(true);
+    usePrototypeStore.setState({
+      tasks: [
+        ...state().tasks,
+        {
+          ...state().tasks[0],
+          id: "task-prospek-advance",
+          projectId,
+          stepKey: prospekStep.key,
+          stageId: prospekStep.id,
+          status: "completed" as const,
+        },
+      ],
+    });
+
+    expect(state().completeStep(projectId, prospekStep.key)).toBe(true);
+    expect(project(projectId).phaseCompletedAt?.prospek).toBeTruthy();
+    const planningStep = state().addProjectStep(projectId, {
+      name: "Planning Setelah Prospek",
+      phase: "planning",
+      managerPicId: "u-manager",
+    });
+    expect(planningStep).not.toBe("");
+    expect(
+      steps(projectId).find((step) => step.id === planningStep)?.status,
+    ).toBe("active");
   });
 
   it("keeps Running empty for a manual Planning start and allows next-phase steps", () => {
@@ -317,6 +428,7 @@ describe("post-prospek project lifecycle", () => {
       priority: "medium",
       stepKey: step.key,
     });
+    state().setTaskManager(taskId, "u-manager");
     state().setCurrentUser("u-manager");
     state().assignTask(taskId, "u-assignee1");
 
@@ -357,6 +469,7 @@ describe("post-prospek project lifecycle", () => {
       priority: "medium",
       stepKey: activeStep.key,
     });
+    state().setTaskManager(taskId, "u-manager");
     state().setCurrentUser("u-manager");
     state().assignTask(taskId, "u-assignee1");
     state().setCurrentUser("u-assignee1");

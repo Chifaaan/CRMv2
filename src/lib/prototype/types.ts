@@ -106,6 +106,7 @@ export type FormEntry = {
   templateStageId?: string;
   title: string;
   assigneeId?: string;
+  reviewerId?: string;
   dueDate?: string;
   status: FormEntryStatus;
   payload: FormEntryPayload;
@@ -170,7 +171,9 @@ export type Project = {
   creationMode?: ProjectCreationMode;
   startedAt?: string;
   initialPhase?: "prospek" | "planning" | "running";
-  phaseCompletedAt?: Partial<Record<"planning" | "running" | "finance", string>>;
+  phaseCompletedAt?: Partial<
+    Record<"prospek" | "planning" | "running" | "finance", string>
+  >;
   startPromptDismissedAt?: string;
   cancelReason?: string;
   createdAt: string;
@@ -292,6 +295,8 @@ export type Task = {
   description: string;
   priority: Priority;
   status: TaskStatus;
+  /** Task-level Manager Tugas selected by the owning PM/Admin. */
+  managerId?: string;
   requestedAssigneeId?: string;
   assigneeId?: string;
   reporterId: string;
@@ -467,6 +472,7 @@ export type StepForm = {
   type: FormStepKey;
   status: FormStatus;
   assigneeId?: string;
+  reviewerId?: string;
   payload: FormPayload;
   photos?: SurveyPhoto[];
   versions?: FormVersion[];

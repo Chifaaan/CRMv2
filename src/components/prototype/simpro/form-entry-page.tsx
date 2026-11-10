@@ -15,6 +15,7 @@ import {
   formatDate,
   formatDateTime,
   operationalAssigneeCandidates,
+  reviewerCandidates,
   stepFor,
   userById,
 } from "@/lib/prototype/domain";
@@ -369,6 +370,12 @@ export function FormEntryPage({
     ? operationalAssigneeCandidates(store, currentUser, project)
     : [];
   const canAssign = assignCandidates.length > 0;
+  const canSetReviewer =
+    entry.status !== "approved" &&
+    entry.status !== "cancelled" &&
+    (currentUser.role === "admin" ||
+      currentUser.role === "manager" ||
+      (currentUser.role === "pm" && project.createdById === currentUser.id));
   const canCancel = canCancelFormEntry(store, currentUser, entry);
   const defaultFields = template?.defaultFields ?? {
     executionDate: { enabled: true, required: true },
@@ -435,6 +442,9 @@ export function FormEntryPage({
           <p className="text-muted-foreground text-xs">
             {contextName} · Assignee{" "}
             {userById(store, entry.assigneeId)?.name ?? "Belum di-assign"}
+            {entry.reviewerId
+              ? ` · Reviewer ${userById(store, entry.reviewerId)?.name ?? "—"}`
+              : ""}
             {entry.dueDate ? ` · Tenggat ${formatDate(entry.dueDate)}` : ""}
           </p>
         </div>
@@ -485,6 +495,31 @@ export function FormEntryPage({
               Assign
             </Button>
           </div>
+        </SectionCard>
+      ) : null}
+
+      {canSetReviewer ? (
+        <SectionCard
+          title="Reviewer"
+          description="Reviewer dapat menyetujui atau meminta revisi. Hanya PM, Manager, dan Finance."
+        >
+          <NativeSelect
+            value={entry.reviewerId ?? ""}
+            onChange={(value) => {
+              store.setFormEntryReviewer(entry.id, value || undefined);
+              toast.success(
+                value ? "Reviewer ditetapkan." : "Reviewer dihapus.",
+              );
+            }}
+            className="w-[240px]"
+          >
+            <option value="">Belum ditentukan</option>
+            {reviewerCandidates(store).map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.name}
+              </option>
+            ))}
+          </NativeSelect>
         </SectionCard>
       ) : null}
 
@@ -642,7 +677,7 @@ export function FormEntryPage({
       ) : null}
 
       {reviewer ? (
-        <SectionCard title="Review PM" description="Setujui atau minta revisi.">
+        <SectionCard title="Review" description="Setujui atau minta revisi.">
           <Textarea
             value={reviewComment}
             onChange={(event) => setReviewComment(event.target.value)}

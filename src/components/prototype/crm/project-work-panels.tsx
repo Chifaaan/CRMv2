@@ -274,6 +274,7 @@ export function CrmProjectBacklogTab({
               <th className="px-2 py-2">Status</th>
               <th className="px-2 py-2">Prioritas</th>
               <th className="px-2 py-2">Due</th>
+              <th className="px-2 py-2">Manager Tugas</th>
               <th className="px-2 py-2">Assignee</th>
               <th className="px-2 py-2">Aksi</th>
             </tr>
@@ -303,6 +304,13 @@ export function CrmProjectBacklogTab({
                     <PriorityBadge priority={task.priority} />
                   </td>
                   <td className="px-2 py-2">{formatDate(task.dueDate)}</td>
+                  <td className="px-2 py-2">
+                    {task.managerId ? (
+                      <UserAvatar user={userById(store, task.managerId)} size="sm" showName />
+                    ) : (
+                      <span className="text-muted-foreground text-[10px]">—</span>
+                    )}
+                  </td>
                   <td className="px-2 py-2">
                     {task.assigneeId ? (
                       <UserAvatar user={userById(store, task.assigneeId)} size="sm" showName />
@@ -342,13 +350,23 @@ export function CrmProjectFormsTab({ project }: { project: Project }) {
       (form.type === "mo" && projectMediaOrders(store, project.id).length > 0),
   );
   const entries = formEntriesForProject(store, project.id).filter((entry) =>
-    currentUser.role === "assignee" || currentUser.role === "finance"
-      ? entry.assigneeId === currentUser.id
+    currentUser.role === "assignee" ||
+    currentUser.role === "finance" ||
+    currentUser.role === "media"
+      ? entry.assigneeId === currentUser.id ||
+        entry.reviewerId === currentUser.id
       : true,
   );
   const visibleForms = forms.filter((form) => {
-    if (currentUser.role === "finance" || currentUser.role === "assignee") {
-      return form.assigneeId === currentUser.id;
+    if (
+      currentUser.role === "finance" ||
+      currentUser.role === "assignee" ||
+      currentUser.role === "media"
+    ) {
+      return (
+        form.assigneeId === currentUser.id ||
+        form.reviewerId === currentUser.id
+      );
     }
     return true;
   });
@@ -372,6 +390,9 @@ export function CrmProjectFormsTab({ project }: { project: Project }) {
                   <p className="text-xs font-medium">{formLabel(form.type)}</p>
                   <p className="text-muted-foreground text-[10px]">
                     Assignee {userById(store, form.assigneeId)?.name ?? "Belum di-assign"}
+                    {form.reviewerId
+                      ? ` · Reviewer ${userById(store, form.reviewerId)?.name ?? "—"}`
+                      : ""}
                   </p>
                 </div>
                 <FormStatusBadge status={form.status} />
@@ -404,6 +425,9 @@ export function CrmProjectFormsTab({ project }: { project: Project }) {
                   <p className="text-muted-foreground text-[10px]">
                     {FORM_ENTRY_STATUS_LABEL[entry.status]}
                     {entry.dueDate ? ` · Tenggat ${formatDate(entry.dueDate)}` : ""}
+                    {entry.reviewerId
+                      ? ` · Reviewer ${userById(store, entry.reviewerId)?.name ?? "—"}`
+                      : ""}
                   </p>
                 </div>
                 <UserAvatar user={userById(store, entry.assigneeId)} size="sm" />

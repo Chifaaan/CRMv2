@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createSeedState } from "../src/lib/prototype/seed";
 import { migratePersistedState, usePrototypeStore } from "../src/lib/prototype/store";
 import {
+  canReviewForm,
+  canReviewFormEntry,
+  canViewProject,
   commercialProjectRows,
+  formEntriesNeedingReview,
   formLabel,
   groupProgress,
   landingForRole,
@@ -324,6 +328,50 @@ describe("Business table rows", () => {
     const pm2Rows = commercialProjectRows(seed, "rab", pm2);
     expect(pm1Rows.every((row) => row.project.createdById === pm1.id)).toBe(true);
     expect(pm2Rows.every((row) => row.project.createdById === pm2.id)).toBe(true);
+  });
+
+  it("lets a selected reviewer open and review the form", () => {
+    const seed = createSeedState();
+    const project = seed.projects.find((item) => item.id === "p-gamma")!;
+    const baseForm = seed.forms.find(
+      (form) => form.projectId === project.id && form.type === "rab",
+    )!;
+    const finance = seed.users.find((user) => user.id === "u-finance")!;
+    const pm2 = seed.users.find((user) => user.id === "u-pm2")!;
+    const reviewed: StepForm = {
+      ...baseForm,
+      status: "submitted",
+      reviewerId: finance.id,
+    };
+    const state: AppState = {
+      ...seed,
+      projects: [project],
+      forms: [reviewed],
+      formEntries: [
+        {
+          id: "entry-reviewer",
+          projectId: project.id,
+          stepKey: "step-form",
+          title: "Entry reviewer",
+          reviewerId: finance.id,
+          status: "submitted",
+          payload: { values: {} },
+          versions: [],
+          createdById: "u-pm1",
+          createdAt: "2026-10-02T09:00:00.000Z",
+        },
+      ],
+    };
+
+    expect(canViewProject(state, finance, project)).toBe(true);
+    expect(canReviewForm(state, finance, reviewed)).toBe(true);
+    expect(canReviewForm(state, pm2, reviewed)).toBe(false);
+    expect(canReviewFormEntry(state, finance, state.formEntries[0])).toBe(true);
+    expect(
+      formEntriesNeedingReview(state, finance.id).some(
+        (entry) => entry.id === "entry-reviewer",
+      ),
+    ).toBe(true);
   });
 
   it("derives MO rows from non-cancelled documents only", () => {

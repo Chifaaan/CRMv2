@@ -39,9 +39,8 @@ function projectHasFinanceStage(state: AppState, form: StepForm): boolean {
 }
 
 /**
- * Forms SIMPRO visibility for finance forms: only the assigned Finance user,
- * the owning PM (reviewer), and Admin. Manager/Assignee do not get assignment
- * or review on these forms, so they do not see them in this menu.
+ * Forms SIMPRO visibility for finance forms: the assigned Finance or Media
+ * user, a selected reviewer, the owning PM, Manager, and Admin.
  */
 export function canSeeFinanceFormInSimpro(
   state: AppState,
@@ -54,11 +53,14 @@ export function canSeeFinanceFormInSimpro(
   if (!projectHasFinanceStage(state, form)) return false;
 
   if (user.role === "admin") return true;
-  if (user.role === "pm") return project.createdById === user.id;
+  if (user.role === "pm") {
+    return project.createdById === user.id || form.reviewerId === user.id;
+  }
   if (user.role === "manager") return true;
+  if (form.reviewerId === user.id) return true;
   if (user.role === "finance") return form.assigneeId === user.id;
   if (user.role === "media") {
-    return form.type === "bast" && form.assigneeId === user.id;
+    return form.assigneeId === user.id;
   }
   return false;
 }

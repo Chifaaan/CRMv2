@@ -397,7 +397,7 @@ describe("media and BOD roles", () => {
     );
   });
 
-  it("lets media fill an assigned BAST but not RAB", () => {
+  it("lets media fill any assigned finance form", () => {
     const project = activeProject(seed);
     const media = mediaUser(seed);
     const bastForm = financeForm(project, "bast", media.id);
@@ -424,8 +424,12 @@ describe("media and BOD roles", () => {
       steps: [financeStep(project, "rab")],
       forms: [rabForm],
     };
-    expect(canEditForm(rabState, media, rabForm)).toBe(false);
-    expect(canSeeFinanceFormInSimpro(rabState, media, rabForm)).toBe(false);
+    expect(canEditForm(rabState, media, rabForm)).toBe(true);
+    expect(canSeeFinanceFormInSimpro(rabState, media, rabForm)).toBe(true);
+    const unassignedRab = { ...rabForm, assigneeId: undefined };
+    expect(
+      canEditForm({ ...rabState, forms: [unassignedRab] }, media, unassignedRab),
+    ).toBe(false);
   });
 
   it("counts media form work in the Forms badge and excludes review", () => {
@@ -560,8 +564,9 @@ describe("form assignment from Forms", () => {
     ).toEqual(["finance", "media"]);
     expect(
       financeAssigneeCandidates(state, financeForm(project, "rab", ""))
-        .map((user) => user.role),
-    ).toEqual(["finance"]);
+        .map((user) => user.role)
+        .sort(),
+    ).toEqual(["finance", "media"]);
 
     usePrototypeStore.getState().reset();
     usePrototypeStore.setState({

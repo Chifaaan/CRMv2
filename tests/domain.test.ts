@@ -17,6 +17,7 @@ import {
   workProgressForProject,
 } from "../src/lib/prototype/domain";
 import { createSeedState } from "../src/lib/prototype/seed";
+import type { Task } from "../src/lib/prototype/types";
 
 describe("journey progress", () => {
   it("uses four full steps plus finance split 0.5/0.5", () => {
@@ -176,6 +177,58 @@ describe("task transitions", () => {
     const manager = userById(state, "u-manager")!;
     expect(taskTransition(state, manager, task, "completed").ok).toBe(false);
     expect(taskTransition(state, pm, task, "completed").ok).toBe(true);
+  });
+
+  it("requires a Manager Tugas or assignee and a revision comment on new projects", () => {
+    const seed = createSeedState();
+    const pm = userById(seed, "u-pm1")!;
+    const project = {
+      ...seed.projects[0],
+      id: "p-new-lifecycle",
+      createdById: "u-pm1",
+      creationMode: "template" as const,
+      status: "active" as const,
+    };
+    const task: Task = {
+      id: "task-new",
+      code: "NEW-001",
+      projectId: project.id,
+      stepKey: "step-1",
+      title: "Card baru",
+      description: "",
+      priority: "medium",
+      status: "todo",
+      managerId: "u-manager",
+      reporterId: "u-pm1",
+      createdAt: new Date().toISOString(),
+      checklist: [],
+      comments: [],
+      attachments: [],
+    };
+    const state = { ...seed, projects: [project], tasks: [task] };
+
+    expect(
+      taskTransition(state, pm, task, "in_progress", { workUrl: "catatan" }).ok,
+    ).toBe(true);
+    expect(
+      taskTransition(
+        state,
+        pm,
+        { ...task, managerId: undefined },
+        "in_progress",
+        { workUrl: "catatan" },
+      ).ok,
+    ).toBe(false);
+
+    const submitted = { ...task, status: "awaiting_approval" as const };
+    expect(
+      taskTransition(state, pm, submitted, "need_revision").ok,
+    ).toBe(false);
+    expect(
+      taskTransition(state, pm, submitted, "need_revision", {
+        comment: "Perbaiki",
+      }).ok,
+    ).toBe(true);
   });
 });
 

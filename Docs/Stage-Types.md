@@ -11,7 +11,7 @@ Dokumen ini adalah addendum untuk `Docs/PRD-Alur-CRM-Baru.md`. Fokusnya empat ti
 - Setiap step memiliki Manager PIC; aktivasi step membutuhkan Manager PIC.
 - Hanya PM pemilik atau Admin yang mengelola step. Step pending dapat ditambah, diubah, dihapus, atau diurutkan selama proyek aktif; step yang sudah berjalan hanya boleh mengubah nama, Manager PIC, dan deskripsi.
 - Tambah/Edit Step di Journey Management memakai dialog berisi nama, fase, jenis step, jenis form/gerbang, Manager PIC, dan deskripsi. Tidak ada kartu "Pilih Step". Daftar **Kelola fase** mengikuti fase yang dipilih pada stepper header: memilih Planning menampilkan step Planning, memilih Running menampilkan step Running, dan seterusnya; tombol selesai fase hanya aktif untuk fase berjalan. Stepper header menampilkan fase Prospek bila proyek menyertakannya.
-- Manager/Admin dapat menetapkan assignee Form atau Form Keuangan yang belum di-assign dari menu Forms maupun saat form dibuka. Kandidat Form Keuangan mengikuti jenis form: RAB/Invoice/Pembayaran/MO hanya Finance, BAST dapat Finance atau Media.
+- Manager/Admin dapat menetapkan assignee Form atau Form Keuangan yang belum di-assign dari menu Forms maupun saat form dibuka. Kandidat Form Keuangan adalah Finance atau Media untuk setiap jenis form.
 - SIMPRO memiliki Dashboard untuk semua role SIMPRO; untuk Assignee/Media datanya dibatasi pada task dan proyek yang di-assign kepada mereka.
 
 ## Step wajib per fase
@@ -32,7 +32,7 @@ Dokumen ini adalah addendum untuk `Docs/PRD-Alur-CRM-Baru.md`. Fokusnya empat ti
 
 | Tipe | Pelaksana | Tempat | Selesai bila |
 | --- | --- | --- | --- |
-| Form Keuangan | Finance (BAST juga Media) | CRM | RAB/MO/BAST/Invoice/Pembayaran memenuhi aturan form keuangan |
+| Form Keuangan | Finance atau Media | CRM | RAB/MO/BAST/Invoice/Pembayaran memenuhi aturan form keuangan |
 | Form | Assignee/Manager/Media yang di-assign Manager/Admin | Menu Forms | Semua entri non-batal disetujui, minimal satu entri atau konfirmasi tidak ada pekerjaan |
 | Gerbang | PM/Admin | CRM | Keputusan disetujui atau ditolak; hanya untuk proyek legacy |
 | SIMPRO | Assignee/Manager/Media lewat Kanban | Board SIMPRO | Semua kartu non-batal Completed, minimal satu kartu atau konfirmasi tidak ada pekerjaan (legacy) |
@@ -51,7 +51,7 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 ## Mesin Form
 
 - Satu tahap Form punya satu template form dan banyak entri.
-- Entri dibuat PM (Belum ditugaskan), di-assign Manager/Admin, diisi Assignee/Manager/Media, lalu direview PM.
+- Entri dibuat PM (Belum ditugaskan), di-assign Manager/Admin, diisi Assignee/Manager/Media, lalu direview PM, Admin, atau Reviewer yang dipilih.
 - Status entri: Belum ditugaskan, Ditugaskan, Draft, Submitted, Disetujui, Perlu revisi, Dibatalkan.
 - Isian default: tanggal pelaksanaan, lokasi, keterangan, foto. Setiap isian bisa disembunyikan/diwajibkan per template.
 - Isian tambahan: teks, angka, tanggal, pilihan, daftar centang, unggah file. Maksimal 20 isian.

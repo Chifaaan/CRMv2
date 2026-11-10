@@ -20,6 +20,7 @@ import {
   formFor,
   formatDate,
   projectMediaOrders,
+  reviewerCandidates,
   userById,
 } from "@/lib/prototype/domain";
 import type { Project } from "@/lib/prototype/types";
@@ -143,6 +144,11 @@ function MediaOrderFormPanel({
                 Submit {formatDate(form.submittedAt)}
               </span>
             ) : null}
+            {form.reviewerId ? (
+              <span className="text-muted-foreground">
+                Reviewer {userById(store, form.reviewerId)?.name ?? "—"}
+              </span>
+            ) : null}
             <span className="bg-muted rounded px-1.5 py-0.5 text-[10px] font-semibold">
               {projectMediaOrders(store, project.id).length} dokumen MO
             </span>
@@ -156,7 +162,7 @@ function MediaOrderFormPanel({
                 onChange={setAssignTo}
                 className="h-8 w-[200px] text-xs"
               >
-                <option value="">Pilih Finance</option>
+                <option value="">Pilih Finance/Media</option>
                 {candidates.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.name}
@@ -174,6 +180,33 @@ function MediaOrderFormPanel({
               >
                 Assign
               </Button>
+            </div>
+          ) : null}
+
+          {form.status !== "approved" &&
+          (currentUser.role === "admin" ||
+            currentUser.role === "manager" ||
+            (currentUser.role === "pm" &&
+              project.createdById === currentUser.id)) ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
+              <span className="font-medium">Reviewer</span>
+              <NativeSelect
+                value={form.reviewerId ?? ""}
+                onChange={(value) => {
+                  store.setFormReviewer(form.id, value || undefined);
+                  toast.success(
+                    value ? "Reviewer ditetapkan." : "Reviewer dihapus.",
+                  );
+                }}
+                className="h-8 w-[200px] text-xs"
+              >
+                <option value="">Belum ditentukan</option>
+                {reviewerCandidates(store).map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </NativeSelect>
             </div>
           ) : null}
 

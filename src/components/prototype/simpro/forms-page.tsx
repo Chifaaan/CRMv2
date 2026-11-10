@@ -249,7 +249,8 @@ export function SimproFormsPage() {
         (currentUser.role === "assignee" ||
           currentUser.role === "finance" ||
           currentUser.role === "media") &&
-        entry.assigneeId !== currentUser.id
+        entry.assigneeId !== currentUser.id &&
+        entry.reviewerId !== currentUser.id
       ) {
         continue;
       }

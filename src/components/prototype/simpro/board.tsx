@@ -57,6 +57,7 @@ function BoardCard({
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
   const assignee = userById(store, task.assigneeId);
+  const manager = userById(store, task.managerId);
   const requested = userById(store, task.requestedAssigneeId);
   const currentUser = userById(store, store.currentUserId);
   const project = store.projects.find((item) => item.id === task.projectId);
@@ -123,6 +124,10 @@ function BoardCard({
           {assignee ? (
             <>
               <User className="size-3" /> {assignee.name}
+            </>
+          ) : manager ? (
+            <>
+              <User className="size-3" /> Manager: {manager.name}
             </>
           ) : requested ? (
             <>

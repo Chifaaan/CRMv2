@@ -60,6 +60,7 @@ import {
   projectPhase,
   projectProgress,
   projectWorkspaceTabs,
+  reviewerCandidates,
   roleCanSeeCommercialTotals,
   tasksForStep,
   userById,
@@ -991,6 +992,7 @@ function FormStagePanel({
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [reviewerId, setReviewerId] = useState("");
 
   return (
     <div className="space-y-4">
@@ -1043,6 +1045,9 @@ function FormStagePanel({
                   <p className="text-muted-foreground text-[10px]">
                     {FORM_ENTRY_STATUS_LABEL[entry.status]}
                     {entry.dueDate ? ` · Tenggat ${formatDate(entry.dueDate)}` : ""}
+                    {entry.reviewerId
+                      ? ` · Reviewer ${userById(store, entry.reviewerId)?.name ?? "—"}`
+                      : ""}
                   </p>
                 </div>
                 <UserAvatar user={userById(store, entry.assigneeId)} size="sm" />
@@ -1125,6 +1130,27 @@ function FormStagePanel({
                 onChange={(event) => setDueDate(event.target.value)}
               />
             </div>
+            <div>
+              <label className="text-xs font-medium" htmlFor="entry-reviewer">
+                Reviewer
+              </label>
+              <NativeSelect
+                value={reviewerId}
+                onChange={setReviewerId}
+                className="mt-1 w-full"
+              >
+                <option value="">Belum ditentukan</option>
+                {reviewerCandidates(store).map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </NativeSelect>
+              <p className="text-muted-foreground mt-1 text-[10px]">
+                Reviewer dapat menyetujui atau meminta revisi. Hanya PM, Manager,
+                dan Finance.
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
@@ -1138,9 +1164,11 @@ function FormStagePanel({
                   dueDate: dueDate
                     ? new Date(`${dueDate}T00:00:00`).toISOString()
                     : undefined,
+                  reviewerId: reviewerId || undefined,
                 });
                 setTitle("");
                 setDueDate("");
+                setReviewerId("");
                 setCreateOpen(false);
                 toast.success("Entri form dibuat.");
               }}
@@ -1888,6 +1916,27 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
       .find((step) => step.status !== "pending") ??
     selectedPhaseSteps[0];
   const selectedKey = selectedStep?.key;
+  const selectedGate = selectedStep
+    ? evaluateGate(store, project.id, selectedStep.key)
+    : null;
+  const unmetRequirements =
+    selectedGate?.requirements.filter((requirement) => !requirement.met) ?? [];
+  const completionBlocked =
+    selectedStep?.status === "active" &&
+    (selectedStep.kind === "gate" || !selectedGate?.ready);
+  const activeStepExists = projectSteps.some(
+    (step) => step.status === "active",
+  );
+  const firstPendingCurrentPhase = selectedPhaseSteps
+    .filter(
+      (step) => step.status === "pending" && step.phase === currentPhase,
+    )
+    .sort((a, b) => a.order - b.order)[0];
+  const canActivateStep =
+    canManageSteps &&
+    !activeStepExists &&
+    selectedPhase === currentPhase &&
+    Boolean(firstPendingCurrentPhase?.managerPicId);
   const readOnly = project.status !== "active" || selectedStep?.status !== "active";
   const allStepsDone =
     projectSteps.length > 0 &&
@@ -1935,6 +1984,28 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     setSelectedStepKey(null);
     const url = new URL(window.location.href);
     url.searchParams.delete("step");
+    window.history.replaceState(null, "", url);
+  };
+
+  const focusNextStep = () => {
+    const latest = usePrototypeStore.getState();
+    const nextSteps = latest.steps
+      .filter((step) => step.projectId === project.id)
+      .sort((a, b) => a.order - b.order);
+    const nextPhase = projectPhase(
+      latest.projects.find((item) => item.id === project.id) ?? project,
+      nextSteps,
+    );
+    const next =
+      nextSteps.find((step) => step.status === "active") ??
+      nextSteps.find(
+        (step) => step.phase === nextPhase && step.status === "pending",
+      );
+    if (!next) return;
+    setSelectedStepKey(next.key);
+    setSelectedPhase(next.phase);
+    const url = new URL(window.location.href);
+    url.searchParams.set("step", next.key);
     window.history.replaceState(null, "", url);
   };
 
@@ -2148,15 +2219,51 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           ))}
         </div>
         {canManage && selectedStep?.status === "active" ? (
-          <Button
-            size="sm"
-            onClick={() => {
-              store.completeStep(project.id, selectedStep.key);
-              toast.success(`Tahap ${selectedStep.name} diselesaikan.`);
-            }}
-          >
-            Selesaikan Tahap
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              size="sm"
+              disabled={completionBlocked}
+              title={
+                completionBlocked
+                  ? selectedStep.kind === "gate"
+                    ? "Gunakan panel keputusan gerbang."
+                    : unmetRequirements
+                        .map((requirement) => requirement.label)
+                        .join(" · ")
+                  : undefined
+              }
+              onClick={() => {
+                const ok = store.completeStep(project.id, selectedStep.key);
+                if (ok) {
+                  toast.success(`Tahap ${selectedStep.name} diselesaikan.`);
+                  focusNextStep();
+                } else {
+                  toast.error(
+                    selectedStep.kind === "gate"
+                      ? "Gunakan panel gerbang untuk mencatat keputusan."
+                      : unmetRequirements.length > 0
+                        ? `Tahap belum siap: ${unmetRequirements
+                            .map((requirement) => requirement.label)
+                            .join(" · ")}`
+                        : "Tahap belum siap diselesaikan.",
+                  );
+                }
+              }}
+            >
+              Selesaikan Tahap
+            </Button>
+            {completionBlocked ? (
+              <p className="text-muted-foreground max-w-[320px] text-right text-[10px]">
+                {selectedStep.kind === "gate"
+                  ? "Gunakan panel keputusan gerbang."
+                  : unmetRequirements.length > 0
+                    ? unmetRequirements
+                        .map((requirement) => requirement.label)
+                        .join(" · ")
+                    : "Selesaikan pekerjaan tahap terlebih dahulu."}
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -2262,12 +2369,30 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
               >
                 <Plus className="size-3.5" /> Tambah step
               </Button>
+              {canActivateStep && firstPendingCurrentPhase ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const ok = store.activateProjectStep(
+                      project.id,
+                      firstPendingCurrentPhase.id,
+                    );
+                    toast[ok ? "success" : "error"](
+                      ok
+                        ? `Tahap ${firstPendingCurrentPhase.name} aktif.`
+                        : "Tahap belum dapat diaktifkan.",
+                    );
+                    if (ok) focusNextStep();
+                  }}
+                >
+                  Aktifkan tahap {firstPendingCurrentPhase.name}
+                </Button>
+              ) : null}
               <Button
                 size="sm"
                 disabled={
-                  selectedPhase !== currentPhase ||
-                  !selectedPhaseReady ||
-                  selectedPhase === "prospek"
+                  selectedPhase !== currentPhase || !selectedPhaseReady
                 }
                 onClick={() => {
                   const ok = store.completeProjectPhase(
@@ -2279,6 +2404,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
                       ? `Fase ${PHASE_LABEL[selectedPhase]} selesai.`
                       : "Fase belum siap diselesaikan.",
                   );
+                  if (ok) focusNextStep();
                 }}
               >
                 Selesaikan fase {PHASE_LABEL[selectedPhase]}

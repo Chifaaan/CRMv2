@@ -19,6 +19,7 @@ import { createSeedState } from "../src/lib/prototype/seed";
 import { usePrototypeStore } from "../src/lib/prototype/store";
 import {
   KOL_TEMPLATE_ID,
+  UMUM_EXECUTION_TEMPLATE_ID,
   UMUM_TEMPLATE_ID,
 } from "../src/lib/prototype/templates";
 import type { Project, Task } from "../src/lib/prototype/types";
@@ -175,8 +176,152 @@ describe("task assignment and execution", () => {
     expect(task(taskId).assigneeId).toBe("u-manager");
   });
 
-  it("lets Manager assign to Assignee and Manager", () => {
-    const projectId = createProject("u-manager");
+  it("lets PM move a card that has a Manager Tugas but no assignee", () => {
+    usePrototypeStore.getState().setCurrentUser("u-pm1");
+    const projectId = usePrototypeStore.getState().createProject({
+      name: "Manager Tugas Move",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      mode: "template",
+      templateId: UMUM_EXECUTION_TEMPLATE_ID,
+      managerId: "u-manager",
+    });
+    const state = usePrototypeStore.getState();
+    expect(
+      state.projects.find((item) => item.id === projectId)?.creationMode,
+    ).toBe("template");
+    const pm = userById(state, "u-pm1")!;
+    const card: Task = {
+      id: "task-manager-only",
+      code: "KOL-001",
+      projectId,
+      stepKey: "step-1",
+      title: "Card Manager Tugas",
+      description: "",
+      priority: "medium",
+      status: "todo",
+      managerId: "u-manager",
+      reporterId: "u-pm1",
+      createdAt: new Date().toISOString(),
+      checklist: [],
+      comments: [],
+      attachments: [],
+    };
+    expect(
+      taskTransition(state, pm, card, "in_progress", { workUrl: "catatan" }).ok,
+    ).toBe(true);
+    expect(
+      taskTransition(
+        state,
+        pm,
+        { ...card, managerId: undefined },
+        "in_progress",
+        { workUrl: "catatan" },
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("moves a backlog card to To Do when the PM sets the Manager Tugas", () => {
+    usePrototypeStore.getState().setCurrentUser("u-pm1");
+    const projectId = usePrototypeStore.getState().createProject({
+      name: "Manager Tugas Flow",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      mode: "template",
+      templateId: UMUM_EXECUTION_TEMPLATE_ID,
+      managerId: "u-manager",
+    });
+    usePrototypeStore
+      .getState()
+      .startProject(projectId, "planning", { managerPicId: "u-manager" });
+    const step = usePrototypeStore
+      .getState()
+      .steps.filter((item) => item.projectId === projectId)
+      .find((item) => item.status === "active")!;
+    const taskId = usePrototypeStore.getState().createTask(projectId, {
+      title: "Card Manager Tugas",
+      description: "",
+      priority: "medium",
+      stepKey: step.key,
+    });
+    expect(task(taskId).status).toBe("backlog");
+
+    usePrototypeStore.getState().setTaskManager(taskId, "u-manager");
+    expect(task(taskId).managerId).toBe("u-manager");
+    expect(task(taskId).status).toBe("todo");
+    expect(task(taskId).assigneeId).toBeUndefined();
+    expect(
+      usePrototypeStore
+        .getState()
+        .projectEvents.some(
+          (event) =>
+            event.eventType === "task.manager_assigned" &&
+            event.metadata.taskId === taskId,
+        ),
+    ).toBe(true);
+
+    usePrototypeStore.getState().setCurrentUser("u-manager");
+    usePrototypeStore.getState().assignTask(taskId, "u-assignee1");
+    expect(task(taskId).assigneeId).toBe("u-assignee1");
+    usePrototypeStore.getState().assignTask(taskId, "u-manager");
+    expect(task(taskId).assigneeId).toBe("u-manager");
+
+    usePrototypeStore.setState({
+      tasks: usePrototypeStore
+        .getState()
+        .tasks.map((item) =>
+          item.id === taskId ? { ...item, status: "in_progress" } : item,
+        ),
+    });
+    usePrototypeStore.getState().setCurrentUser("u-pm1");
+    usePrototypeStore.getState().setTaskManager(taskId, "u-manager");
+    expect(task(taskId).managerId).toBe("u-manager");
+    usePrototypeStore.getState().setCurrentUser("u-manager");
+    usePrototypeStore.getState().setTaskManager(taskId, undefined);
+    expect(task(taskId).managerId).toBe("u-manager");
+  });
+
+  it("keeps PM allocation rejected on a new-lifecycle card", () => {
+    usePrototypeStore.getState().setCurrentUser("u-pm1");
+    const projectId = usePrototypeStore.getState().createProject({
+      name: "PM Allocation Guard",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      mode: "template",
+      templateId: UMUM_EXECUTION_TEMPLATE_ID,
+      managerId: "u-manager",
+    });
+    usePrototypeStore
+      .getState()
+      .startProject(projectId, "planning", { managerPicId: "u-manager" });
+    const step = usePrototypeStore
+      .getState()
+      .steps.filter((item) => item.projectId === projectId)
+      .find((item) => item.status === "active")!;
+    const taskId = usePrototypeStore.getState().createTask(projectId, {
+      title: "Card PM Guard",
+      description: "",
+      priority: "medium",
+      stepKey: step.key,
+    });
+    usePrototypeStore.getState().setTaskManager(taskId, "u-manager");
+    usePrototypeStore.getState().assignTask(taskId, "u-assignee1");
+    expect(task(taskId).assigneeId).toBeUndefined();
+  });
+
+  it("lets Manager assign to Assignee and Manager", () => {    const projectId = createProject("u-manager");
     const taskId = usePrototypeStore.getState().createTask(projectId, {
       title: "Task Manager",
       description: "",

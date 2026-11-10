@@ -562,6 +562,15 @@ export function canViewProject(
   if (user.role === "admin" || user.role === "manager") {
     return true;
   }
+  const isReviewer =
+    state.forms.some(
+      (form) => form.projectId === project.id && form.reviewerId === user.id,
+    ) ||
+    state.formEntries.some(
+      (entry) =>
+        entry.projectId === project.id && entry.reviewerId === user.id,
+    );
+  if (isReviewer) return true;
   if (user.role === "finance") {
     if (!isNewLifecycleProject(project)) return true;
     return (
@@ -623,6 +632,7 @@ export function projectPhase(
 ): Phase {
   if (project.phaseCompletedAt?.running) return "finance";
   if (project.phaseCompletedAt?.planning) return "running";
+  if (project.phaseCompletedAt?.prospek) return "planning";
   const active = steps
     .filter((step) => step.status === "active")
     .sort((a, b) => a.order - b.order)[0];
@@ -671,6 +681,36 @@ export function canAssignKanbanTask(
   if (!project || !target) return false;
   if (!isOperationalAssignee(target)) return false;
   return user.role === "admin" || user.role === "manager";
+}
+
+/**
+ * Allocation on a new-lifecycle card is owned by the card's Manager Tugas or
+ * an Admin. Only cards that have not been assigned yet can be allocated.
+ */
+export function canAssignCard(
+  user: User,
+  project: Project | undefined,
+  task: Task | undefined,
+  target: User | undefined,
+): boolean {
+  if (!project || !task || !target) return false;
+  if (!isOperationalAssignee(target)) return false;
+  if (task.status !== "backlog" && task.status !== "todo") return false;
+  if (isNewLifecycleProject(project)) {
+    if (user.role === "admin") return true;
+    return user.role === "manager" && task.managerId === user.id;
+  }
+  return canAssignOperational(user, project, target);
+}
+
+export function isReviewerRole(user: User): boolean {
+  return (
+    user.role === "pm" || user.role === "manager" || user.role === "finance"
+  );
+}
+
+export function reviewerCandidates(state: AppState): User[] {
+  return state.users.filter(isReviewerRole);
 }
 
 export function canCancelKanbanTask(
@@ -1002,10 +1042,11 @@ export function taskTransition(
     user.role === "admin" ||
     (user.role === "pm" && project.createdById === user.id);
   if (owner) {
-    if (!task.assigneeId) {
+    if (!task.assigneeId && !task.managerId) {
       return {
         ok: false,
-        reason: "Tetapkan assignee sebelum memindahkan card.",
+        reason:
+          "Tetapkan Manager Tugas atau assignee sebelum memindahkan card.",
       };
     }
     if (
@@ -1092,8 +1133,10 @@ export function financeAssigneeCandidates(
   state: AppState,
   form: StepForm,
 ): User[] {
-  const roles: Role[] = form.type === "bast" ? ["finance", "media"] : ["finance"];
-  return state.users.filter((user) => roles.includes(user.role));
+  void form;
+  return state.users.filter(
+    (user) => user.role === "finance" || user.role === "media",
+  );
 }
 
 export function canAssignFinanceForm(user: User): boolean {
@@ -1123,13 +1166,8 @@ export function canEditForm(
     return project?.createdById === user.id;
   }
   if (form.assigneeId !== user.id) return false;
-  if (form.type === "survey" && user.role !== "assignee") return false;
-  if (form.type === "bast") {
-    if (user.role !== "finance" && user.role !== "media") return false;
-  } else if (form.type !== "survey" && user.role !== "finance") {
-    return false;
-  }
-  return true;
+  if (form.type === "survey") return user.role === "assignee";
+  return user.role === "finance" || user.role === "media";
 }
 
 export function canReviewForm(
@@ -1138,6 +1176,7 @@ export function canReviewForm(
   form: StepForm,
 ): boolean {
   if (user.role === "admin") return true;
+  if (form.reviewerId === user.id) return true;
   if (user.role !== "pm") return false;
   const project = projectById(state, form.projectId);
   return project?.createdById === user.id;
@@ -1190,6 +1229,7 @@ export function canReviewFormEntry(
 ): boolean {
   if (entry.status !== "submitted") return false;
   if (user.role === "admin") return true;
+  if (entry.reviewerId === user.id) return true;
   if (user.role !== "pm") return false;
   if (!entry.projectId) return false;
   const project = projectById(state, entry.projectId);

@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   calculateJourneyProgress,
   canAssignFormEntry,
+  canEditForm,
   canEditFormEntry,
   canReviewFormEntry,
   evaluateGate,
   formsNeedingAction,
+  reviewerCandidates,
   tasksForAssignee,
   userById,
   validateTemplateStages,
@@ -215,8 +217,83 @@ describe("form permissions and separation", () => {
     expect(canReviewFormEntry(submitted, pm2, entry)).toBe(false);
   });
 
-  it("counts forms for the badge and workload but never in My Tasks", () => {
+  it("lets Media edit an assigned finance form for every finance type", () => {
+    const seed = createSeedState();
+    const media = userById(seed, "u-media")!;
+    const rab = seed.forms.find(
+      (form) => form.projectId === "p-gamma" && form.type === "rab",
+    )!;
+    const state: AppState = {
+      ...seed,
+      forms: seed.forms.map((form) =>
+        form.id === rab.id
+          ? { ...form, assigneeId: media.id, status: "assigned" as const }
+          : form,
+      ),
+    };
+    const assignedRab = state.forms.find((form) => form.id === rab.id)!;
+    expect(canEditForm(state, media, assignedRab)).toBe(true);
+
+    const otherMedia = userById(state, "u-assignee1")!;
+    expect(canEditForm(state, otherMedia, assignedRab)).toBe(false);
+  });
+
+  it("offers only PM, Manager, and Finance as reviewers", () => {
+    const state = createSeedState();
+    const roles = new Set(reviewerCandidates(state).map((user) => user.role));
+    expect([...roles].sort()).toEqual(["finance", "manager", "pm"]);
+  });
+
+  it("records reviewer selections and rejects non-reviewer roles", () => {
     const projectId = createKolProject();
+    const step = firstStep(projectId);
+    usePrototypeStore.getState().setCurrentUser("u-pm1");
+    const entryId = usePrototypeStore.getState().createFormEntry(projectId, step.key, {
+      title: "Entri reviewer",
+      reviewerId: "u-finance",
+    });
+    let entry = usePrototypeStore
+      .getState()
+      .formEntries.find((item) => item.id === entryId)!;
+    expect(entry.reviewerId).toBe("u-finance");
+
+    usePrototypeStore.getState().setFormEntryReviewer(entryId, "u-assignee1");
+    entry = usePrototypeStore
+      .getState()
+      .formEntries.find((item) => item.id === entryId)!;
+    expect(entry.reviewerId).toBe("u-finance");
+
+    usePrototypeStore.getState().setFormEntryReviewer(entryId, "u-manager");
+    entry = usePrototypeStore
+      .getState()
+      .formEntries.find((item) => item.id === entryId)!;
+    expect(entry.reviewerId).toBe("u-manager");
+    expect(
+      usePrototypeStore
+        .getState()
+        .projectEvents.some(
+          (event) =>
+            event.eventType === "form_entry.reviewer_assigned" &&
+            event.metadata.entryId === entryId,
+        ),
+    ).toBe(true);
+
+    const rab = usePrototypeStore
+      .getState()
+      .forms.find((form) => form.projectId === "p-gamma" && form.type === "rab")!;
+    usePrototypeStore.getState().setFormReviewer(rab.id, "u-media");
+    expect(
+      usePrototypeStore.getState().forms.find((form) => form.id === rab.id)
+        ?.reviewerId,
+    ).toBeUndefined();
+    usePrototypeStore.getState().setFormReviewer(rab.id, "u-finance");
+    expect(
+      usePrototypeStore.getState().forms.find((form) => form.id === rab.id)
+        ?.reviewerId,
+    ).toBe("u-finance");
+  });
+
+  it("counts forms for the badge and workload but never in My Tasks", () => {    const projectId = createKolProject();
     const step = firstStep(projectId);
     const entryId = usePrototypeStore
       .getState()

@@ -14,6 +14,7 @@ import {
   financeAssigneeCandidates,
   formatDate,
   formFor,
+  reviewerCandidates,
   userById,
 } from "@/lib/prototype/domain";
 import type { FormStepKey } from "@/lib/prototype/types";
@@ -112,6 +113,11 @@ export function FinanceFormPage({
   }
 
   const assignCandidates = financeAssigneeCandidates(store, form);
+  const canSetReviewer =
+    form.status !== "approved" &&
+    (currentUser.role === "admin" ||
+      currentUser.role === "manager" ||
+      (currentUser.role === "pm" && project.createdById === currentUser.id));
   const canAssign =
     canAssignFinanceForm(currentUser) &&
     !form.assigneeId &&
@@ -166,6 +172,9 @@ export function FinanceFormPage({
           <p className="text-muted-foreground text-xs">
             {project.name} · Assignee{" "}
             {userById(store, form.assigneeId)?.name ?? "Belum di-assign"}
+            {form.reviewerId
+              ? ` · Reviewer ${userById(store, form.reviewerId)?.name ?? "—"}`
+              : ""}
             {form.updatedAt ? ` · Diubah ${formatDate(form.updatedAt)}` : ""}
           </p>
         </div>
@@ -182,7 +191,7 @@ export function FinanceFormPage({
       {canAssign ? (
         <SectionCard
           title="Penugasan"
-          description="Form ini belum memiliki assignee. Manager/Admin dapat menetapkan Finance yang mengerjakan."
+          description="Form ini belum memiliki assignee. Manager/Admin dapat menetapkan Finance atau Media yang mengerjakan."
         >
           <div className="flex flex-wrap items-center gap-2">
             <NativeSelect
@@ -209,6 +218,31 @@ export function FinanceFormPage({
               Assign
             </Button>
           </div>
+        </SectionCard>
+      ) : null}
+
+      {canSetReviewer ? (
+        <SectionCard
+          title="Reviewer"
+          description="Reviewer dapat menyetujui atau meminta revisi. Hanya PM, Manager, dan Finance."
+        >
+          <NativeSelect
+            value={form.reviewerId ?? ""}
+            onChange={(value) => {
+              store.setFormReviewer(form.id, value || undefined);
+              toast.success(
+                value ? "Reviewer ditetapkan." : "Reviewer dihapus.",
+              );
+            }}
+            className="w-[240px]"
+          >
+            <option value="">Belum ditentukan</option>
+            {reviewerCandidates(store).map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.name}
+              </option>
+            ))}
+          </NativeSelect>
         </SectionCard>
       ) : null}
 
