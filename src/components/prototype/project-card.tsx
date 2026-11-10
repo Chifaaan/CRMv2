@@ -5,9 +5,12 @@ import { CalendarDays, FolderKanban, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
+  formatCurrency,
   formatDate,
   isNewLifecycleProject,
+  projectCommercialTotals,
   projectProgress,
+  roleCanSeeCommercialTotals,
   userById,
   workProgressForProject,
 } from "@/lib/prototype/domain";
@@ -57,11 +60,16 @@ export function ProjectCard({
   const newProject = isNewLifecycleProject(project) && !project.startedAt;
   const work = workProgressForProject(store, project.id);
   const team = projectTeam(project.id, store, includeFinance);
+  const currentUser = userById(store, store.currentUserId);
+  const commercial = projectCommercialTotals(store, project.id);
+  const showCommercial = currentUser
+    ? roleCanSeeCommercialTotals(currentUser.role)
+    : false;
   const group = project.groupId
     ? store.groups.find((item) => item.id === project.groupId)
     : undefined;
   const attribution = group
-    ? { label: "Umbrella", name: group.name, icon: Users }
+    ? { label: "Umbrella Project", name: group.name, icon: Users }
     : null;
   const AttributionIcon = attribution?.icon;
   const template = project.templateId
@@ -150,6 +158,21 @@ export function ProjectCard({
           </div>
           <ProgressBar value={work} tone="bg-sky-500" />
         </div>
+
+        {showCommercial && (commercial.rab > 0 || commercial.mo > 0) ? (
+          <div className="flex flex-wrap gap-1.5 text-[10px]">
+            {commercial.rab > 0 ? (
+              <span className="bg-muted rounded-md px-1.5 py-0.5 font-semibold">
+                RAB {formatCurrency(commercial.rab)}
+              </span>
+            ) : null}
+            {commercial.mo > 0 ? (
+              <span className="bg-muted rounded-md px-1.5 py-0.5 font-semibold">
+                MO {formatCurrency(commercial.mo)}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-[10px]">
           <span className="inline-flex items-center gap-1">

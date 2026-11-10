@@ -13,8 +13,10 @@ import {
   formLabel,
   formsFor,
   formatDate,
+  projectBoardTasks,
+  projectMediaOrders,
+  taskBoardStage,
   tasksForProject,
-  tasksForStep,
   userById,
 } from "@/lib/prototype/domain";
 import {
@@ -57,7 +59,7 @@ export function CrmProjectBoardTab({
   useEffect(() => {
     const fromQuery = new URLSearchParams(window.location.search).get("stage");
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (fromQuery) setStageKey(fromQuery);
+    setStageKey(fromQuery ?? "");
   }, [project.id]);
 
   if (!currentUser) return null;
@@ -71,13 +73,7 @@ export function CrmProjectBoardTab({
     );
   }
 
-  const selectedStage =
-    stages.find((step) => step.key === stageKey) ??
-    stages.find((step) => step.status === "active") ??
-    [...stages].reverse().find((step) => step.status === "completed") ??
-    stages[0];
-
-  if (!selectedStage) {
+  if (stages.length === 0) {
     return (
       <EmptyState
         icon={ClipboardList}
@@ -87,46 +83,93 @@ export function CrmProjectBoardTab({
     );
   }
 
+  const selectedStage = stages.find((step) => step.key === stageKey);
+  const activeStage = stages.find((step) => step.status === "active");
   const tasks = visibleTasks(
     currentUser.role,
     currentUser.id,
-    tasksForStep(store, project.id, selectedStage.key),
+    projectBoardTasks(store, project.id, selectedStage?.key),
   );
-  const readOnly = selectedStage.status === "completed";
-  const canCreate = canCreateTask(store, currentUser, project);
+  const completedStageIds = new Set(
+    stages
+      .filter((step) => step.status === "completed")
+      .map((step) => step.id),
+  );
+  const readOnlyTaskIds = new Set(
+    tasks
+      .filter((task) => {
+        const stage = taskBoardStage(store, project.id, task);
+        return Boolean(stage && completedStageIds.has(stage.id));
+      })
+      .map((task) => task.id),
+  );
+  const boardReadOnly = selectedStage
+    ? selectedStage.status === "completed"
+    : !activeStage;
+  const createStage = selectedStage
+    ? selectedStage.status === "active"
+      ? selectedStage
+      : undefined
+    : activeStage;
+  const canCreate =
+    Boolean(createStage) &&
+    !boardReadOnly &&
+    canCreateTask(store, currentUser, project);
 
   return (
     <SectionCard
-      title={`Board · ${selectedStage.name}`}
-      description="Board proyek dari Detail Proyek SIMPRO, kini di dalam CRM."
+      title={selectedStage ? `Board · ${selectedStage.name}` : "Board · Semua tahap"}
+      description="Seluruh card proyek dari tahap berjalan dan selesai. Pilih tahap untuk memfilter card."
     >
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <label className="text-xs font-medium">
-          Tahap
+          Filter tahap
           <NativeSelect
-            value={selectedStage.key}
+            value={selectedStage?.key ?? ""}
             onChange={(value) => {
               setStageKey(value);
               const url = new URL(window.location.href);
-              url.searchParams.set("stage", value);
+              if (value) url.searchParams.set("stage", value);
+              else url.searchParams.delete("stage");
               window.history.replaceState(null, "", url);
             }}
-            className="mt-1 w-[240px]"
+            className="mt-1 w-[260px]"
           >
-            {stages.map((step) => (
-              <option key={step.id} value={step.key}>
-                {step.name}
-                {step.status === "completed" ? " (selesai)" : ""}
-              </option>
-            ))}
+            <option value="">Semua tahap ({stages.length})</option>
+            <optgroup label="Berjalan">
+              {stages
+                .filter((step) => step.status === "active")
+                .map((step) => (
+                  <option key={step.id} value={step.key}>
+                    {step.name}
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="Selesai">
+              {stages
+                .filter((step) => step.status === "completed")
+                .map((step) => (
+                  <option key={step.id} value={step.key}>
+                    {step.name}
+                  </option>
+                ))}
+            </optgroup>
           </NativeSelect>
         </label>
+        <span className="text-muted-foreground pb-2 text-[11px]">
+          {tasks.length} card
+        </span>
       </div>
       <TaskBoard
         tasks={tasks}
         onTaskClick={onTaskClick}
-        onNewTask={!readOnly && canCreate ? () => onNewTask(selectedStage.key) : undefined}
-        readOnly={readOnly}
+        onNewTask={
+          canCreate && createStage
+            ? () => onNewTask(createStage.key)
+            : undefined
+        }
+        readOnly={boardReadOnly}
+        readOnlyTaskIds={readOnlyTaskIds}
       />
     </SectionCard>
   );
@@ -291,10 +334,12 @@ export function CrmProjectFormsTab({ project }: { project: Project }) {
   if (!currentUser) return null;
 
   const steps = store.steps.filter((step) => step.projectId === project.id);
-  const forms = formsFor(store, project.id).filter((form) =>
-    steps.some(
-      (step) => step.financeKind === form.type || step.legacyKey === form.type,
-    ),
+  const forms = formsFor(store, project.id).filter(
+    (form) =>
+      steps.some(
+        (step) => step.financeKind === form.type || step.legacyKey === form.type,
+      ) ||
+      (form.type === "mo" && projectMediaOrders(store, project.id).length > 0),
   );
   const entries = formEntriesForProject(store, project.id).filter((entry) =>
     currentUser.role === "assignee" || currentUser.role === "finance"
@@ -312,7 +357,7 @@ export function CrmProjectFormsTab({ project }: { project: Project }) {
     <div className="space-y-4">
       <SectionCard
         title="Form Keuangan"
-        description="RAB, BAST, Invoice, dan Pembayaran proyek ini."
+        description="RAB, Media Order, BAST, Invoice, dan Pembayaran proyek ini."
       >
         {visibleForms.length === 0 ? (
           <EmptyState icon={ClipboardList} title="Belum ada form keuangan" />

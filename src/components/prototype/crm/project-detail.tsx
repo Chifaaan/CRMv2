@@ -44,6 +44,7 @@ import {
   canEditForm,
   canManageProject,
   canManageProjectSteps,
+  canViewProject,
   evaluateGate,
   formatCurrency,
   formatDate,
@@ -55,11 +56,15 @@ import {
   formsFor,
   isNewLifecycleProject,
   operationalAssigneeCandidates,
+  projectCommercialTotals,
   projectPhase,
   projectProgress,
+  projectWorkspaceTabs,
+  roleCanSeeCommercialTotals,
   tasksForStep,
   userById,
   workProgressForProject,
+  type ProjectWorkspaceTab,
 } from "@/lib/prototype/domain";
 import {
   FORM_ENTRY_STATUS_LABEL,
@@ -100,6 +105,7 @@ import { ProjectDialog, TaskDialog } from "../dialogs";
 import { TaskProgressPanels } from "../simpro/task-progress";
 import { ProjectStepHistory } from "./project-history";
 import { ProjectMediaOrders } from "./media-order";
+import { MediaOrderStepPanel } from "./media-order-form";
 import {
   CrmProjectBacklogTab,
   CrmProjectBoardTab,
@@ -109,6 +115,15 @@ import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
 import { isMandatoryProjectStep } from "@/lib/prototype/mandatory-steps";
 
 type StepTone = "done" | "active" | "attention" | "empty";
+
+const WORKSPACE_TAB_LABEL: Record<ProjectWorkspaceTab, string> = {
+  overview: "Overview",
+  journey: "Journey Management",
+  board: "Board",
+  backlog: "Backlog",
+  forms: "Forms",
+  media: "Media Order",
+};
 
 
 const STEP_TONE_CLASS: Record<
@@ -1662,6 +1677,7 @@ function StepDialog({
                   onChange={(value) => setFinanceKind(value as FormStepKey)}
                 >
                   <option value="rab">RAB</option>
+                  <option value="mo">Media Order</option>
                   <option value="bast">BAST</option>
                   <option value="invoice">Invoice</option>
                   <option value="payment">Pembayaran</option>
@@ -1739,9 +1755,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const [selectedStepKey, setSelectedStepKey] = useState<string | null>(null);
   const [selectedPhase, setSelectedPhase] = useState<Phase>("prospek");
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<
-    "overview" | "journey" | "board" | "backlog" | "forms" | "media"
-  >("overview");
+  const [workspaceTab, setWorkspaceTab] = useState<ProjectWorkspaceTab>("overview");
   const [stepDialogOpen, setStepDialogOpen] = useState(false);
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [workTaskId, setWorkTaskId] = useState<string | undefined>(undefined);
@@ -1779,9 +1793,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  const switchWorkspaceTab = (
-    tab: "overview" | "journey" | "board" | "backlog" | "forms" | "media",
-  ) => {
+  const switchWorkspaceTab = (tab: ProjectWorkspaceTab) => {
     setWorkspaceTab(tab);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", tab);
@@ -1824,6 +1836,14 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   if (currentUser.role === "pm" && project.createdById !== currentUser.id) {
     return <EmptyState icon={ShieldCheck} title="Akses ditolak" description="PM hanya dapat membuka proyek miliknya." />;
   }
+  if (
+    currentUser.role === "media" ||
+    currentUser.role === "bod" ||
+    (currentUser.role === "assignee" &&
+      !canViewProject(store, currentUser, project))
+  ) {
+    return <EmptyState icon={ShieldCheck} title="Akses ditolak" description="Role ini tidak dapat membuka detail proyek." />;
+  }
 
   const active = activeSteps(store, project.id);
   const newLifecycle = isNewLifecycleProject(project);
@@ -1834,8 +1854,14 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const group = project.groupId
     ? store.groups.find((item) => item.id === project.groupId)
     : undefined;
+  const commercial = projectCommercialTotals(store, project.id);
+  const showCommercial = roleCanSeeCommercialTotals(currentUser.role);
   const canManage = canManageProject(currentUser, project);
   const canManageSteps = canManageProjectSteps(currentUser, project);
+  const availableTabs = projectWorkspaceTabs(currentUser.role);
+  const visibleTab: ProjectWorkspaceTab = availableTabs.includes(workspaceTab)
+    ? workspaceTab
+    : "overview";
   const managerPicId =
     project.managerId ?? store.users.find((user) => user.role === "manager")?.id;
   const currentPhase = projectPhase(project, projectSteps);
@@ -1958,6 +1984,11 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     if (selectedStep.financeKind === "rab") {
       return <RabStep project={project} readOnly={readOnly} />;
     }
+    if (selectedStep.financeKind === "mo") {
+      return (
+        <MediaOrderStepPanel project={project} readOnly={readOnly} />
+      );
+    }
     return (
       <FinanceStep project={project} step={selectedStep} readOnly={readOnly} />
     );
@@ -2020,10 +2051,27 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
               <p className="mt-1 text-sm text-white/75">
                 {project.client || "Tanpa klien"} · PM {userById(store, project.createdById)?.name ?? "—"} · Manager {userById(store, project.managerId)?.name ?? "Belum ditugaskan"}
               </p>
+              {showCommercial && (commercial.rab > 0 || commercial.mo > 0) ? (
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                  {commercial.rab > 0 ? (
+                    <span className="rounded-md bg-white/15 px-2 py-0.5 font-semibold ring-1 ring-white/25">
+                      RAB {formatCurrency(commercial.rab)}
+                    </span>
+                  ) : null}
+                  {commercial.mo > 0 ? (
+                    <span className="rounded-md bg-white/15 px-2 py-0.5 font-semibold ring-1 ring-white/25">
+                      MO {formatCurrency(commercial.mo)}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
               {group ? (
-                <p className="mt-1 inline-flex items-center gap-1 text-xs text-white/70">
-                  <FolderKanban className="size-3.5" /> {group.name}
-                </p>
+                <Link
+                  href={`/crm/umbrella-projects/${group.id}`}
+                  className="mt-1 inline-flex items-center gap-1 text-xs text-white/70 hover:text-white"
+                >
+                  <FolderKanban className="size-3.5" /> Umbrella Project · {group.name}
+                </Link>
               ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -2061,7 +2109,8 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
               <CalendarDays className="size-3.5" /> {formatDate(project.startDate)} → {formatDate(project.targetEndDate)}
             </span>
             <span className="inline-flex items-center gap-1">
-              <Users className="size-3.5" /> {group ? `Group ${group.name}` : "Tanpa group"}
+              <Users className="size-3.5" />{" "}
+              {group ? `Umbrella Project · ${group.name}` : "Tanpa umbrella"}
             </span>
           </div>
 
@@ -2083,28 +2132,18 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1 rounded-lg border bg-muted/30 p-1">
-          {[
-            { key: "overview" as const, label: "Overview" },
-            { key: "journey" as const, label: "Journey Management" },
-            { key: "board" as const, label: "Board" },
-            { key: "backlog" as const, label: "Backlog" },
-            { key: "forms" as const, label: "Forms" },
-            ...(currentUser &&
-            ["admin", "manager", "pm", "finance"].includes(currentUser.role)
-              ? [{ key: "media" as const, label: "Media Order" }]
-              : []),
-          ].map((item) => (
+          {availableTabs.map((tab) => (
             <button
-              key={item.key}
+              key={tab}
               type="button"
-              onClick={() => switchWorkspaceTab(item.key)}
+              onClick={() => switchWorkspaceTab(tab)}
               className={`rounded-md px-3 py-1.5 text-xs font-medium ${
-                workspaceTab === item.key
+                visibleTab === tab
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {item.label}
+              {WORKSPACE_TAB_LABEL[tab]}
             </button>
           ))}
         </div>
@@ -2121,8 +2160,8 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         ) : null}
       </div>
 
-      {(workspaceTab === "journey" ||
-        (workspaceTab === "overview" && !project.startedAt)) &&
+      {(visibleTab === "journey" ||
+        (visibleTab === "overview" && !project.startedAt)) &&
       newLifecycle &&
       !project.startedAt ? (
         <SectionCard
@@ -2207,7 +2246,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </SectionCard>
       ) : null}
 
-      {workspaceTab === "journey" && newLifecycle && project.startedAt && canManageSteps ? (
+      {visibleTab === "journey" && newLifecycle && project.startedAt && canManageSteps ? (
         <SectionCard
           title="Kelola fase"
           description="Tambah step pada fase aktif atau selesaikan fase setelah semua step selesai."
@@ -2354,7 +2393,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
-      {workspaceTab === "overview" ? (
+      {visibleTab === "overview" ? (
         <div className="space-y-3">
           <SectionCard
             title="Penyelesaian Tahap"
@@ -2366,6 +2405,26 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
               <p>Belum selesai: {projectSteps.filter((step) => step.status === "pending" || step.status === "active").length}</p>
             </div>
           </SectionCard>
+          {showCommercial ? (
+            <SectionCard
+              title="Nilai Komersial"
+              description="Akumulatif RAB dan Media Order proyek ini."
+            >
+              <div className="grid gap-2 text-xs sm:grid-cols-3">
+                <DataRow label="Akumulatif RAB" value={formatCurrency(commercial.rab)} />
+                <DataRow label="Akumulatif MO" value={formatCurrency(commercial.mo)} />
+                <DataRow
+                  label="Margin MO"
+                  value={`${formatCurrency(commercial.moMargin)} (${Math.round(commercial.moMarginPercent)}%)`}
+                />
+                {commercial.unmappedRab + commercial.unmappedMo > 0 ? (
+                  <p className="text-[11px] text-amber-700 sm:col-span-3">
+                    {commercial.unmappedRab + commercial.unmappedMo} item belum dipetakan ke unit bisnis dan tidak dihitung.
+                  </p>
+                ) : null}
+              </div>
+            </SectionCard>
+          ) : null}
           <TaskProgressPanels
             tasks={overviewTasks}
             distributionDescription="Status task SIMPRO proyek ini."
@@ -2392,7 +2451,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
-      {workspaceTab === "board" ? (
+      {visibleTab === "board" ? (
         <CrmProjectBoardTab
           project={project}
           onTaskClick={(task) => {
@@ -2408,7 +2467,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         />
       ) : null}
 
-      {workspaceTab === "backlog" ? (
+      {visibleTab === "backlog" ? (
         <CrmProjectBacklogTab
           project={project}
           onTaskClick={(task) => {
@@ -2424,9 +2483,9 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         />
       ) : null}
 
-      {workspaceTab === "forms" ? <CrmProjectFormsTab project={project} /> : null}
+      {visibleTab === "forms" ? <CrmProjectFormsTab project={project} /> : null}
 
-      {workspaceTab === "media" ? <ProjectMediaOrders project={project} /> : null}
+      {visibleTab === "media" ? <ProjectMediaOrders project={project} /> : null}
 
       {project.status === "completed" ? (
         <CompletedSummary project={project} />
@@ -2463,7 +2522,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </SectionCard>
       ) : null}
 
-      {workspaceTab === "journey" && activeStep && selectedStep && selectedStep.status !== "active" ? (
+      {visibleTab === "journey" && activeStep && selectedStep && selectedStep.status !== "active" ? (
         <div>
           <Button
             variant="link"
@@ -2476,7 +2535,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
-      {workspaceTab === "journey" ? (
+      {visibleTab === "journey" ? (
         <div
           role="tabpanel"
           id="project-step-panel"

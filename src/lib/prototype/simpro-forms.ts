@@ -1,6 +1,6 @@
 import type { AppState, Project, StepForm, User } from "./types";
 
-export const SIMPRO_FINANCE_FORM_TYPES = ["rab", "bast", "invoice"] as const;
+export const SIMPRO_FINANCE_FORM_TYPES = ["rab", "mo", "bast", "invoice"] as const;
 
 export type SimproFinanceFormType =
   (typeof SIMPRO_FINANCE_FORM_TYPES)[number];
@@ -10,6 +10,7 @@ export const SIMPRO_FINANCE_FORM_LABEL: Record<
   string
 > = {
   rab: "Form RAB",
+  mo: "Media Order",
   bast: "Form BAST",
   invoice: "Form Invoice",
 };
@@ -25,6 +26,11 @@ function isFinanceFormType(type: string): type is SimproFinanceFormType {
 }
 
 function projectHasFinanceStage(state: AppState, form: StepForm): boolean {
+  if (form.type === "mo") {
+    return state.mediaOrders.some(
+      (order) => order.projectId === form.projectId && order.status !== "cancelled",
+    );
+  }
   return state.steps.some(
     (step) =>
       step.projectId === form.projectId &&

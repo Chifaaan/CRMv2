@@ -693,11 +693,13 @@ function TemplateEditor({
                       onChange={(value) =>
                         updateStage(selected.id, {
                           financeKind: value as FormStepKey,
+                          ...(value === "mo" ? { required: false } : {}),
                         })
                       }
                     >
                       <option value="survey">Survey (legacy)</option>
                       <option value="rab">RAB</option>
+                      <option value="mo">Media Order</option>
                       <option value="bast">BAST</option>
                       <option value="invoice">Invoice</option>
                       <option value="payment">Pembayaran</option>

@@ -11,7 +11,9 @@ import {
   landingForRole,
   mediaOrderLine,
   mediaOrderTotals,
+  projectCommercialTotals,
   roleCanAccessBusiness,
+  umbrellaCommercialTotals,
   workloadRows,
 } from "../src/lib/prototype/domain";
 import {
@@ -206,6 +208,95 @@ describe("business dashboard aggregation", () => {
   });
 });
 
+describe("project and umbrella commercial totals", () => {
+  const seed = createSeedState();
+  const base = activeProject(seed);
+  const p1: Project = { ...base, id: "p-one", groupId: "g-one", createdById: "u-pm1" };
+  const p2: Project = { ...base, id: "p-two", groupId: "g-one", createdById: "u-pm1" };
+  const rab = (projectId: string, price: number, mapped = true): StepForm => ({
+    id: `form-${projectId}-rab`,
+    projectId,
+    stepKey: "rab",
+    type: "rab",
+    status: "approved",
+    payload: {
+      notes: "",
+      items: [
+        {
+          id: `rab-${projectId}`,
+          description: "Paket",
+          qty: 1,
+          unit: "paket",
+          unitPrice: price,
+          businessUnitId: mapped ? "makerspace" : undefined,
+        },
+      ],
+    },
+    createdAt: "2026-10-01T00:00:00.000Z",
+  });
+  const mo = (projectId: string, status: "final" | "cancelled"): MediaOrder => ({
+    id: `mo-${projectId}-${status}`,
+    projectId,
+    number: "MO-1",
+    title: "MO",
+    status,
+    items: [
+      {
+        id: `mo-item-${projectId}-${status}`,
+        description: "Display",
+        qty: 2,
+        unit: "paket",
+        clientUnitPrice: 5_000_000,
+        vendorUnitCost: 3_000_000,
+        businessUnitId: "spektrum",
+      },
+    ],
+    notes: "",
+    createdById: "u-pm1",
+    createdAt: "2026-10-02T00:00:00.000Z",
+  });
+  const state: AppState = {
+    ...seed,
+    projects: [p1, p2],
+    groups: [{ ...seed.groups[0], id: "g-one", name: "Umbrella One" }],
+    forms: [rab("p-one", 8_000_000), rab("p-two", 9_000_000, false)],
+    mediaOrders: [mo("p-one", "final"), mo("p-one", "cancelled"), mo("p-two", "final")],
+  };
+
+  it("derives project totals from approved RAB and non-cancelled MO", () => {
+    const one = projectCommercialTotals(state, "p-one");
+    expect(one.rab).toBe(8_000_000);
+    expect(one.mo).toBe(10_000_000);
+    expect(one.moMargin).toBe(4_000_000);
+    expect(one.unmappedRab).toBe(0);
+    expect(projectCommercialTotals(state, "p-two").rab).toBe(0);
+    expect(projectCommercialTotals(state, "p-two").unmappedRab).toBe(1);
+  });
+
+  it("sums the same values into the umbrella and dashboard", () => {
+    const umbrella = umbrellaCommercialTotals(state, "g-one");
+    expect(umbrella.rab).toBe(8_000_000);
+    expect(umbrella.mo).toBe(20_000_000);
+    const dashboardRevenue = businessDashboardRows(state).reduce(
+      (sum, row) => sum + row.revenue,
+      0,
+    );
+    expect(dashboardRevenue).toBe(umbrella.mo);
+  });
+
+  it("excludes closed projects", () => {
+    const closed: AppState = {
+      ...state,
+      projects: [{ ...p1, lifecycle: "lost" }, p2],
+    };
+    expect(projectCommercialTotals(closed, "p-one")).toMatchObject({
+      rab: 0,
+      mo: 0,
+    });
+    expect(umbrellaCommercialTotals(closed, "g-one").mo).toBe(10_000_000);
+  });
+});
+
 describe("media order store actions", () => {
   beforeEach(() => {
     usePrototypeStore.getState().reset();
@@ -266,9 +357,13 @@ describe("media and BOD roles", () => {
   it("lands media in SIMPRO and BOD on business", () => {
     expect(landingForRole("media")).toBe("/my-tasks");
     expect(landingForRole("bod")).toBe("/business");
+    expect(landingForRole("pm")).toBe("/dashboard");
     expect(roleCanAccessBusiness("bod")).toBe(true);
     expect(roleCanAccessBusiness("admin")).toBe(true);
-    expect(roleCanAccessBusiness("manager")).toBe(false);
+    expect(roleCanAccessBusiness("manager")).toBe(true);
+    expect(roleCanAccessBusiness("pm")).toBe(true);
+    expect(roleCanAccessBusiness("finance")).toBe(true);
+    expect(roleCanAccessBusiness("assignee")).toBe(false);
     expect(roleCanAccessBusiness("media")).toBe(false);
   });
 

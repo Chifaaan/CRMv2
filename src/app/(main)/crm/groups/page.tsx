@@ -1,7 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { CrmGroups } from "@/components/prototype/crm/groups";
-
-export default function CrmGroupsPage() {
-  return <CrmGroups />;
+export default function LegacyGroupsPage() {
+  redirect("/crm/umbrella-projects");
 }

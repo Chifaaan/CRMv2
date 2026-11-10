@@ -298,10 +298,20 @@ function MediaOrderCard({
   );
 }
 
-export function ProjectMediaOrders({ project }: { project: Project }) {
+export function ProjectMediaOrders({
+  project,
+  readOnly: readOnlyOverride,
+  title = "Media Order (MO)",
+  description = "Revenue dan margin per unit bisnis. MO ikut ter-roll up ke umbrella proyek.",
+}: {
+  project: Project;
+  readOnly?: boolean;
+  title?: string;
+  description?: string;
+}) {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
-  const [title, setTitle] = useState("");
+  const [newTitle, setNewTitle] = useState("");
   const orders = useMemo(
     () =>
       store.mediaOrders
@@ -309,10 +319,15 @@ export function ProjectMediaOrders({ project }: { project: Project }) {
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     [store.mediaOrders, project.id],
   );
-  const readOnly = project.status !== "active";
+  const projectReadOnly =
+    project.status !== "active" ||
+    project.lifecycle === "lost" ||
+    project.lifecycle === "cancelled";
+  const readOnly = readOnlyOverride ?? projectReadOnly;
   const canManage = Boolean(
     currentUser &&
       !readOnly &&
+      !projectReadOnly &&
       (currentUser.role === "admin" ||
         currentUser.role === "manager" ||
         currentUser.role === "finance" ||
@@ -321,28 +336,28 @@ export function ProjectMediaOrders({ project }: { project: Project }) {
 
   return (
     <SectionCard
-      title="Media Order (MO)"
-      description="Revenue dan margin per unit bisnis. MO ikut ter-roll up ke group/umbrella proyek."
+      title={title}
+      description={description}
       actions={
         canManage ? (
           <div className="flex items-center gap-2">
             <Input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
+              value={newTitle}
+              onChange={(event) => setNewTitle(event.target.value)}
               placeholder="Judul MO"
               className="h-8 w-44 text-xs"
               aria-label="Judul Media Order"
             />
             <Button
               size="sm"
-              disabled={!title.trim()}
+              disabled={!newTitle.trim()}
               onClick={() => {
-                const id = store.createMediaOrder(project.id, { title });
+                const id = store.createMediaOrder(project.id, { title: newTitle });
                 if (!id) {
                   toast.error("Media Order gagal dibuat.");
                   return;
                 }
-                setTitle("");
+                setNewTitle("");
                 toast.success("Media Order dibuat.");
               }}
             >

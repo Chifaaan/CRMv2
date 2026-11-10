@@ -164,7 +164,7 @@ export function CrmProjects() {
               <tr>
                 <th className="px-3 py-2">Proyek</th>
                 <th className="px-3 py-2">Client</th>
-                <th className="px-3 py-2">Group</th>
+                <th className="px-3 py-2">Umbrella Project</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Fase</th>
                 <th className="px-3 py-2">Progress</th>
@@ -197,7 +197,19 @@ export function CrmProjects() {
                       </p>
                     </td>
                     <td className="px-3 py-2">{project.client || "—"}</td>
-                    <td className="px-3 py-2">{group?.name ?? "—"}</td>
+                    <td className="px-3 py-2">
+                      {group ? (
+                        <Link
+                          href={`/crm/umbrella-projects/${group.id}`}
+                          className="text-primary hover:underline"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          {group.name}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="px-3 py-2 capitalize">{project.status}</td>
                     <td className="px-3 py-2">
                       {activeStep ? PHASE_LABEL[activeStep.phase] : "—"}

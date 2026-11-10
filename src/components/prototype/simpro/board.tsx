@@ -42,17 +42,18 @@ function BoardCard({
   task,
   onClick,
   readOnly,
+  showProject,
 }: {
   task: Task;
   onClick: () => void;
   readOnly?: boolean;
+  showProject?: boolean;
 }) {
   const store = usePrototypeStore();
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     disabled: readOnly,
-  });
-  const style = transform
+  });  const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
   const assignee = userById(store, task.assigneeId);
@@ -94,6 +95,11 @@ function BoardCard({
         {!readOnly ? <GripVertical className="text-muted-foreground size-3.5 opacity-0 transition-opacity group-hover:opacity-100" /> : null}
       </div>
       <p className="mt-1.5 line-clamp-3 text-xs font-medium leading-snug">{task.title}</p>
+      {showProject && project ? (
+        <p className="text-primary mt-1 truncate text-[10px] font-semibold">
+          {project.code} · {project.name}
+        </p>
+      ) : null}
       <p className="text-muted-foreground mt-1 text-[10px]">{task.code}</p>
       {task.workUrl && canSeeWorkLink ? (
         task.workUrl.startsWith("http://") || task.workUrl.startsWith("https://") ? (
@@ -147,11 +153,15 @@ function Column({
   tasks,
   onTaskClick,
   readOnly,
+  showProject,
+  readOnlyTaskIds,
 }: {
   status: TaskStatus;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   readOnly?: boolean;
+  showProject?: boolean;
+  readOnlyTaskIds?: Set<string>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
@@ -175,7 +185,8 @@ function Column({
             key={task.id}
             task={task}
             onClick={() => onTaskClick(task)}
-            readOnly={readOnly}
+            readOnly={readOnly || readOnlyTaskIds?.has(task.id)}
+            showProject={showProject}
           />
         ))}
         {tasks.length === 0 ? (
@@ -193,11 +204,15 @@ export function TaskBoard({
   onTaskClick,
   onNewTask,
   readOnly,
+  showProject,
+  readOnlyTaskIds,
 }: {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onNewTask?: () => void;
   readOnly?: boolean;
+  showProject?: boolean;
+  readOnlyTaskIds?: Set<string>;
 }) {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
@@ -249,6 +264,8 @@ export function TaskBoard({
               tasks={grouped[status]}
               onTaskClick={onTaskClick}
               readOnly={readOnly}
+              showProject={showProject}
+              readOnlyTaskIds={readOnlyTaskIds}
             />
           ))}
         </div>

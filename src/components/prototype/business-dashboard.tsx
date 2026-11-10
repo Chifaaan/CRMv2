@@ -106,7 +106,7 @@ export function BusinessDashboard() {
       <EmptyState
         icon={ChartNoAxesCombined}
         title="Akses ditolak"
-        description="Business Dashboard hanya untuk BOD dan Admin."
+        description="Business hanya untuk Admin, Manager, PM, Finance, dan BOD."
       />
     );
   }
@@ -126,7 +126,7 @@ export function BusinessDashboard() {
     <div className="space-y-5">
       <PageHeader
         title="Business Dashboard"
-        description="Revenue, biaya vendor, dan margin per unit bisnis dari Media Order. Read-only untuk BOD."
+        description="Revenue, biaya vendor, dan margin per unit bisnis dari Media Order. Read-only untuk semua peran Business."
       />
 
       <div className="flex flex-wrap gap-2">

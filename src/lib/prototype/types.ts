@@ -32,6 +32,7 @@ export type StepKey =
 export type FormStepKey =
   | "survey"
   | "rab"
+  | "mo"
   | "bast"
   | "invoice"
   | "payment";
@@ -353,6 +354,50 @@ export type MediaOrder = {
   updatedById?: string;
 };
 
+export type ProjectCommercialTotals = {
+  projectId: string;
+  rab: number;
+  mo: number;
+  moRevenue: number;
+  moCost: number;
+  moMargin: number;
+  moMarginPercent: number;
+  unmappedRab: number;
+  unmappedMo: number;
+};
+
+export type UmbrellaCommercialTotals = Omit<
+  ProjectCommercialTotals,
+  "projectId"
+> & {
+  umbrellaId: string;
+  memberCount: number;
+};
+
+export type CommercialProjectRow = {
+  project: Project;
+  umbrellaId?: string;
+  umbrellaName?: string;
+  phase?: Phase;
+  status: ProjectStatus;
+  rabStatus?: FormStatus;
+  rabItems: number;
+  rabTotal: number;
+  unmappedRab: number;
+  moDocuments: number;
+  moItems: number;
+  moRevenue: number;
+  moCost: number;
+  moMargin: number;
+  moMarginPercent: number;
+  unmappedMo: number;
+  updatedAt?: string;
+};
+
+export type MoPayload = {
+  notes: string;
+};
+
 export type BastPayload = {
   number: string;
   date: string;
@@ -390,6 +435,7 @@ export type PaymentPayload = {
 export type FormPayload =
   | SurveyPayload
   | RabPayload
+  | MoPayload
   | BastPayload
   | InvoicePayload
   | PaymentPayload;
@@ -547,6 +593,7 @@ export const STAGE_KIND_LABEL: Record<StageKind, string> = {
 export const FORM_STEP_KEYS: FormStepKey[] = [
   "survey",
   "rab",
+  "mo",
   "bast",
   "invoice",
   "payment",

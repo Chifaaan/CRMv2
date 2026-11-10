@@ -1,7 +1,5 @@
-"use client";
-
-import { CrmDashboard } from "@/components/prototype/crm/dashboard";
+import { redirect } from "next/navigation";
 
 export default function CrmDashboardPage() {
-  return <CrmDashboard />;
+  redirect("/dashboard");
 }

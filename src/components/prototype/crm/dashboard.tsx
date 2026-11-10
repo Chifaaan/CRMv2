@@ -269,11 +269,11 @@ export function CrmDashboard() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Group" description="Rollup proyek yang dikelompokkan.">
+        <SectionCard title="Umbrella Projects" description="Rollup proyek yang dikelompokkan.">
           {groups.length === 0 ? (
             <EmptyState
               icon={BriefcaseBusiness}
-              title="Belum ada group"
+              title="Belum ada Umbrella Project"
               description="Manager dapat mengelompokkan minimal 2 proyek."
             />
           ) : (
@@ -284,7 +284,7 @@ export function CrmDashboard() {
                 return (
                   <Link
                     key={group.id}
-                    href="/crm/groups"
+                    href="/crm/umbrella-projects"
                     className="hover:bg-muted/40 flex items-center gap-3 rounded-lg border px-3 py-2 transition-colors"
                   >
                     <span className="bg-primary/10 text-primary flex size-9 items-center justify-center rounded-lg">

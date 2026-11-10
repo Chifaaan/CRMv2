@@ -15,6 +15,7 @@ function form(state: ReturnType<typeof createSeedState>, id: string) {
 describe("finance forms in SIMPRO Forms", () => {
   it("shows RAB/BAST/Invoice as their own form types", () => {
     expect(SIMPRO_FINANCE_FORM_LABEL.rab).toBe("Form RAB");
+    expect(SIMPRO_FINANCE_FORM_LABEL.mo).toBe("Media Order");
     expect(SIMPRO_FINANCE_FORM_LABEL.bast).toBe("Form BAST");
     expect(SIMPRO_FINANCE_FORM_LABEL.invoice).toBe("Form Invoice");
   });
@@ -72,8 +73,22 @@ describe("finance forms in SIMPRO Forms", () => {
 
   it("counts only forms Finance still has to fill in the badge", () => {
     const state = createSeedState();
-    // p-epsilon invoice is draft and assigned to Finance; RAB/BAST are submitted.
-    expect(simproFinanceFormsNeedingAction(state, "u-finance")).toBe(1);
+    // p-epsilon invoice is draft; p-gamma Media Order is assigned and has an MO.
+    expect(simproFinanceFormsNeedingAction(state, "u-finance")).toBe(2);
     expect(simproFinanceFormsNeedingAction(state, "u-pm1")).toBe(0);
+  });
+
+  it("lists Media Order for Finance only when the project has a document", () => {
+    const state = createSeedState();
+    const finance = userById(state, "u-finance")!;
+    const rows = simproFinanceFormRows(state, finance);
+    expect(rows.some((row) => row.form.type === "mo")).toBe(true);
+    expect(
+      rows.find((row) => row.form.type === "mo")?.project.id,
+    ).toBe("p-gamma");
+    const media = userById(state, "u-media")!;
+    expect(
+      simproFinanceFormRows(state, media).some((row) => row.form.type === "mo"),
+    ).toBe(false);
   });
 });

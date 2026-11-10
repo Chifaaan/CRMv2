@@ -9,6 +9,7 @@ import type {
   Project,
   ProjectEvent,
   ProjectStep,
+  StepForm,
   Task,
   User,
 } from "../src/lib/prototype/types";
@@ -225,6 +226,11 @@ describe("port persistence migration", () => {
     const order = migrated.mediaOrders[0];
     expect(order.status).toBe("draft");
     expect(order.items[0].businessUnitId).toBe("spektrum");
+    expect(
+      (migrated as unknown as { forms: StepForm[] }).forms.filter(
+        (form) => form.type === "mo",
+      ),
+    ).toHaveLength(1);
 
     const entry = migrated.formEntries[0] as FormEntry & Record<string, unknown>;
     expect(entry.scope).toBeUndefined();

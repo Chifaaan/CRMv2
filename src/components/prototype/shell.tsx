@@ -5,10 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
-  Boxes,
   ChartNoAxesCombined,
   CheckCheck,
-  ChevronDown,
   FolderKanban,
   Gauge,
   LayoutDashboard,
@@ -35,58 +33,63 @@ import {
   landingForRole,
   roleCanAccessBusiness,
   roleCanAccessCrm,
-  roleCanAccessSimpro,
+  roleCanBrowseProjects,
+  roleCanViewUmbrella,
   userById,
 } from "@/lib/prototype/domain";
 import { simproFinanceFormsNeedingAction } from "@/lib/prototype/simpro-forms";
 import { clearPrototypeFiles } from "@/lib/prototype/files";
 import { NativeSelect, UserAvatar } from "./ui";
 
-const NAV_SIMPRO = [
+const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/crm/projects", label: "Projects", icon: FolderKanban },
   { href: "/my-tasks", label: "My tasks", icon: ListTodo },
   { href: "/forms", label: "Forms", icon: CheckCheck },
-];
-
-const NAV_BUSINESS = [
+  {
+    href: "/crm/umbrella-projects",
+    label: "Umbrella Projects",
+    icon: Users,
+  },
+  { href: "/crm/templates", label: "Templates", icon: LayoutTemplate },
+  { href: "/crm/workload", label: "Workload", icon: Gauge },
   { href: "/business", label: "Business", icon: ChartNoAxesCombined },
 ];
 
-const NAV_CRM = [
-  { href: "/crm", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/crm/projects", label: "Projects", icon: FolderKanban },
-  { href: "/crm/groups", label: "Groups", icon: Users },
-  { href: "/crm/templates", label: "Templates", icon: LayoutTemplate },
-  { href: "/crm/workload", label: "Workload", icon: Gauge },
-];
-
-
-function isFinanceWorkPath(pathname: string): boolean {
-  return (
-    pathname === "/my-tasks" ||
-    pathname === "/forms" ||
-    pathname.startsWith("/forms/")
-  );
-}
-
 function isActive(pathname: string, href: string): boolean {
-  if (href === "/crm") return pathname === "/crm";
-  if (href === "/dashboard") return pathname === "/dashboard";
+  if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/crm";
+  if (href === "/crm/projects") {
+    return (
+      pathname === "/crm/projects" ||
+      pathname.startsWith("/crm/projects/") ||
+      pathname === "/projects" ||
+      pathname.startsWith("/projects/")
+    );
+  }
+  if (href === "/business") {
+    return pathname === "/business" || pathname.startsWith("/business/");
+  }
+  if (href === "/forms") {
+    return pathname === "/forms" || pathname.startsWith("/forms/");
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function titleForPath(pathname: string): string {
+  if (pathname.startsWith("/crm/umbrella-projects/")) return "Detail Umbrella";
+  if (pathname === "/crm/umbrella-projects") return "Umbrella Projects";
   if (pathname.startsWith("/crm/projects/")) return "Detail Proyek";
   if (pathname === "/crm/projects") return "Projects";
-  if (pathname === "/crm/groups") return "Groups";
   if (pathname === "/crm/templates") return "Templates";
   if (pathname === "/crm/workload") return "Workload";
-  if (pathname.startsWith("/crm")) return "CRM";
+  if (pathname === "/crm") return "Dashboard";
   if (pathname.startsWith("/projects/")) return "Detail Proyek";
   if (pathname === "/projects") return "Projects";
   if (pathname === "/my-tasks") return "My tasks";
-  if (pathname === "/forms") return "Forms";
+  if (pathname === "/forms" || pathname.startsWith("/forms/")) return "Forms";
+  if (pathname === "/business") return "Business Dashboard";
+  if (pathname === "/business/rab") return "Business · RAB";
+  if (pathname === "/business/mo") return "Business · MO";
   return "Dashboard";
 }
 
@@ -129,59 +132,6 @@ function NavItem({
   );
 }
 
-function ModuleMenuItem({
-  icon: Icon,
-  title,
-  subtitle,
-  active,
-  disabled,
-  onClick,
-}: {
-  icon: typeof LayoutDashboard;
-  title: string;
-  subtitle: string;
-  active?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors",
-        disabled
-          ? "cursor-not-allowed opacity-45"
-          : "hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none",
-      )}
-    >
-      <span
-        className={cn(
-          "flex size-10 shrink-0 items-center justify-center rounded-lg",
-          active
-            ? "bg-primary text-primary-foreground shadow-sm"
-            : "bg-muted text-muted-foreground",
-        )}
-      >
-        <Icon className="size-5" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold">{title}</span>
-          {active ? (
-            <span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-[10px] font-semibold">
-              Dibuka
-            </span>
-          ) : null}
-        </span>
-        <span className="text-muted-foreground mt-0.5 block truncate text-xs">
-          {disabled ? "Tidak tersedia untuk role ini" : subtitle}
-        </span>
-      </span>
-    </button>
-  );
-}
 
 export function PrototypeShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -190,7 +140,6 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
   const currentUser = userById(store, store.currentUserId);
   const [notifOpen, setNotifOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
-  const [moduleOpen, setModuleOpen] = useState(false);
 
   useEffect(() => {
     if (!store.hydrated) store.setHydrated(true);
@@ -198,29 +147,45 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setModuleOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
     if (!currentUser) return;
-    const isCrm = pathname.startsWith("/crm");
-    const isBusiness = pathname.startsWith("/business");
-    const isFinanceWork = isFinanceWorkPath(pathname);
-    if (isBusiness) {
-      if (!roleCanAccessBusiness(currentUser.role)) {
-        router.replace(landingForRole(currentUser.role));
-      }
+    const role = currentUser.role;
+    const redirect = () => router.replace(landingForRole(role));
+    if (pathname === "/crm") {
+      router.replace("/dashboard");
       return;
     }
-    if (isCrm && !roleCanAccessCrm(currentUser.role)) {
-      router.replace(landingForRole(currentUser.role));
+    if (pathname.startsWith("/business")) {
+      if (!roleCanAccessBusiness(role)) redirect();
+      return;
+    }
+    if (pathname.startsWith("/crm/umbrella-projects")) {
+      if (!roleCanViewUmbrella(role)) redirect();
+      return;
     }
     if (
-      !isCrm &&
-      !roleCanAccessSimpro(currentUser.role) &&
-      !(currentUser.role === "finance" && isFinanceWork)
+      pathname.startsWith("/crm/projects") ||
+      pathname === "/projects" ||
+      pathname.startsWith("/projects/")
     ) {
-      router.replace(landingForRole(currentUser.role));
+      if (!roleCanBrowseProjects(role)) redirect();
+      return;
+    }
+    if (
+      pathname.startsWith("/crm/templates") ||
+      pathname.startsWith("/crm/workload")
+    ) {
+      if (!roleCanAccessCrm(role)) redirect();
+      return;
+    }
+    if (pathname === "/dashboard" && role === "bod") {
+      redirect();
+      return;
+    }
+    if (
+      (pathname === "/my-tasks" || pathname.startsWith("/forms")) &&
+      role === "bod"
+    ) {
+      redirect();
     }
   }, [currentUser, pathname, router]);
 
@@ -247,20 +212,27 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const showCrm = roleCanAccessCrm(currentUser.role);
-  const showSimpro = roleCanAccessSimpro(currentUser.role);
-  const showSimproForms = currentUser.role === "finance";
-  const withoutProjectBrowser = (item: { href: string }) =>
-    item.href !== "/projects" ||
-    (currentUser.role !== "assignee" && currentUser.role !== "media");
-  const simproNav = showSimpro
-    ? NAV_SIMPRO.filter(withoutProjectBrowser)
-    : showSimproForms
-      ? NAV_SIMPRO.filter(
-          (item) => item.href === "/forms" || item.href === "/my-tasks",
-        )
-      : [];
-  const isCrm = pathname.startsWith("/crm");
+  const navItems = NAV_ITEMS.filter((item) => {
+    switch (item.href) {
+      case "/dashboard":
+        return currentUser.role !== "bod";
+      case "/crm/projects":
+        return roleCanBrowseProjects(currentUser.role);
+      case "/my-tasks":
+      case "/forms":
+        return currentUser.role !== "bod";
+      case "/crm/umbrella-projects":
+        return roleCanViewUmbrella(currentUser.role);
+      case "/crm/templates":
+        return currentUser.role === "admin" || currentUser.role === "pm";
+      case "/crm/workload":
+        return currentUser.role === "admin" || currentUser.role === "manager";
+      case "/business":
+        return roleCanAccessBusiness(currentUser.role);
+      default:
+        return false;
+    }
+  });
 
   return (
     <div className="bg-background text-foreground flex h-full min-h-0 flex-1 overflow-hidden">
@@ -279,56 +251,18 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        <nav className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3">
-          {simproNav.length > 0 ? (
-            <div className="flex flex-col gap-0.5">
-              <div className="text-muted-foreground px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]">
-                SIMPRO
-              </div>
-              {simproNav.map((item) => (
-                <NavItem
-                  key={item.href}
-                  {...item}
-                  pathname={pathname}
-                  badge={item.href === "/forms" ? formBadge : undefined}
-                />
-              ))}
-            </div>
-          ) : null}
-          {roleCanAccessBusiness(currentUser.role) ? (
-            <div className="flex flex-col gap-0.5">
-              <div className="text-muted-foreground px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]">
-                BUSINESS
-              </div>
-              {NAV_BUSINESS.map((item) => (
-                <NavItem key={item.href} {...item} pathname={pathname} />
-              ))}
-            </div>
-          ) : null}
-          {showCrm ? (
-            <div className="flex flex-col gap-0.5">
-              <div className="text-muted-foreground px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]">
-                CRM
-              </div>
-              {NAV_CRM.filter((item) => {
-                if (currentUser.role === "assignee") return false;
-                if (item.href === "/crm/workload") {
-                  return (
-                    currentUser.role === "admin" ||
-                    currentUser.role === "manager"
-                  );
-                }
-                if (item.href === "/crm/templates") {
-                  return (
-                    currentUser.role === "admin" || currentUser.role === "pm"
-                  );
-                }
-                return true;
-              }).map((item) => (
-                <NavItem key={item.href} {...item} pathname={pathname} />
-              ))}
-            </div>
-          ) : null}
+        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-3">
+          <div className="text-muted-foreground px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]">
+            Workspace
+          </div>
+          {navItems.map((item) => (
+            <NavItem
+              key={item.href}
+              {...item}
+              pathname={pathname}
+              badge={item.href === "/forms" ? formBadge : undefined}
+            />
+          ))}
         </nav>
 
         <div className="border-sidebar-border mt-auto shrink-0 border-t p-2">
@@ -368,70 +302,6 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <div className="relative hidden sm:block">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 gap-2 px-2.5"
-                aria-haspopup="menu"
-                aria-expanded={moduleOpen}
-                onClick={() => setModuleOpen((open) => !open)}
-              >
-                <Boxes className="text-primary size-4" />
-                <span className="text-xs font-semibold">
-                  {isCrm ? "CRM" : "SIMPRO"}
-                </span>
-                <ChevronDown
-                  className={cn(
-                    "text-muted-foreground size-3.5 transition-transform",
-                    moduleOpen && "rotate-180",
-                  )}
-                />
-              </Button>
-
-              {moduleOpen ? (
-                <>
-                  <button
-                    type="button"
-                    aria-hidden
-                    className="fixed inset-0 z-40 cursor-default"
-                    onClick={() => setModuleOpen(false)}
-                  />
-                  <div className="bg-popover text-popover-foreground ring-foreground/10 absolute right-0 z-50 mt-2 w-[320px] rounded-xl p-2 shadow-xl ring-1">
-                    <div className="px-2 pt-1 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      Modul Connector
-                    </div>
-                    <div className="border-t" />
-                    <div className="space-y-1 pt-1">
-                      <ModuleMenuItem
-                        icon={FolderKanban}
-                        title="SIMPRO"
-                        subtitle="Project, task, board, dan My Tasks"
-                        active={!isCrm}
-                        disabled={!showSimpro}
-                        onClick={() => {
-                          setModuleOpen(false);
-                          if (!isCrm) return;
-                          router.push("/dashboard");
-                        }}
-                      />
-                      <ModuleMenuItem
-                        icon={Gauge}
-                        title="CRM"
-                        subtitle="Journey, form, dan finance"
-                        active={isCrm}
-                        disabled={!showCrm}
-                        onClick={() => {
-                          setModuleOpen(false);
-                          if (isCrm) return;
-                          router.push("/crm");
-                        }}
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : null}
-            </div>
 
             <div className="relative">
               <Button
@@ -516,22 +386,8 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
                 value={currentUser.id}
                 onChange={(value) => {
                   store.setCurrentUser(value);
-                  const user = userById(store, value);
-                  if (
-                    user &&
-                    !roleCanAccessCrm(user.role) &&
-                    pathname.startsWith("/crm")
-                  ) {
-                    router.push(landingForRole(user.role));
-                  }
-                  if (
-                    user &&
-                    !roleCanAccessSimpro(user.role) &&
-                    !pathname.startsWith("/crm") &&
-                    !(user.role === "finance" && isFinanceWorkPath(pathname))
-                  ) {
-                    router.push("/crm");
-                  }
+                  const user = store.users.find((item) => item.id === value);
+                  if (user) router.push(landingForRole(user.role));
                 }}
                 className="h-8 w-[150px] text-xs"
               >

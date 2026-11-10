@@ -11,7 +11,7 @@ Dokumen ini adalah addendum untuk `Docs/PRD-Alur-CRM-Baru.md`. Fokusnya empat ti
 - Setiap step memiliki Manager PIC; aktivasi step membutuhkan Manager PIC.
 - Hanya PM pemilik atau Admin yang mengelola step. Step pending dapat ditambah, diubah, dihapus, atau diurutkan selama proyek aktif; step yang sudah berjalan hanya boleh mengubah nama, Manager PIC, dan deskripsi.
 - Tambah/Edit Step di Journey Management memakai dialog berisi nama, fase, jenis step, jenis form/gerbang, Manager PIC, dan deskripsi. Tidak ada kartu "Pilih Step". Daftar **Kelola fase** mengikuti fase yang dipilih pada stepper header: memilih Planning menampilkan step Planning, memilih Running menampilkan step Running, dan seterusnya; tombol selesai fase hanya aktif untuk fase berjalan. Stepper header menampilkan fase Prospek bila proyek menyertakannya.
-- Manager/Admin dapat menetapkan assignee Form atau Form Keuangan yang belum di-assign dari menu Forms maupun saat form dibuka. Kandidat Form Keuangan mengikuti jenis form: RAB/Invoice/Pembayaran hanya Finance, BAST dapat Finance atau Media.
+- Manager/Admin dapat menetapkan assignee Form atau Form Keuangan yang belum di-assign dari menu Forms maupun saat form dibuka. Kandidat Form Keuangan mengikuti jenis form: RAB/Invoice/Pembayaran/MO hanya Finance, BAST dapat Finance atau Media.
 - SIMPRO memiliki Dashboard untuk semua role SIMPRO; untuk Assignee/Media datanya dibatasi pada task dan proyek yang di-assign kepada mereka.
 
 ## Step wajib per fase
@@ -32,12 +32,21 @@ Dokumen ini adalah addendum untuk `Docs/PRD-Alur-CRM-Baru.md`. Fokusnya empat ti
 
 | Tipe | Pelaksana | Tempat | Selesai bila |
 | --- | --- | --- | --- |
-| Form Keuangan | Finance (BAST juga Media) | CRM | RAB/BAST/Invoice/Pembayaran memenuhi aturan form keuangan |
+| Form Keuangan | Finance (BAST juga Media) | CRM | RAB/MO/BAST/Invoice/Pembayaran memenuhi aturan form keuangan |
 | Form | Assignee/Manager/Media yang di-assign Manager/Admin | Menu Forms | Semua entri non-batal disetujui, minimal satu entri atau konfirmasi tidak ada pekerjaan |
 | Gerbang | PM/Admin | CRM | Keputusan disetujui atau ditolak; hanya untuk proyek legacy |
 | SIMPRO | Assignee/Manager/Media lewat Kanban | Board SIMPRO | Semua kartu non-batal Completed, minimal satu kartu atau konfirmasi tidak ada pekerjaan (legacy) |
 
 Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan isian daftar centang.
+
+## Media Order sebagai Form Keuangan
+
+- `Media Order` adalah kategori Form Keuangan dengan tipe form `mo`, biasanya ditambahkan pada fase **Prospek** lewat Journey Management atau template.
+- Step Media Order selalu **Opsional**: tidak pernah dibuat otomatis sebagai step wajib. Proyek tanpa step MO tetap dapat memiliki dokumen MO dari tab Media Order.
+- Satu proyek memiliki satu form `mo` sebagai wadah status, assignee, submit, dan review. Isi negosiasi tetap berupa banyak dokumen `MediaOrder`, masing-masing dengan tabel item.
+- Form Media Order hanya dapat di-approve bila proyek memiliki minimal satu dokumen MO non-cancelled.
+- Halaman form: `/crm/projects/[id]/forms/mo`. Dokumen dan item editable oleh PM pemilik, Manager, Finance, dan Admin selama proyek aktif; Assignee, Media, dan BOD read-only.
+- MO muncul di menu Forms sebagai kategori Form Keuangan dan dihitung pada badge bila di-assign ke user.
 
 ## Mesin Form
 
@@ -62,6 +71,6 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 
 ## Badge, My Tasks, Workload
 
-- Badge Forms menghitung form yang perlu diisi user saat ini (Ditugaskan, Draft, Perlu revisi) dari entri Form dan form keuangan. Antrian review PM tidak masuk badge.
-- My Tasks hanya menampilkan task Kanban, tidak menampilkan form.
+- Badge Forms menghitung form yang perlu diisi user saat ini (Ditugaskan, Draft, Perlu revisi) dari entri Form dan form keuangan, termasuk Media Order. Antrian review PM tidak masuk badge.
+- My Tasks menampilkan satu board berisi semua card yang di-assign kepada user dari seluruh proyek; setiap card mencantumkan proyek dan tahapnya. Form tidak pernah tampil di My Tasks.
 - Workload memisahkan jumlah kartu aktif dan jumlah form aktif, dan menampilkan Assignee, Manager, serta Media yang punya pekerjaan aktif.

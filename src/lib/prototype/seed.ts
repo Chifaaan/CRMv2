@@ -34,6 +34,9 @@ function defaultPayload(key: FormStepKey) {
   if (key === "rab") {
     return { items: [], notes: "" };
   }
+  if (key === "mo") {
+    return { notes: "" };
+  }
   if (key === "bast") {
     return {
       number: "",
@@ -73,7 +76,7 @@ function makeForms(
   projectId: string,
   overrides: Partial<Record<FormStepKey, Partial<StepForm>>> = {},
 ): StepForm[] {
-  const keys: FormStepKey[] = ["survey", "rab", "bast", "invoice", "payment"];
+  const keys: FormStepKey[] = ["survey", "rab", "mo", "bast", "invoice", "payment"];
   return keys.map((key) => ({
     id: formId(projectId, key),
     projectId,
@@ -357,6 +360,11 @@ export function createSeedState(): AppState {
       },
     }),
     ...makeForms("p-gamma", {
+      mo: {
+        status: "assigned",
+        assigneeId: "u-finance",
+        payload: { notes: "MO menunggu negosiasi akhir." },
+      },
       survey: {
         status: "approved",
         assigneeId: "u-assignee2",
@@ -844,7 +852,7 @@ export function createSeedState(): AppState {
 
   const group = {
     id: "group-q4",
-    name: "Grup Demo Q4",
+    name: "Umbrella Demo Q4",
     description: "Program enterprise kuartal keempat.",
     status: "active" as const,
     createdById: "u-manager",

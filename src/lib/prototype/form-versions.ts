@@ -18,6 +18,9 @@ export function formHasData(type: FormStepKey, payload: FormPayload): boolean {
   if (type === "rab") {
     return ((payload as RabPayload).items ?? []).length > 0;
   }
+  if (type === "mo") {
+    return Boolean((payload as { notes?: string }).notes);
+  }
   if (type === "bast") {
     const value = payload as BastPayload;
     return Boolean(

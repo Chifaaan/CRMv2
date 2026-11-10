@@ -8,6 +8,7 @@ import {
   TASK_STATUS_LABEL,
   type AppState,
   type BusinessUnitId,
+  type CommercialProjectRow,
   type FormEntry,
   type FormStepKey,
   type FormTemplate,
@@ -18,6 +19,7 @@ import {
   type Phase,
   type Priority,
   type Project,
+  type ProjectCommercialTotals,
   type ProjectTemplate,
   type ProjectStep,
   type Role,
@@ -25,6 +27,7 @@ import {
   type Task,
   type TaskStatus,
   type TemplateStage,
+  type UmbrellaCommercialTotals,
   type User,
   type WorkloadRow,
 } from "./types";
@@ -176,6 +179,36 @@ export function boardVisibleStages(
         (step.status === "active" || step.status === "completed"),
     )
     .sort((a, b) => a.order - b.order);
+}
+
+export function taskBoardStage(
+  state: AppState,
+  projectId: string,
+  task: Task,
+): ProjectStep | undefined {
+  const stages = boardVisibleStages(state, projectId);
+  return (
+    (task.stageId
+      ? stages.find((step) => step.id === task.stageId)
+      : undefined) ??
+    stages.find((step) => step.key === task.stepKey)
+  );
+}
+
+/**
+ * Cards of the project Board live across every active or completed SIMPRO
+ * stage. The stage filter narrows the list; an empty filter shows all stages.
+ */
+export function projectBoardTasks(
+  state: AppState,
+  projectId: string,
+  stageKey?: string,
+): Task[] {
+  return tasksForProject(state, projectId).filter((task) => {
+    const stage = taskBoardStage(state, projectId, task);
+    if (!stage) return false;
+    return !stageKey || stage.key === stageKey;
+  });
 }
 
 export function tasksForProject(state: AppState, projectId: string): Task[] {
@@ -1076,9 +1109,19 @@ export function canEditForm(
   if (project?.status !== "active") return false;
   if (project.rabBaselineLockedAt && form.type === "rab") return false;
   const step = stepFor(state, form.projectId, form.stepKey);
-  if (step?.status !== "active") return false;
+  if (form.type === "mo") {
+    const moStep = state.steps.find(
+      (item) => item.projectId === form.projectId && item.financeKind === "mo",
+    );
+    if (moStep && moStep.status !== "active") return false;
+  } else if (step?.status !== "active") {
+    return false;
+  }
   if (form.status === "approved") return false;
   if (user.role === "admin") return true;
+  if (form.type === "mo" && user.role === "pm") {
+    return project?.createdById === user.id;
+  }
   if (form.assigneeId !== user.id) return false;
   if (form.type === "survey" && user.role !== "assignee") return false;
   if (form.type === "bast") {
@@ -1402,7 +1445,17 @@ export function taskProgressSummary(tasks: Task[]): TaskProgressSummary {
 }
 
 export function formLabel(key: FormStepKey): string {
-  return key === "rab" ? "RAB" : key === "bast" ? "BAST" : key === "invoice" ? "Invoice" : "Survey";
+  return key === "rab"
+    ? "RAB"
+    : key === "mo"
+      ? "Media Order"
+      : key === "bast"
+        ? "BAST"
+        : key === "invoice"
+          ? "Invoice"
+          : key === "payment"
+            ? "Pembayaran"
+            : "Survey";
 }
 
 export function formTitle(key: FormStepKey): string {
@@ -1435,11 +1488,77 @@ export function roleCanAccessSimpro(role: Role): boolean {
 export function landingForRole(role: Role): string {
   if (role === "assignee" || role === "media") return "/my-tasks";
   if (role === "bod") return "/business";
-  return "/crm";
+  return "/dashboard";
 }
 
 export function roleCanAccessBusiness(role: Role): boolean {
-  return role === "admin" || role === "bod";
+  return (
+    role === "admin" ||
+    role === "manager" ||
+    role === "pm" ||
+    role === "finance" ||
+    role === "bod"
+  );
+}
+
+export function roleCanManageUmbrella(role: Role): boolean {
+  return role === "admin" || role === "manager";
+}
+
+export function roleCanViewUmbrella(role: Role): boolean {
+  return (
+    role === "admin" ||
+    role === "manager" ||
+    role === "pm" ||
+    role === "finance"
+  );
+}
+
+export function roleCanBrowseProjects(role: Role): boolean {
+  return (
+    role === "admin" ||
+    role === "manager" ||
+    role === "pm" ||
+    role === "finance" ||
+    role === "assignee"
+  );
+}
+
+export function roleCanSeeCommercialTotals(role: Role): boolean {
+  return (
+    role === "admin" ||
+    role === "manager" ||
+    role === "pm" ||
+    role === "finance"
+  );
+}
+
+export type ProjectWorkspaceTab =
+  | "overview"
+  | "journey"
+  | "board"
+  | "backlog"
+  | "forms"
+  | "media";
+
+const ALL_PROJECT_TABS: ProjectWorkspaceTab[] = [
+  "overview",
+  "journey",
+  "board",
+  "backlog",
+  "forms",
+  "media",
+];
+
+export function projectWorkspaceTabs(role: Role): ProjectWorkspaceTab[] {
+  if (role === "assignee") return ["overview", "board", "backlog"];
+  if (role === "finance") {
+    return ["overview", "journey", "forms", "media"];
+  }
+  if (role === "admin" || role === "manager" || role === "pm") {
+    return [...ALL_PROJECT_TABS];
+  }
+  return [];
 }
 
 export type MediaOrderLineTotals = {
@@ -1498,6 +1617,197 @@ export function rabCostByBusinessUnit(
       (totals[item.businessUnitId] ?? 0) + item.qty * item.unitPrice;
   }
   return totals;
+}
+
+export function isCommercialProjectClosed(project: Project): boolean {
+  return (
+    project.status === "cancelled" ||
+    project.lifecycle === "lost" ||
+    project.lifecycle === "cancelled"
+  );
+}
+
+export function projectMediaOrders(state: AppState, projectId: string): MediaOrder[] {
+  return state.mediaOrders.filter(
+    (order) => order.projectId === projectId && order.status !== "cancelled",
+  );
+}
+
+const EMPTY_COMMERCIAL_TOTALS = {
+  rab: 0,
+  mo: 0,
+  moRevenue: 0,
+  moCost: 0,
+  moMargin: 0,
+  moMarginPercent: 0,
+  unmappedRab: 0,
+  unmappedMo: 0,
+};
+
+export function projectCommercialTotals(
+  state: AppState,
+  projectId: string,
+): ProjectCommercialTotals {
+  const project = projectById(state, projectId);
+  if (!project || isCommercialProjectClosed(project)) {
+    return { projectId, ...EMPTY_COMMERCIAL_TOTALS };
+  }
+
+  let rab = 0;
+  let unmappedRab = 0;
+  const rabForm = formFor(state, projectId, "rab");
+  if (rabForm?.status === "approved") {
+    const items =
+      (rabForm.payload as { items?: { qty: number; unitPrice: number; businessUnitId?: BusinessUnitId }[] })
+        .items ?? [];
+    for (const item of items) {
+      if (!item.businessUnitId) {
+        unmappedRab += 1;
+        continue;
+      }
+      rab += (item.qty || 0) * (item.unitPrice || 0);
+    }
+  }
+
+  let moRevenue = 0;
+  let moCost = 0;
+  let unmappedMo = 0;
+  for (const order of projectMediaOrders(state, projectId)) {
+    for (const item of order.items) {
+      if (!item.businessUnitId) {
+        unmappedMo += 1;
+        continue;
+      }
+      const line = mediaOrderLine(item);
+      moRevenue += line.revenue;
+      moCost += line.cost;
+    }
+  }
+  const moMargin = moRevenue - moCost;
+  return {
+    projectId,
+    rab,
+    mo: moRevenue,
+    moRevenue,
+    moCost,
+    moMargin,
+    moMarginPercent: moRevenue > 0 ? (moMargin / moRevenue) * 100 : 0,
+    unmappedRab,
+    unmappedMo,
+  };
+}
+
+export function umbrellaCommercialTotals(
+  state: AppState,
+  umbrellaId: string,
+): UmbrellaCommercialTotals {
+  const members = state.projects.filter(
+    (project) =>
+      project.groupId === umbrellaId && !isCommercialProjectClosed(project),
+  );
+  const totals = members.reduce(
+    (sum, project) => {
+      const item = projectCommercialTotals(state, project.id);
+      return {
+        rab: sum.rab + item.rab,
+        mo: sum.mo + item.mo,
+        moRevenue: sum.moRevenue + item.moRevenue,
+        moCost: sum.moCost + item.moCost,
+        moMargin: sum.moMargin + item.moMargin,
+        unmappedRab: sum.unmappedRab + item.unmappedRab,
+        unmappedMo: sum.unmappedMo + item.unmappedMo,
+      };
+    },
+    {
+      rab: 0,
+      mo: 0,
+      moRevenue: 0,
+      moCost: 0,
+      moMargin: 0,
+      unmappedRab: 0,
+      unmappedMo: 0,
+    },
+  );
+  return {
+    umbrellaId,
+    memberCount: members.length,
+    ...totals,
+    moMarginPercent:
+      totals.moRevenue > 0 ? (totals.moMargin / totals.moRevenue) * 100 : 0,
+  };
+}
+
+export type CommercialTableFilters = {
+  umbrellaId?: string;
+  standalone?: boolean;
+};
+
+export function commercialProjectRows(
+  state: AppState,
+  tab: "rab" | "mo",
+  user?: User,
+  filters: CommercialTableFilters = {},
+): CommercialProjectRow[] {
+  const projects = state.projects.filter((project) => {
+    if (isCommercialProjectClosed(project)) return false;
+    if (user?.role === "pm" && project.createdById !== user.id) return false;
+    if (filters.standalone && project.groupId) return false;
+    if (filters.umbrellaId && project.groupId !== filters.umbrellaId) return false;
+    return true;
+  });
+
+  const rows: CommercialProjectRow[] = [];
+  for (const project of projects) {
+    const umbrella = project.groupId
+      ? state.groups.find((group) => group.id === project.groupId)
+      : undefined;
+    const totals = projectCommercialTotals(state, project.id);
+    const rabForm = formFor(state, project.id, "rab");
+    const rabItems =
+      (rabForm?.payload as { items?: unknown[] } | undefined)?.items?.length ?? 0;
+    const orders = projectMediaOrders(state, project.id);
+    const moItems = orders.reduce((sum, order) => sum + order.items.length, 0);
+    const phase =
+      activeSteps(state, project.id)[0]?.phase ??
+      projectPhase(project, state.steps);
+
+    if (tab === "rab" && rabItems === 0) continue;
+    if (tab === "mo" && orders.length === 0) continue;
+
+    const updatedAt =
+      tab === "rab"
+        ? rabForm?.updatedAt ?? rabForm?.createdAt
+        : orders
+            .map((order) => order.updatedAt ?? order.createdAt)
+            .sort()
+            .at(-1);
+
+    rows.push({
+      project,
+      umbrellaId: umbrella?.id,
+      umbrellaName: umbrella?.name,
+      phase,
+      status: project.status,
+      rabStatus: rabForm?.status,
+      rabItems,
+      rabTotal: totals.rab,
+      unmappedRab: totals.unmappedRab,
+      moDocuments: orders.length,
+      moItems,
+      moRevenue: totals.moRevenue,
+      moCost: totals.moCost,
+      moMargin: totals.moMargin,
+      moMarginPercent: totals.moMarginPercent,
+      unmappedMo: totals.unmappedMo,
+      updatedAt,
+    });
+  }
+  return rows.sort((a, b) => a.project.name.localeCompare(b.project.name));
+}
+
+export function moFormHasDocument(state: AppState, form: StepForm): boolean {
+  if (form.type !== "mo") return true;
+  return projectMediaOrders(state, form.projectId).length > 0;
 }
 
 export type BusinessDashboardRow = {

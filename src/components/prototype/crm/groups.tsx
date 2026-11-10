@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FolderKanban, Plus, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -7,9 +8,11 @@ import { Button } from "@/components/ui/button";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   completionStats,
+  formatCurrency,
   groupCompleted,
   groupProgress,
   isGroupableProject,
+  umbrellaCommercialTotals,
   userById,
   visibleProjects,
 } from "@/lib/prototype/domain";
@@ -46,14 +49,14 @@ export function CrmGroups() {
     if (!projectId) return;
     store.addProjectToGroup(groupId, projectId);
     setAddProjectId((current) => ({ ...current, [groupId]: "" }));
-    toast.success("Proyek ditambahkan ke group.");
+    toast.success("Proyek ditambahkan ke Umbrella Project.");
   };
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Groups"
-        description="Kelompokkan proyek untuk melihat rollup dan penyelesaian program."
+        title="Umbrella Projects"
+        description="Kelompokkan proyek untuk melihat rollup komersial dan penyelesaian program."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <ViewToggle value={view} onChange={setView} />
@@ -64,7 +67,7 @@ export function CrmGroups() {
                   setDialogOpen(true);
                 }}
               >
-                <Plus className="size-4" /> Group baru
+                <Plus className="size-4" /> Umbrella Project baru
               </Button>
             ) : null}
           </div>
@@ -74,19 +77,21 @@ export function CrmGroups() {
       {groups.length === 0 ? (
         <EmptyState
           icon={Users}
-          title="Belum ada group"
-          description="Group minimal berisi 2 proyek. Hanya Manager/Admin yang dapat mengelola."
+          title="Belum ada Umbrella Project"
+          description="Umbrella Project minimal berisi 2 proyek. Hanya Manager/Admin yang dapat mengelola."
         />
       ) : view === "table" ? (
         <div className="overflow-x-auto rounded-xl border bg-card">
-          <table className="w-full min-w-[680px] text-left text-xs">
+          <table className="w-full min-w-[860px] text-left text-xs">
             <thead className="text-muted-foreground border-b bg-muted/30 text-[10px] uppercase tracking-wide">
               <tr>
-                <th className="px-3 py-2">Group</th>
+                <th className="px-3 py-2">Umbrella Project</th>
                 <th className="px-3 py-2">Deskripsi</th>
                 <th className="px-3 py-2">Proyek</th>
                 <th className="px-3 py-2">Progress</th>
                 <th className="px-3 py-2">Selesai</th>
+                <th className="px-3 py-2">Akumulatif RAB</th>
+                <th className="px-3 py-2">Akumulatif MO</th>
               </tr>
             </thead>
             <tbody>
@@ -96,15 +101,16 @@ export function CrmGroups() {
                 );
                 const progress = groupProgress(store, group.id);
                 const stats = completionStats(members);
+                const commercial = umbrellaCommercialTotals(store, group.id);
                 return (
                   <tr key={group.id} className="border-b last:border-0">
                     <td className="px-3 py-2">
-                      <a
-                        href={`#group-${group.id}`}
+                      <Link
+                        href={`/crm/umbrella-projects/${group.id}`}
                         className="font-medium hover:underline"
                       >
                         {group.name}
-                      </a>
+                      </Link>
                     </td>
                     <td className="px-3 py-2">
                       {group.description || "—"}
@@ -118,6 +124,12 @@ export function CrmGroups() {
                     </td>
                     <td className="px-3 py-2">
                       {stats.completed}/{stats.total}
+                    </td>
+                    <td className="px-3 py-2">
+                      {commercial.rab > 0 ? formatCurrency(commercial.rab) : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {commercial.mo > 0 ? formatCurrency(commercial.mo) : "—"}
                     </td>
                   </tr>
                 );
@@ -136,6 +148,7 @@ export function CrmGroups() {
             );
             const stats = completionStats(members);
             const completed = groupCompleted(store, group.id);
+            const commercial = umbrellaCommercialTotals(store, group.id);
             const allCancelled =
               members.length > 0 && members.every((project) => project.status === "cancelled");
             const status = allCancelled ? "cancelled" : completed ? "completed" : group.status;
@@ -147,7 +160,14 @@ export function CrmGroups() {
                 className="scroll-mt-4"
               >
                 <SectionCard
-                title={group.name}
+                title={
+                  <Link
+                    href={`/crm/umbrella-projects/${group.id}`}
+                    className="hover:underline"
+                  >
+                    {group.name}
+                  </Link>
+                }
                 description={`${members.length} proyek · dibuat oleh ${owner?.name ?? "—"}`}
                 actions={
                   <div className="flex items-center gap-2">
@@ -178,9 +198,9 @@ export function CrmGroups() {
                           variant="destructive"
                           size="sm"
                           onClick={() => {
-                            if (!window.confirm("Bubarkan group ini?")) return;
+                            if (!window.confirm("Bubarkan Umbrella Project ini?")) return;
                             store.disbandGroup(group.id);
-                            toast.success("Group dibubarkan.");
+                            toast.success("Umbrella Project dibubarkan.");
                           }}
                         >
                           Bubarkan
@@ -196,6 +216,20 @@ export function CrmGroups() {
                     {stats.completed} dari {stats.total} selesai
                   </span>
                 </div>
+                {commercial.rab > 0 || commercial.mo > 0 ? (
+                  <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
+                    {commercial.rab > 0 ? (
+                      <span className="bg-muted rounded-md px-2 py-1 font-semibold">
+                        Akumulatif RAB {formatCurrency(commercial.rab)}
+                      </span>
+                    ) : null}
+                    {commercial.mo > 0 ? (
+                      <span className="bg-muted rounded-md px-2 py-1 font-semibold">
+                        Akumulatif MO {formatCurrency(commercial.mo)}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="overflow-hidden rounded-lg border">
                   {members.map((project) => (
                     <GroupMemberRow
@@ -206,12 +240,12 @@ export function CrmGroups() {
                           ? () => {
                               if (members.length <= 2) {
                                 toast.error(
-                                  "Group minimal 2 proyek. Bubarkan group jika ingin mengosongkan.",
+                                  "Umbrella Project minimal 2 proyek. Bubarkan jika ingin mengosongkan.",
                                 );
                                 return;
                               }
                               store.removeProjectFromGroup(project.id);
-                              toast.success("Proyek dikeluarkan dari group.");
+                              toast.success("Proyek dikeluarkan dari Umbrella Project.");
                             }
                           : undefined
                       }

@@ -20,6 +20,7 @@ import {
   groupCompleted,
   isNewLifecycleProject,
   missingFinanceSteps,
+  moFormHasDocument,
   projectPhase,
   taskTransition,
   userById,
@@ -165,6 +166,7 @@ type PrototypeActions = {
   duplicateTemplate: (templateId: string) => string;
 
   assignForm: (formId: string, userId: string) => void;
+  ensureMoForm: (projectId: string) => string;
   saveForm: (
     formId: string,
     payload: StepForm["payload"],
@@ -832,6 +834,42 @@ export function migratePersistedState(persisted: unknown): PersistedState {
     delete restState[key];
   }
 
+  const mediaOrders = Array.isArray(state.mediaOrders)
+    ? (state.mediaOrders as MediaOrder[]).map((order) => ({
+        ...order,
+        status: (["draft", "final", "cancelled"] as MediaOrderStatus[]).includes(
+          order.status,
+        )
+          ? order.status
+          : ("draft" as const),
+        items: Array.isArray(order.items) ? order.items : [],
+      }))
+    : [];
+
+  const forms = Array.isArray(state.forms)
+    ? (state.forms as StepForm[]).map(
+        (form): StepForm => ({
+          ...form,
+          stepKey: form.stepKey ?? form.type,
+          type: form.type ?? form.stepKey,
+          versions: Array.isArray(form.versions) ? form.versions : [],
+        }),
+      )
+    : [];
+  const projectsWithMoStep = new Set(
+    steps.filter((step) => step.financeKind === "mo").map((step) => step.projectId),
+  );
+  for (const project of projects) {
+    const needsMoForm =
+      projectsWithMoStep.has(project.id) ||
+      mediaOrders.some((order) => order.projectId === project.id);
+    if (!needsMoForm) continue;
+    if (forms.some((form) => form.projectId === project.id && form.type === "mo")) {
+      continue;
+    }
+    forms.push(defaultForm(project.id, "mo"));
+  }
+
   return {
     ...restState,
     users,
@@ -839,6 +877,7 @@ export function migratePersistedState(persisted: unknown): PersistedState {
     projects,
     steps,
     tasks,
+    forms,
     projectEvents: [
       ...(Array.isArray(state.projectEvents)
         ? (state.projectEvents as ProjectEvent[])
@@ -856,17 +895,7 @@ export function migratePersistedState(persisted: unknown): PersistedState {
           },
         )
       : [],
-    mediaOrders: Array.isArray(state.mediaOrders)
-      ? (state.mediaOrders as MediaOrder[]).map((order) => ({
-          ...order,
-          status: (["draft", "final", "cancelled"] as MediaOrderStatus[]).includes(
-            order.status,
-          )
-            ? order.status
-            : ("draft" as const),
-          items: Array.isArray(order.items) ? order.items : [],
-        }))
-      : [],
+    mediaOrders,
     groups: Array.isArray(state.groups) ? state.groups : [],
   };
 }
@@ -928,6 +957,9 @@ function defaultForm(projectId: string, key: FormStepKey): StepForm {
   }
   if (key === "rab") {
     return { ...base, payload: { items: [], notes: "" } };
+  }
+  if (key === "mo") {
+    return { ...base, payload: { notes: "" } };
   }
   if (key === "bast") {
     return {
@@ -1333,7 +1365,9 @@ export const usePrototypeStore = create<PrototypeStore>()(
             Math.max(0, ...projectSteps.map((item) => item.order)) + 1,
           status: activating ? "active" : "pending",
           kind: requestedKind,
-          required: true,
+          required: !(
+            requestedKind === "finance_form" && input.financeKind === "mo"
+          ),
           weight: 1,
           financeKind:
             requestedKind === "finance_form" ? input.financeKind : undefined,
@@ -1388,6 +1422,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           steps: [...stepsWithMandatory, ...mandatoryAdditions],
           projectEvents: events,
         });
+        if (step.financeKind === "mo") get().ensureMoForm(projectId);
         return stepId;
       },
 
@@ -1994,6 +2029,23 @@ export const usePrototypeStore = create<PrototypeStore>()(
         return copy.id;
       },
 
+      ensureMoForm: (projectId) => {
+        const state = get();
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!project) return "";
+        const existing = state.forms.find(
+          (form) => form.projectId === projectId && form.type === "mo",
+        );
+        if (existing) return existing.id;
+        const id = `form-${projectId}-mo`;
+        const form: StepForm = {
+          ...defaultForm(projectId, "mo"),
+          id,
+        };
+        set({ forms: [...state.forms, form] });
+        return id;
+      },
+
       assignForm: (formId, userId) => {
         const state = get();
         const form = state.forms.find((item) => item.id === formId);
@@ -2122,6 +2174,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
         if (!form) return;
         const project = state.projects.find((item) => item.id === form.projectId);
         if (form.type === "rab" && project?.rabBaselineLockedAt) return;
+        if (!moFormHasDocument(state, form)) return;
         const nextForm = submitFormVersion(form, state.currentUserId);
         const versionNumber = nextForm.versions?.length ?? 1;
         set({
@@ -2167,6 +2220,13 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const state = get();
         const form = state.forms.find((item) => item.id === formId);
         if (!form) return;
+        if (
+          form.type === "mo" &&
+          decision === "approved" &&
+          !moFormHasDocument(state, form)
+        ) {
+          return;
+        }
         const nextForm = reviewFormVersion(
           form,
           decision,
@@ -3266,6 +3326,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             },
           }),
         });
+        get().ensureMoForm(projectId);
         return orderId;
       },
 
@@ -3836,7 +3897,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
     }),
     {
       name: "crm-simpro:v1",
-      version: 10,
+      version: 11,
       migrate: (persisted) => {
         backupPersistedState(persisted);
         return migratePersistedState(persisted) as unknown as PrototypeStore;

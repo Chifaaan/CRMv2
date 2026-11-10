@@ -94,7 +94,7 @@ type FormRow = {
   kind: "entry" | "legacy" | "finance";
   id: string;
   project?: Project;
-  category: "Project";
+  category: string;
   contextName: string;
   contextCode: string;
   formName: string;
@@ -104,6 +104,7 @@ type FormRow = {
   submittedAt?: string;
   dueDate?: string;
   reviewComment?: string;
+  documentCount?: number;
   entry?: FormEntry;
   form?: StepForm;
   type?: SimproFinanceFormType;
@@ -185,10 +186,13 @@ function FormItem({
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold">{row.title}</p>
           <p className="text-muted-foreground mt-0.5 text-[10px]">
-            {row.formName} · {row.contextCode}
+            {row.category} · {row.formName} · {row.contextCode}
           </p>
           <p className="text-muted-foreground truncate text-[10px]">
             {row.contextName}
+            {row.documentCount !== undefined
+              ? ` · ${row.documentCount} dokumen MO`
+              : ""}
           </p>
         </div>
         <StatusBadge status={row.status} />
@@ -256,7 +260,7 @@ export function SimproFormsPage() {
         kind: "entry",
         id: entry.id,
         project,
-        category: "Project" as const,
+        category: "Form Proyek",
         contextName: project.name,
         contextCode: project.code,
         formName: step.formTemplate?.title ?? step.name,
@@ -289,7 +293,7 @@ export function SimproFormsPage() {
         kind: "legacy",
         id: form.id,
         project,
-        category: "Project" as const,
+        category: "Survey",
         contextName: project.name,
         contextCode: project.code,
         formName: "Form Survey",
@@ -307,7 +311,7 @@ export function SimproFormsPage() {
         kind: "finance",
         id: row.form.id,
         project: row.project,
-        category: "Project" as const,
+        category: "Form Keuangan",
         contextName: row.project.name,
         contextCode: row.project.code,
         formName: row.formName,
@@ -316,6 +320,13 @@ export function SimproFormsPage() {
         status: legacyDisplayStatus(row.form.status),
         submittedAt: row.form.submittedAt,
         reviewComment: row.form.reviewComment,
+        documentCount:
+          row.form.type === "mo"
+            ? store.mediaOrders.filter(
+                (order) =>
+                  order.projectId === row.project.id && order.status !== "cancelled",
+              ).length
+            : undefined,
         form: row.form,
         type: row.form.type as SimproFinanceFormType,
       });
@@ -481,6 +492,7 @@ export function SimproFormsPage() {
             <thead className="text-muted-foreground border-b bg-muted/30 text-[10px] uppercase tracking-wide">
               <tr>
                 <th className="px-3 py-2">Form</th>
+                <th className="px-3 py-2">Kategori</th>
                 <th className="px-3 py-2">Konteks</th>
                 <th className="px-3 py-2">Assignee</th>
                 <th className="px-3 py-2">Status</th>
@@ -494,8 +506,14 @@ export function SimproFormsPage() {
                 <tr key={`${row.kind}-${row.id}`} className="border-b last:border-0">
                   <td className="px-3 py-2">
                     <p className="font-medium">{row.title}</p>
-                    <p className="text-muted-foreground text-[10px]">{row.formName}</p>
+                    <p className="text-muted-foreground text-[10px]">
+                      {row.formName}
+                      {row.documentCount !== undefined
+                        ? ` · ${row.documentCount} dokumen`
+                        : ""}
+                    </p>
                   </td>
+                  <td className="px-3 py-2">{row.category}</td>
                   <td className="px-3 py-2">
                     <p className="font-medium">{row.contextName}</p>
                     <p className="text-muted-foreground text-[10px]">{row.contextCode}</p>

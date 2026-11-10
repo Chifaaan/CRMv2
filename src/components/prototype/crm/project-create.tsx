@@ -740,11 +740,13 @@ export function CrmProjectCreate() {
                               onChange={(value) =>
                                 updateStage(stage.id, {
                                   financeKind: value as FormStepKey,
+                                  ...(value === "mo" ? { required: false } : {}),
                                 })
                               }
                               className="h-7 text-[11px]"
                             >
                               <option value="rab">RAB</option>
+                              <option value="mo">Media Order</option>
                               <option value="bast">BAST</option>
                               <option value="invoice">Invoice</option>
                               <option value="payment">Pembayaran</option>

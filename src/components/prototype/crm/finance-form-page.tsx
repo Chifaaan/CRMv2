@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeft, FileText } from "lucide-react";
 import { toast } from "sonner";
@@ -63,6 +63,8 @@ export function FinanceFormPage({
 }) {
   const store = usePrototypeStore();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromBusiness = searchParams.get("from") === "business";
   const project = store.projects.find((item) => item.id === projectId);
   const currentUser = userById(store, store.currentUserId);
   const config = FINANCE_FORM_TYPES[formType];
@@ -87,7 +89,7 @@ export function FinanceFormPage({
 
   if (
     currentUser.role === "assignee" ||
-    !canViewProject(store, currentUser, project)
+    (!fromBusiness && !canViewProject(store, currentUser, project))
   ) {
     return (
       <EmptyState
