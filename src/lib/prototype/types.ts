@@ -426,6 +426,7 @@ export type ProjectGroup = {
   name: string;
   description: string;
   status: GroupStatus;
+  prospekId?: string;
   createdById: string;
   createdAt: string;
 };
@@ -497,7 +498,14 @@ export type ProspekPitching = {
   decidedAt?: string;
   decidedById?: string;
   lostReason?: string;
+  statusBeforeLoss?: "draft" | "won";
+  lostAt?: string;
+  lostById?: string;
+  lossUndoneAt?: string;
   contract?: PitchingContract;
+  contractAssigneeId?: string;
+  contractDueDate?: string;
+  contractStatus?: "unassigned" | "assigned" | "draft" | "submitted";
   projectId?: string;
   convertedAt?: string;
 };

@@ -39,7 +39,8 @@ npm test
 - Excel import/templates: `src/lib/prototype/excel.ts`
 - Prototype UI: `src/components/prototype/`
 - Routes:
-  - CRM: `/crm`, `/crm/projects`, `/crm/projects/new`, `/crm/projects/[id]`, `/crm/prospek`, `/crm/prospek/[id]`, `/crm/prospek/[id]/forms/[entryId]`, `/crm/groups`, `/crm/templates`, `/crm/workload`
+  - CRM: `/crm`, `/crm/projects`, `/crm/projects/new`, `/crm/projects/[id]`, `/crm/prospek`, `/crm/prospek/[id]`, `/crm/prospek/[id]/pitching/[pitchingId]`, `/crm/prospek/[id]/forms/[entryId]`, `/crm/groups`, `/crm/templates`, `/crm/workload`
+  - Work Prospek: `/work/prospek/[pitchingId]/[section]`, `/work/prospek/[pitchingId]/form/[entryId]`
   - SIMPRO: `/dashboard`, `/projects`, `/projects/[id]/*`, `/my-tasks`, `/forms`
 
 ## Frontend baseline
@@ -65,8 +66,13 @@ Prototype adaptations already made:
 - Prospek adalah umbrella project di CRM. Satu Prospek berisi banyak Pitching; setiap Pitching punya RAB, Quotation, tugas Form, dan kontrak sendiri.
 - Alur Prospek tetap: Detail → Pitching → RAB → Quotation → Decision → Kontrak. Pitching yang menang dan kontraknya lengkap dikonversi menjadi anak proyek; Pitching yang kalah menjadi riwayat read-only.
 - Prospek dan seluruh pekerjaannya berada di CRM. SIMPRO hanya menerima anak proyek hasil konversi, yang dimulai setelah tahap/fase Prospek selesai.
-- PM membuat dan hanya melihat Prospek miliknya; Manager/Admin melihat semua; Assignee hanya melihat Pitching/Form/RAB/Quotation yang di-assign; Finance tidak mengakses Prospek sampai anak proyek dibuat.
+- PM membuat dan hanya melihat Prospek miliknya; Manager/Admin melihat semua; Assignee dan Finance tidak memiliki akses ke menu/halaman Prospek dan hanya membuka pekerjaan yang di-assign lewat My Tasks/Forms serta route `/work/prospek/*`.
+- RAB, Quotation, Form Pitching, dan Kontrak dapat di-assign kepada Assignee, Manager, atau Finance. Penerima mendapat notifikasi in-app dan pekerjaannya muncul di My Tasks; Form Pitching juga muncul di Forms.
+- Pitching ditampilkan sebagai card dan membuka halaman bersection RAB, Quotation, Form Pitching, Kontrak, dan Finishing. Kontrak terkunci sampai Pitching menang.
+- Pitching yang belum dikonversi dapat ditandai kalah kapan saja, langsung masuk arsip read-only, dan dapat di-undo ke status sebelumnya oleh PM pemilik/Admin.
 - Pagu Prospek hanya peringatan, bukan batas keras. Termine kontrak tampil sebagai acuan pembayaran di Closing dan tidak membuat form finance otomatis.
+- Konversi Pitching menang otomatis membuat atau memakai ulang Group bernama sama dengan Prospek dan memasukkan anak proyek ke Group tersebut.
+- CRM Projects, CRM Groups, dan Forms memiliki toggle Card/Table dengan default Card dan preferensi tersimpan per halaman.
 - Reminder Prospek hanya in-app: penugasan, mendekati due date (3 hari), dan overdue. Tidak ada email.
 - Proyek lama dengan step Pitching dan `ProjectGroup` lama tidak dimigrasikan ke Prospek.
 - Form stages have one form template and many entries. Entries are created by PM, assigned by Manager/Admin, filled by the assignee, and reviewed by PM. All non-cancelled entries must be approved; at least one entry is required unless "no work" is explicitly confirmed and audited.

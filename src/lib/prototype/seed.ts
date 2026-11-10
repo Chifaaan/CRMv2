@@ -1174,6 +1174,9 @@ export function createSeedState(): AppState {
         savedAt: iso("2026-10-21"),
         savedById: "u-pm1",
       },
+      contractAssigneeId: "u-finance",
+      contractDueDate: iso("2026-10-22"),
+      contractStatus: "submitted",
     },
     {
       id: "pp-alpha-kol",
@@ -1188,6 +1191,9 @@ export function createSeedState(): AppState {
       decidedAt: iso("2026-10-20"),
       decidedById: "u-pm1",
       lostReason: "Budget klien tidak mencukupi untuk paket KOL.",
+      statusBeforeLoss: "draft",
+      lostAt: iso("2026-10-20"),
+      lostById: "u-pm1",
     },
     {
       id: "pp-beta-kol",

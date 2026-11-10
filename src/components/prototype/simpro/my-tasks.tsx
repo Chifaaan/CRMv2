@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Kanban, LayoutList, Rows3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   formatDate,
   isOverdue,
+  prospekWorkItemsForUser,
   tasksForAssignee,
   userById,
 } from "@/lib/prototype/domain";
@@ -44,6 +46,10 @@ export function MyTasksPage() {
   const currentUser = userById(store, store.currentUserId);
   const tasks = useMemo(
     () => (currentUser ? tasksForAssignee(store, currentUser.id) : []),
+    [store, currentUser],
+  );
+  const prospekWork = useMemo(
+    () => (currentUser ? prospekWorkItemsForUser(store, currentUser.id) : []),
     [store, currentUser],
   );
   const [view, setView] = useState<View>("board");
@@ -166,13 +172,42 @@ export function MyTasksPage() {
         </NativeSelect>
       </div>
 
-      {tasks.length === 0 ? (
+      {prospekWork.length > 0 ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Pekerjaan Prospek</h2>
+            <span className="text-muted-foreground text-[11px]">
+              {prospekWork.length} pekerjaan
+            </span>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {prospekWork.map((item) => (
+              <Link
+                key={item.id}
+                href={item.href}
+                className="bg-card hover:border-primary/40 rounded-lg border p-3 text-xs shadow-sm transition-colors"
+              >
+                <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                  {item.kind} · {item.context}
+                </p>
+                <p className="mt-1 font-semibold">{item.title}</p>
+                <p className="text-muted-foreground mt-1 text-[10px]">
+                  {item.status.replace(/_/g, " ")}
+                  {item.dueDate ? ` · Due ${formatDate(item.dueDate)}` : ""}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {tasks.length === 0 && prospekWork.length === 0 ? (
         <EmptyState
           icon={Kanban}
           title="Belum ada task"
           description="Manager/Admin akan meng-assign task kepada Anda."
         />
-      ) : groups.length === 0 ? (
+      ) : tasks.length === 0 ? null : groups.length === 0 ? (
         <EmptyState
           icon={LayoutList}
           title="Tidak ada task yang cocok"

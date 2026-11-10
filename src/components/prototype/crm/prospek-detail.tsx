@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -34,8 +34,6 @@ import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   canConvertPitching,
   canDecidePitching,
-  canEditPitchingRab,
-  canEditQuotation,
   canManageProspek,
   canViewProspek,
   contractComplete,
@@ -127,7 +125,7 @@ async function uploadAttachment(
   };
 }
 
-function RabPanel({
+export function RabPanel({
   pitching,
   editable,
 }: {
@@ -421,7 +419,7 @@ function RabPanel({
   );
 }
 
-function QuotationPanel({
+export function QuotationPanel({
   pitching,
   editable,
   canReview,
@@ -653,7 +651,7 @@ function QuotationPanel({
   );
 }
 
-function FormPanel({ pitching, locked }: { pitching: ProspekPitching; locked: boolean }) {
+export function FormPanel({ pitching, locked }: { pitching: ProspekPitching; locked: boolean }) {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
   const prospek = prospekById(store, pitching.prospekId);
@@ -798,14 +796,18 @@ function FormPanel({ pitching, locked }: { pitching: ProspekPitching; locked: bo
   );
 }
 
-function ContractPanel({
+export function ContractPanel({
   pitching,
   editable,
+  canAssign = false,
 }: {
   pitching: ProspekPitching;
   editable: boolean;
+  canAssign?: boolean;
 }) {
   const store = usePrototypeStore();
+  const currentUser = userById(store, store.currentUserId);
+  const prospek = prospekById(store, pitching.prospekId);
   const contract = pitching.contract;
   const [number, setNumber] = useState(contract?.number ?? "");
   const [date, setDate] = useState(
@@ -817,8 +819,29 @@ function ContractPanel({
   );
   const [termine, setTermine] = useState<Termine[]>(contract?.termine ?? []);
   const [saving, setSaving] = useState(false);
+  const [assignTo, setAssignTo] = useState(pitching.contractAssigneeId ?? "");
+  const [dueDate, setDueDate] = useState(
+    pitching.contractDueDate ? pitching.contractDueDate.slice(0, 10) : "",
+  );
+  const candidates = currentUser
+    ? prospekAssigneeCandidates(store, currentUser, prospek)
+    : [];
 
   if (pitching.status === "lost") return null;
+
+  if (pitching.status !== "won") {
+    return (
+      <SectionCard
+        title="Kontrak & Termine"
+        description="Kontrak diisi setelah Pitching dinyatakan menang."
+      >
+        <p className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+          Section Kontrak terkunci. Tandai Pitching sebagai menang di Finishing
+          terlebih dahulu, lalu isi nomor, nilai, berkas, dan Termine.
+        </p>
+      </SectionCard>
+    );
+  }
 
   const updateTermine = (index: number, patch: Partial<Termine>) =>
     setTermine((prev) =>
@@ -844,6 +867,41 @@ function ContractPanel({
       }
     >
       <div className="space-y-3">
+        {canAssign && !pitching.projectId ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field label="Assignee kontrak">
+              <NativeSelect
+                value={assignTo}
+                onChange={(next) => {
+                  setAssignTo(next);
+                  if (next) {
+                    store.assignPitchingContract(
+                      pitching.id,
+                      next,
+                      dueDate || undefined,
+                    );
+                  }
+                }}
+              >
+                <option value="">Belum di-assign</option>
+                {candidates.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Field label="Due date kontrak">
+              <Input
+                type="date"
+                value={dueDate}
+                disabled={!editable}
+                onChange={(event) => setDueDate(event.target.value)}
+              />
+            </Field>
+          </div>
+        ) : null}
+
         <div className="grid gap-2 sm:grid-cols-3">
           <Field label="Nomor kontrak">
             <Input
@@ -1016,7 +1074,7 @@ function ContractPanel({
   );
 }
 
-function DecisionPanel({
+export function DecisionPanel({
   prospek,
   pitching,
   locked,
@@ -1060,32 +1118,35 @@ function DecisionPanel({
         </div>
 
         {pitching.status === "draft" && canDecide && !locked ? (
-          <div className="flex flex-wrap items-end gap-2">
-            <Button
-              size="sm"
-              disabled={!rabReady || !quotationReady}
-              onClick={() => {
-                store.decideProspekPitching(pitching.id, "won");
-                toast.success("Pitching ditandai menang.");
-              }}
-            >
-              <Check className="size-3.5" /> Menang
-            </Button>
+          <Button
+            size="sm"
+            disabled={!rabReady || !quotationReady}
+            onClick={() => {
+              store.decideProspekPitching(pitching.id, "won");
+              toast.success("Pitching ditandai menang.");
+            }}
+          >
+            <Check className="size-3.5" /> Menang
+          </Button>
+        ) : null}
+
+        {pitching.status !== "lost" && !pitching.projectId && canDecide ? (
+          <div className="flex flex-wrap items-end gap-2 border-t pt-2">
             <Field label="Alasan kalah" className="min-w-[240px] flex-1">
               <Input
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
-                placeholder="Wajib diisi jika kalah"
+                placeholder="Wajib diisi untuk menandai kalah"
                 className="h-8 text-xs"
               />
             </Field>
             <Button
               size="sm"
               variant="destructive"
-              disabled={!rabReady || !quotationReady || !reason.trim()}
+              disabled={!reason.trim()}
               onClick={() => {
                 store.decideProspekPitching(pitching.id, "lost", reason);
-                toast.success("Pitching ditandai kalah dan masuk riwayat.");
+                toast.success("Pitching ditandai kalah dan masuk arsip.");
               }}
             >
               <X className="size-3.5" /> Kalah
@@ -1094,9 +1155,24 @@ function DecisionPanel({
         ) : null}
 
         {pitching.status === "lost" ? (
-          <p className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-800">
-            Pitching kalah: {pitching.lostReason}. Data Pitching ini read-only.
-          </p>
+          <div className="space-y-2">
+            <p className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-800">
+              Pitching kalah: {pitching.lostReason} Data Pitching ini read-only
+              dan tersimpan di arsip.
+            </p>
+            {canDecide && !pitching.projectId && prospek.status !== "cancelled" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  store.undoPitchingLoss(pitching.id);
+                  toast.success("Keputusan kalah dibatalkan.");
+                }}
+              >
+                Undo kalah
+              </Button>
+            ) : null}
+          </div>
         ) : null}
 
         {pitching.status === "won" ? (
@@ -1136,7 +1212,7 @@ function DecisionPanel({
   );
 }
 
-function HistoryPanel({ prospekId, pitchingId }: { prospekId: string; pitchingId: string }) {
+export function HistoryPanel({ prospekId, pitchingId }: { prospekId: string; pitchingId: string }) {
   const store = usePrototypeStore();
   const page = eventPage(store.prospekEvents, prospekId, 0, 20);
   const items = page.items.filter((event) => event.pitchingId === pitchingId);
@@ -1170,38 +1246,51 @@ function HistoryPanel({ prospekId, pitchingId }: { prospekId: string; pitchingId
 function PitchingCard({
   prospek,
   pitching,
-  expanded,
-  onToggle,
 }: {
   prospek: Prospek;
   pitching: ProspekPitching;
-  expanded: boolean;
-  onToggle: () => void;
 }) {
   const store = usePrototypeStore();
-  const currentUser = userById(store, store.currentUserId);
-  const locked =
-    pitching.status === "lost" ||
-    Boolean(pitching.projectId) ||
-    prospek.status !== "active";
-  const rabEditable = currentUser
-    ? canEditPitchingRab(store, currentUser, pitching)
-    : false;
-  const quotationEditable = currentUser
-    ? canEditQuotation(store, currentUser, pitching)
-    : false;
-  const canReview = currentUser ? canDecidePitching(currentUser, prospek) : false;
+  const router = useRouter();
+  const rab = pitchingRabFor(store, pitching.id);
+  const quotation = pitchingQuotationFor(store, pitching.id);
   const template = store.templates.find(
     (item) => item.id === pitching.templateId,
   );
+  const rabTotal = (rab?.items ?? []).reduce(
+    (sum, item) => sum + item.qty * item.unitPrice,
+    0,
+  );
+  const assigneeIds = [
+    rab?.assigneeId,
+    quotation?.assigneeId,
+    pitching.contractAssigneeId,
+  ].filter((id): id is string => Boolean(id));
+  const assigneeNames = [
+    ...new Set(
+      assigneeIds.map((id) => userById(store, id)?.name ?? "User"),
+    ),
+  ];
+  const dueDates = [rab?.dueDate, quotation?.dueDate, pitching.contractDueDate]
+    .filter((date): date is string => Boolean(date))
+    .sort();
 
   return (
-    <div className="bg-card rounded-xl border shadow-sm">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full flex-wrap items-center justify-between gap-2 p-3 text-left"
-      >
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() =>
+        router.push(`/crm/prospek/${prospek.id}/pitching/${pitching.id}`)
+      }
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          router.push(`/crm/prospek/${prospek.id}/pitching/${pitching.id}`);
+        }
+      }}
+      className="bg-card hover:border-primary/40 cursor-pointer rounded-xl border p-3 shadow-sm transition-colors"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <PitchingStatusBadge status={pitching.status} />
@@ -1216,36 +1305,59 @@ function PitchingCard({
             {pitching.description || "Tanpa deskripsi"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {pitching.projectId ? (
-            <span className="text-[10px] font-medium text-emerald-700">
-              Sudah menjadi proyek
-            </span>
-          ) : null}
-          <span className="text-muted-foreground text-xs">
-            {expanded ? "Tutup" : "Buka"}
-          </span>
-        </div>
-      </button>
+        <span className="text-primary text-[11px] font-medium">Buka →</span>
+      </div>
 
-      {expanded ? (
-        <div className="space-y-3 border-t p-3">
-          {pitching.status === "lost" ? (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-800">
-              Pitching kalah dan terkunci sebagai dokumentasi. Alasan:{" "}
-              {pitching.lostReason}
-            </p>
-          ) : null}
-          <RabPanel pitching={pitching} editable={rabEditable && !locked} />
-          <QuotationPanel
-            pitching={pitching}
-            editable={quotationEditable && !locked}
-            canReview={canReview && !locked}
-          />
-          <FormPanel pitching={pitching} locked={locked} />
-          <ContractPanel pitching={pitching} editable={canReview && !locked} />
-          <DecisionPanel prospek={prospek} pitching={pitching} locked={locked} />
-          <HistoryPanel prospekId={prospek.id} pitchingId={pitching.id} />
+      <div className="mt-3 grid gap-2 text-[11px] sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-lg bg-muted/40 p-2">
+          <p className="text-muted-foreground">RAB</p>
+          <p className="font-semibold">{formatCurrency(rabTotal)}</p>
+          <p className="text-muted-foreground">{rab?.status ?? "belum ada"}</p>
+        </div>
+        <div className="rounded-lg bg-muted/40 p-2">
+          <p className="text-muted-foreground">Quotation</p>
+          <p className="font-semibold">
+            {quotation?.amount ? formatCurrency(quotation.amount) : "—"}
+          </p>
+          <p className="text-muted-foreground">
+            {quotation?.status ?? "belum ada"}
+          </p>
+        </div>
+        <div className="rounded-lg bg-muted/40 p-2">
+          <p className="text-muted-foreground">Kontrak</p>
+          <p className="font-semibold">
+            {contractComplete(pitching.contract) ? "Lengkap" : "Belum lengkap"}
+          </p>
+          <p className="text-muted-foreground">
+            {pitching.contract?.number ?? "Belum diisi"}
+          </p>
+        </div>
+        <div className="rounded-lg bg-muted/40 p-2">
+          <p className="text-muted-foreground">Assignee</p>
+          <p className="truncate font-semibold">
+            {assigneeNames.length > 0 ? assigneeNames.join(", ") : "Belum ada"}
+          </p>
+          <p className="text-muted-foreground">
+            {dueDates[0] ? `Due ${formatDate(dueDates[0])}` : "Tanpa due date"}
+          </p>
+        </div>
+      </div>
+
+      {pitching.status === "lost" ? (
+        <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[10px] text-rose-800">
+          Kalah: {pitching.lostReason}
+        </p>
+      ) : null}
+
+      {pitching.projectId ? (
+        <div className="mt-2 flex justify-end">
+          <Link
+            href={`/crm/projects/${pitching.projectId}`}
+            onClick={(event) => event.stopPropagation()}
+            className="text-[10px] font-medium text-emerald-700 hover:underline"
+          >
+            Buka anak proyek →
+          </Link>
         </div>
       ) : null}
     </div>
@@ -1254,12 +1366,8 @@ function PitchingCard({
 
 export function CrmProspekDetail({ prospekId }: { prospekId: string }) {
   const store = usePrototypeStore();
-  const searchParams = useSearchParams();
   const currentUser = userById(store, store.currentUserId);
   const prospek = prospekById(store, prospekId);
-  const [openPitching, setOpenPitching] = useState<string | null>(
-    searchParams.get("pitching"),
-  );
   const [addOpen, setAddOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -1271,22 +1379,8 @@ export function CrmProspekDetail({ prospekId }: { prospekId: string }) {
 
   const pitchings = useMemo(() => {
     if (!prospek) return [];
-    const all = prospekPitchingsFor(store, prospek.id);
-    if (currentUser?.role !== "assignee") return all;
-    return all.filter((pitching) => {
-      const rab = pitchingRabFor(store, pitching.id);
-      const quotation = pitchingQuotationFor(store, pitching.id);
-      return (
-        rab?.assigneeId === currentUser.id ||
-        quotation?.assigneeId === currentUser.id ||
-        store.formEntries.some(
-          (entry) =>
-            entry.pitchingId === pitching.id &&
-            entry.assigneeId === currentUser.id,
-        )
-      );
-    });
-  }, [store, prospek, currentUser]);
+    return prospekPitchingsFor(store, prospek.id);
+  }, [store, prospek]);
 
   if (!prospek || !currentUser || !canViewProspek(store, currentUser, prospek)) {
     return (
@@ -1402,20 +1496,41 @@ export function CrmProspekDetail({ prospekId }: { prospekId: string }) {
           }
         />
       ) : (
-        <div className="space-y-2">
-          {pitchings.map((pitching) => (
-            <PitchingCard
-              key={pitching.id}
-              prospek={prospek}
-              pitching={pitching}
-              expanded={openPitching === pitching.id}
-              onToggle={() =>
-                setOpenPitching((prev) =>
-                  prev === pitching.id ? null : pitching.id,
-                )
-              }
-            />
-          ))}
+        <div className="space-y-4">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {pitchings
+              .filter((pitching) => pitching.status !== "lost")
+              .map((pitching) => (
+                <PitchingCard
+                  key={pitching.id}
+                  prospek={prospek}
+                  pitching={pitching}
+                />
+              ))}
+          </div>
+          {pitchings.some((pitching) => pitching.status === "lost") ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Arsip Pitching
+                </h3>
+                <span className="text-muted-foreground text-[11px]">
+                  {pitchings.filter((pitching) => pitching.status === "lost").length} Pitching
+                </span>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {pitchings
+                  .filter((pitching) => pitching.status === "lost")
+                  .map((pitching) => (
+                    <PitchingCard
+                      key={pitching.id}
+                      prospek={prospek}
+                      pitching={pitching}
+                    />
+                  ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -1490,7 +1605,6 @@ export function CrmProspekDetail({ prospekId }: { prospekId: string }) {
                   toast.error("Gagal menambah Pitching.");
                   return;
                 }
-                setOpenPitching(id);
                 setAddOpen(false);
                 setPitchingDraft({
                   title: "",

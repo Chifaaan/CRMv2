@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   canEditFormEntry,
+  canEditPitchingContract,
   canEditPitchingRab,
   canEditQuotation,
   canReviewFormEntry,
   formsNeedingAction,
+  isProspekAssignee,
+  prospekAssigneeCandidates,
   prospekPitchingsFor,
   prospekPaguSummary,
+  prospekWorkItemsForUser,
   userById,
   visibleProspeks,
 } from "../src/lib/prototype/domain";
@@ -147,12 +151,8 @@ describe("prospek management", () => {
     ]);
     expect(visibleProspeks(seed, manager)).toHaveLength(2);
     expect(visibleProspeks(seed, admin)).toHaveLength(2);
-    expect(visibleProspeks(seed, assignee1).map((item) => item.id)).toEqual([
-      "prs-alpha",
-    ]);
-    expect(visibleProspeks(seed, assignee2).map((item) => item.id)).toEqual([
-      "prs-beta",
-    ]);
+    expect(visibleProspeks(seed, assignee1)).toEqual([]);
+    expect(visibleProspeks(seed, assignee2)).toEqual([]);
     expect(visibleProspeks(seed, finance)).toEqual([]);
   });
 
@@ -343,7 +343,7 @@ describe("prospek pitching flow", () => {
       state().prospekEvents.some(
         (event) =>
           event.pitchingId === "pp-beta-kol" &&
-          event.eventType === "pitching.decided",
+          event.eventType === "pitching.lost",
       ),
     ).toBe(true);
 
@@ -401,6 +401,13 @@ describe("prospek pitching flow", () => {
       ),
     ).toHaveLength(1);
     expect(
+      canEditPitchingContract(
+        state(),
+        userById(state(), "u-pm2")!,
+        pitching("pp-beta-kol"),
+      ),
+    ).toBe(false);
+    expect(
       state().prospekEvents.some(
         (event) =>
           event.eventType === "pitching.converted" &&
@@ -429,6 +436,253 @@ describe("prospek pitching flow", () => {
           form.status !== "unassigned",
       ),
     ).toBe(false);
+  });
+});
+
+describe("refined prospek pitching flow", () => {
+  beforeEach(() => {
+    usePrototypeStore.getState().reset();
+  });
+
+  it("treats finance as a prospek assignee and hides prospek from assignee/finance", () => {
+    const seed = createSeedState();
+    const finance = userById(seed, "u-finance")!;
+    const assignee = userById(seed, "u-assignee1")!;
+    const manager = userById(seed, "u-manager")!;
+    const pm1 = userById(seed, "u-pm1")!;
+    const alpha = seed.prospeks.find((item) => item.id === "prs-alpha")!;
+
+    expect(isProspekAssignee(finance)).toBe(true);
+    expect(isProspekAssignee(assignee)).toBe(true);
+    expect(isProspekAssignee(manager)).toBe(true);
+    expect(
+      prospekAssigneeCandidates(seed, pm1, alpha).map((user) => user.role),
+    ).toEqual(expect.arrayContaining(["finance", "manager", "assignee"]));
+    expect(visibleProspeks(seed, finance)).toEqual([]);
+    expect(visibleProspeks(seed, assignee)).toEqual([]);
+  });
+
+  it("projects assigned RAB, quotation, contract, and form work into My Tasks items", () => {
+    prepareWinningPitching();
+    state().decideProspekPitching("pp-beta-kol", "won");
+    state().assignPitchingRab("pp-beta-kol", "u-finance");
+    state().assignPitchingQuotation("pp-beta-kol", "u-manager");
+    state().assignPitchingContract("pp-beta-kol", "u-finance", "2026-11-20");
+    const formId = state().createProspekFormEntry(
+      "prs-beta",
+      "pp-beta-kol",
+      "tpl-kol-listing",
+      { title: "Presentasi Ramadan" },
+    );
+    state().assignFormEntry(formId, "u-assignee1");
+
+    expect(
+      prospekWorkItemsForUser(state(), "u-finance").map((item) => item.kind),
+    ).toEqual(expect.arrayContaining(["rab", "contract"]));
+    expect(
+      prospekWorkItemsForUser(state(), "u-manager").map((item) => item.kind),
+    ).toContain("quotation");
+    expect(
+      prospekWorkItemsForUser(state(), "u-assignee1").map((item) => item.kind),
+    ).toContain("form");
+    expect(
+      prospekWorkItemsForUser(state(), "u-finance").every((item) =>
+        item.href.startsWith("/work/prospek/pp-beta-kol"),
+      ),
+    ).toBe(true);
+
+    state().setCurrentUser("u-finance");
+    state().submitPitchingRab("pp-beta-kol");
+    expect(
+      prospekWorkItemsForUser(state(), "u-finance").some(
+        (item) => item.kind === "rab",
+      ),
+    ).toBe(false);
+  });
+
+  it("allows losing a draft pitching at any time and undo restores it", () => {
+    state().setCurrentUser("u-assignee1");
+    state().decideProspekPitching("pp-beta-kol", "lost", "Tidak berhak");
+    expect(pitching("pp-beta-kol").status).toBe("draft");
+
+    state().setCurrentUser("u-pm2");
+    state().decideProspekPitching("pp-beta-kol", "lost", "Batal karena budget");
+    expect(pitching("pp-beta-kol").status).toBe("lost");
+    expect(pitching("pp-beta-kol").statusBeforeLoss).toBe("draft");
+    expect(
+      state().prospekEvents.some(
+        (event) =>
+          event.pitchingId === "pp-beta-kol" &&
+          event.eventType === "pitching.lost",
+      ),
+    ).toBe(true);
+
+    state().undoPitchingLoss("pp-beta-kol");
+    expect(pitching("pp-beta-kol").status).toBe("draft");
+    expect(pitching("pp-beta-kol").lostReason).toBeUndefined();
+    expect(
+      state().prospekEvents.some(
+        (event) =>
+          event.pitchingId === "pp-beta-kol" &&
+          event.eventType === "pitching.loss_undone",
+      ),
+    ).toBe(true);
+  });
+
+  it("allows losing a winning pitching and undo restores the win and contract", () => {
+    state().setCurrentUser("u-pm1");
+    state().decideProspekPitching("pp-alpha-event", "lost", "Klien berubah pikiran");
+    expect(pitching("pp-alpha-event").status).toBe("lost");
+    expect(pitching("pp-alpha-event").statusBeforeLoss).toBe("won");
+    expect(pitching("pp-alpha-event").contract?.number).toBe("KTR/2026/001");
+
+    state().undoPitchingLoss("pp-alpha-event");
+    expect(pitching("pp-alpha-event").status).toBe("won");
+    expect(pitching("pp-alpha-event").contract?.number).toBe("KTR/2026/001");
+  });
+
+  it("blocks losing or undo after conversion", () => {
+    prepareWinningPitching();
+    state().decideProspekPitching("pp-beta-kol", "won");
+    state().savePitchingContract("pp-beta-kol", completeContract);
+    const projectId = state().convertPitching("pp-beta-kol");
+    expect(projectId).not.toBe("");
+
+    state().decideProspekPitching("pp-beta-kol", "lost", "Tidak boleh");
+    expect(pitching("pp-beta-kol").status).toBe("won");
+    state().undoPitchingLoss("pp-beta-kol");
+    expect(pitching("pp-beta-kol").status).toBe("won");
+  });
+
+  it("assigns contract work to finance and lets finance submit it", () => {
+    expect(
+      canEditPitchingContract(
+        state(),
+        userById(state(), "u-pm2")!,
+        pitching("pp-beta-kol"),
+      ),
+    ).toBe(false);
+    prepareWinningPitching();
+    state().decideProspekPitching("pp-beta-kol", "won");
+    state().assignPitchingContract("pp-beta-kol", "u-finance", "2026-11-20");
+    expect(pitching("pp-beta-kol").contractAssigneeId).toBe("u-finance");
+    expect(
+      state().notifications.some(
+        (item) =>
+          item.userId === "u-finance" &&
+          item.type === "prospek_assigned" &&
+          item.href.includes("/contract"),
+      ),
+    ).toBe(true);
+
+    state().setCurrentUser("u-assignee1");
+    state().assignPitchingContract("pp-beta-kol", "u-assignee1");
+    expect(pitching("pp-beta-kol").contractAssigneeId).toBe("u-finance");
+
+    state().setCurrentUser("u-finance");
+    expect(
+      canEditPitchingContract(
+        state(),
+        userById(state(), "u-finance")!,
+        pitching("pp-beta-kol"),
+      ),
+    ).toBe(true);
+    state().savePitchingContract("pp-beta-kol", completeContract);
+    expect(pitching("pp-beta-kol").contractStatus).toBe("submitted");
+    expect(pitching("pp-beta-kol").contract?.number).toBe("KTR/TEST/001");
+    expect(
+      prospekWorkItemsForUser(state(), "u-finance").some(
+        (item) => item.kind === "contract",
+      ),
+    ).toBe(false);
+  });
+
+  it("creates a group named after the prospek and reuses an existing group", () => {
+    state().setCurrentUser("u-pm2");
+    const existing = state().createGroup({
+      name: "  kampanye ramadan sehat  ",
+      description: "Group manual",
+    });
+    prepareWinningPitching();
+    state().decideProspekPitching("pp-beta-kol", "won");
+    state().savePitchingContract("pp-beta-kol", completeContract);
+    const projectId = state().convertPitching("pp-beta-kol");
+    const child = state().projects.find((project) => project.id === projectId)!;
+    expect(child.groupId).toBe(existing);
+    expect(
+      state().groups.filter(
+        (group) =>
+          group.name.trim().toLowerCase() === "kampanye ramadan sehat",
+      ),
+    ).toHaveLength(1);
+    expect(
+      state().groups.find((group) => group.id === existing)?.prospekId,
+    ).toBe("prs-beta");
+    expect(
+      state().prospekEvents.some(
+        (event) =>
+          event.pitchingId === "pp-beta-kol" &&
+          event.eventType === "prospek.group_linked" &&
+          event.metadata.groupId === existing,
+      ),
+    ).toBe(true);
+  });
+
+  it("puts multiple winning pitchings into the same prospek group", () => {
+    state().setCurrentUser("u-pm1");
+    const secondPitching = state().addProspekPitching("prs-alpha", {
+      title: "KOL Launch",
+      description: "",
+      templateId: "tpl-kol",
+    });
+    state().assignPitchingRab(secondPitching, "u-assignee1");
+    state().assignPitchingQuotation(secondPitching, "u-assignee1");
+    state().setCurrentUser("u-assignee1");
+    state().savePitchingRab(secondPitching, {
+      items: [
+        {
+          id: "rab-second",
+          kind: "cost",
+          description: "Produksi",
+          category: "Produksi",
+          qty: 1,
+          unit: "paket",
+          unitPrice: 20_000_000,
+        },
+      ],
+      notes: "",
+    });
+    state().submitPitchingRab(secondPitching);
+    state().savePitchingQuotation(secondPitching, {
+      mode: "link",
+      url: "https://example.com/second",
+      amount: 30_000_000,
+    });
+    state().submitPitchingQuotation(secondPitching);
+    state().setCurrentUser("u-pm1");
+    state().decideProspekPitching(secondPitching, "won");
+    state().savePitchingContract(secondPitching, {
+      ...completeContract,
+      number: "KTR/SECOND/001",
+    });
+
+    const firstProject = state().convertPitching("pp-alpha-event");
+    expect(firstProject).not.toBe("");
+    const secondProject = state().convertPitching(secondPitching);
+    expect(secondProject).not.toBe("");
+    const first = state().projects.find(
+      (project) => project.id === firstProject,
+    )!;
+    const second = state().projects.find(
+      (project) => project.id === secondProject,
+    )!;
+    expect(first.groupId).toBeTruthy();
+    expect(second.groupId).toBe(first.groupId);
+    expect(
+      state().groups.filter(
+        (group) => group.name === "Peluncuran Produk Nusantara",
+      ),
+    ).toHaveLength(1);
   });
 });
 
@@ -531,7 +785,7 @@ describe("prospek forms and reminders", () => {
         item.type === "prospek_overdue" && item.userId === "u-assignee1",
     );
     expect(overdue).toHaveLength(1);
-    expect(overdue[0].href).toContain("/crm/prospek/prs-alpha");
+    expect(overdue[0].href).toContain("/work/prospek/pp-alpha-event");
     expect(
       state().notifications.some((item) => item.type.includes("email")),
     ).toBe(false);

@@ -546,6 +546,14 @@ export function isOperationalAssignee(user: User): boolean {
   return user.role === "assignee" || user.role === "manager";
 }
 
+export function isProspekAssignee(user: User): boolean {
+  return (
+    user.role === "assignee" ||
+    user.role === "manager" ||
+    user.role === "finance"
+  );
+}
+
 export function canAssignOperational(
   user: User,
   project: Project | undefined,
@@ -631,36 +639,6 @@ export function canManageProspek(user: User, prospek?: Prospek): boolean {
   return user.role === "pm" && prospek.createdById === user.id;
 }
 
-export function prospekHasAssigneeWork(
-  state: AppState,
-  userId: string,
-  prospekId: string,
-): boolean {
-  return (
-    state.formEntries.some(
-      (entry) =>
-        entry.prospekId === prospekId && entry.assigneeId === userId,
-    ) ||
-    state.pitchingRabs.some(
-      (rab) =>
-        rab.assigneeId === userId &&
-        state.prospekPitchings.some(
-          (pitching) =>
-            pitching.id === rab.pitchingId && pitching.prospekId === prospekId,
-        ),
-    ) ||
-    state.pitchingQuotations.some(
-      (quotation) =>
-        quotation.assigneeId === userId &&
-        state.prospekPitchings.some(
-          (pitching) =>
-            pitching.id === quotation.pitchingId &&
-            pitching.prospekId === prospekId,
-        ),
-    )
-  );
-}
-
 export function canViewProspek(
   state: AppState,
   user: User,
@@ -669,9 +647,6 @@ export function canViewProspek(
   if (!prospek) return false;
   if (user.role === "admin" || user.role === "manager") return true;
   if (user.role === "pm") return prospek.createdById === user.id;
-  if (user.role === "assignee") {
-    return prospekHasAssigneeWork(state, user.id, prospek.id);
-  }
   return false;
 }
 
@@ -695,7 +670,7 @@ export function prospekAssigneeCandidates(
   prospek?: Prospek,
 ): User[] {
   if (!canAssignProspekWork(user, prospek)) return [];
-  return state.users.filter(isOperationalAssignee);
+  return state.users.filter(isProspekAssignee);
 }
 
 export function canDecidePitching(
@@ -728,7 +703,7 @@ export function canEditPitchingRab(
   if (user.role === "admin" || user.role === "manager") return true;
   if (canManageProspek(user, prospek)) return true;
   const rab = pitchingRabFor(state, pitching.id);
-  return Boolean(rab?.assigneeId === user.id && isOperationalAssignee(user));
+  return Boolean(rab?.assigneeId === user.id && isProspekAssignee(user));
 }
 
 export function canEditQuotation(
@@ -742,7 +717,7 @@ export function canEditQuotation(
   if (canManageProspek(user, prospek)) return true;
   const quotation = pitchingQuotationFor(state, pitching.id);
   return Boolean(
-    quotation?.assigneeId === user.id && isOperationalAssignee(user),
+    quotation?.assigneeId === user.id && isProspekAssignee(user),
   );
 }
 
@@ -757,6 +732,135 @@ export function contractComplete(
       contract.attachment &&
       contract.termine.length > 0,
   );
+}
+
+export function canAssignPitchingContract(
+  user: User,
+  prospek?: Prospek,
+): boolean {
+  return canAssignProspekWork(user, prospek);
+}
+
+export function canEditPitchingContract(
+  state: AppState,
+  user: User,
+  pitching?: ProspekPitching,
+): boolean {
+  if (!pitching || pitching.status !== "won" || pitching.projectId) {
+    return false;
+  }
+  const prospek = prospekById(state, pitching.prospekId);
+  if (!prospek || prospek.status !== "active") return false;
+  if (user.role === "admin" || user.role === "manager") return true;
+  if (canManageProspek(user, prospek)) return true;
+  return Boolean(
+    pitching.contractAssigneeId === user.id && isProspekAssignee(user),
+  );
+}
+
+export type ProspekWorkSection = "rab" | "quotation" | "form" | "contract";
+
+export type ProspekWorkItem = {
+  id: string;
+  kind: ProspekWorkSection;
+  prospekId: string;
+  pitchingId: string;
+  title: string;
+  context: string;
+  status: string;
+  dueDate?: string;
+  href: string;
+};
+
+export function prospekWorkItemsForUser(
+  state: AppState,
+  userId: string,
+): ProspekWorkItem[] {
+  const items: ProspekWorkItem[] = [];
+  for (const pitching of state.prospekPitchings) {
+    const prospek = prospekById(state, pitching.prospekId);
+    if (
+      !prospek ||
+      prospek.status !== "active" ||
+      pitching.status === "lost" ||
+      pitching.projectId
+    ) {
+      continue;
+    }
+    const base = {
+      prospekId: prospek.id,
+      pitchingId: pitching.id,
+      context: pitching.title,
+    };
+    const rab = pitchingRabFor(state, pitching.id);
+    if (
+      rab?.assigneeId === userId &&
+      ["assigned", "draft"].includes(rab.status)
+    ) {
+      items.push({
+        ...base,
+        id: `work-rab-${pitching.id}`,
+        kind: "rab",
+        title: `RAB ${pitching.title}`,
+        status: rab.status,
+        dueDate: rab.dueDate,
+        href: `/work/prospek/${pitching.id}/rab`,
+      });
+    }
+    const quotation = pitchingQuotationFor(state, pitching.id);
+    if (
+      quotation?.assigneeId === userId &&
+      ["assigned", "draft", "need_revision"].includes(quotation.status)
+    ) {
+      items.push({
+        ...base,
+        id: `work-quotation-${pitching.id}`,
+        kind: "quotation",
+        title: `Quotation ${pitching.title}`,
+        status: quotation.status,
+        dueDate: quotation.dueDate,
+        href: `/work/prospek/${pitching.id}/quotation`,
+      });
+    }
+    if (
+      pitching.contractAssigneeId === userId &&
+      pitching.status === "won" &&
+      !contractComplete(pitching.contract)
+    ) {
+      items.push({
+        ...base,
+        id: `work-contract-${pitching.id}`,
+        kind: "contract",
+        title: `Kontrak ${pitching.title}`,
+        status: pitching.contractStatus ?? "assigned",
+        dueDate: pitching.contractDueDate,
+        href: `/work/prospek/${pitching.id}/contract`,
+      });
+    }
+    for (const entry of state.formEntries) {
+      if (
+        entry.pitchingId !== pitching.id ||
+        entry.assigneeId !== userId ||
+        !["assigned", "draft", "need_revision"].includes(entry.status)
+      ) {
+        continue;
+      }
+      items.push({
+        ...base,
+        id: `work-form-${entry.id}`,
+        kind: "form",
+        title: entry.title,
+        status: entry.status,
+        dueDate: entry.dueDate,
+        href: `/work/prospek/${pitching.id}/form?entry=${entry.id}`,
+      });
+    }
+  }
+  return items.sort((a, b) => {
+    const aDue = a.dueDate ?? "9999-12-31";
+    const bDue = b.dueDate ?? "9999-12-31";
+    return aDue.localeCompare(bDue);
+  });
 }
 
 export function canConvertPitching(
@@ -1157,7 +1261,7 @@ export function canEditFormEntry(
     const pitching = pitchingForFormEntry(state, entry);
     if (!pitching || pitchingWorkLocked(state, pitching)) return false;
     if (user.role === "admin") return true;
-    return canWorkFormEntry(user, entry);
+    return isProspekAssignee(user) && entry.assigneeId === user.id;
   }
   if (!entry.projectId) return false;
   const project = projectById(state, entry.projectId);

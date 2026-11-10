@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
+  calculateJourneyProgress,
   canCreateProject,
   completionStats,
   isGroupableProject,
@@ -28,13 +29,15 @@ import {
 import { cn } from "@/lib/utils";
 import {
   EmptyState,
+  AvatarStack,
   NativeSelect,
   PageHeader,
   ProgressBar,
 } from "../ui";
-import { ProjectCard } from "../project-card";
+import { ProjectCard, projectTeam } from "../project-card";
 import { GroupMemberRow } from "../group-member-row";
 import { GroupDialog } from "../dialogs";
+import { useViewPreference, ViewToggle } from "../view-toggle";
 
 const OPEN_GROUP_KEY = "crm-projects-open-group";
 
@@ -201,6 +204,7 @@ export function CrmProjects() {
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [searchClosedIds, setSearchClosedIds] = useState<string[]>([]);
+  const [view, setView] = useViewPreference("crm-projects");
 
   useEffect(() => {
     try {
@@ -370,13 +374,16 @@ export function CrmProjects() {
             : "Semua proyek yang dapat Anda akses, lengkap dengan journey dan progress pekerjaan."
         }
         actions={
-          canCreateProject(currentUser) ? (
-            <Link href="/crm/projects/new">
-              <Button>
-                <Plus className="size-4" /> Proyek baru
-              </Button>
-            </Link>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2">
+            <ViewToggle value={view} onChange={setView} />
+            {canCreateProject(currentUser) ? (
+              <Link href="/crm/projects/new">
+                <Button>
+                  <Plus className="size-4" /> Proyek baru
+                </Button>
+              </Link>
+            ) : null}
+          </div>
         }
       />
 
@@ -448,6 +455,61 @@ export function CrmProjects() {
               : "Ubah filter atau buat proyek baru."
           }
         />
+      ) : view === "table" ? (
+        <div className="overflow-x-auto rounded-xl border bg-card">
+          <table className="w-full min-w-[820px] text-left text-xs">
+            <thead className="text-muted-foreground border-b bg-muted/30 text-[10px] uppercase tracking-wide">
+              <tr>
+                <th className="px-3 py-2">Proyek</th>
+                <th className="px-3 py-2">Client</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Fase</th>
+                <th className="px-3 py-2">Progress</th>
+                <th className="px-3 py-2">Anggota</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((project) => {
+                const activeStep = store.steps.find(
+                  (step) =>
+                    step.projectId === project.id && step.status === "active",
+                );
+                const journey = calculateJourneyProgress(store, project.id);
+                const team = projectTeam(project.id, store);
+                return (
+                  <tr
+                    key={project.id}
+                    className="hover:bg-muted/40 cursor-pointer border-b last:border-0"
+                    onClick={() => {
+                      window.location.href = `/crm/projects/${project.id}`;
+                    }}
+                  >
+                    <td className="px-3 py-2">
+                      <p className="font-medium">{project.name}</p>
+                      <p className="text-muted-foreground text-[10px]">
+                        {project.code}
+                      </p>
+                    </td>
+                    <td className="px-3 py-2">{project.client || "—"}</td>
+                    <td className="px-3 py-2 capitalize">{project.status}</td>
+                    <td className="px-3 py-2">
+                      {activeStep ? PHASE_LABEL[activeStep.phase] : "—"}
+                    </td>
+                    <td className="w-[150px] px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <ProgressBar value={journey} className="flex-1" />
+                        <span className="tabular-nums">{journey}%</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <AvatarStack users={team} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="space-y-6">
           {showGroups && groupCards.length > 0 ? (

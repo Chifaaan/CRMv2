@@ -5,6 +5,7 @@ import { persist } from "zustand/middleware";
 import {
   activeSteps,
   canAssignOperational,
+  canAssignPitchingContract,
   canAssignProjectManager,
   canAssignProspekWork,
   canCancelFormEntry,
@@ -13,6 +14,7 @@ import {
   canCreateProspek,
   canDecidePitching,
   canEditFormEntry,
+  canEditPitchingContract,
   canEditPitchingRab,
   canEditQuotation,
   canManageProject,
@@ -108,6 +110,7 @@ type CreateProjectInput = ProjectInput & {
   inheritedRab?: PitchingRabSnapshot;
   inheritedQuotation?: PitchingQuotationSnapshot;
   prospekContract?: PitchingContract;
+  groupId?: string;
   /** Stages already finished before the child project starts (creation-time). */
   completedStageIds?: string[];
 };
@@ -267,6 +270,11 @@ type PrototypeActions = {
   savePitchingRab: (pitchingId: string, input: PitchingRabInput) => void;
   submitPitchingRab: (pitchingId: string) => void;
   assignPitchingQuotation: (pitchingId: string, userId: string) => void;
+  assignPitchingContract: (
+    pitchingId: string,
+    userId: string,
+    dueDate?: string,
+  ) => void;
   savePitchingQuotation: (
     pitchingId: string,
     input: PitchingQuotationInput,
@@ -282,6 +290,7 @@ type PrototypeActions = {
     decision: "won" | "lost",
     reason?: string,
   ) => void;
+  undoPitchingLoss: (pitchingId: string) => void;
   savePitchingContract: (
     pitchingId: string,
     contract: PitchingContract,
@@ -405,19 +414,58 @@ function nextProspekCode(prospeks: Prospek[]): string {
   return code;
 }
 
-function prospekHref(prospekId: string, pitchingId?: string): string {
-  return pitchingId
-    ? `/crm/prospek/${prospekId}?pitching=${pitchingId}`
-    : `/crm/prospek/${prospekId}`;
+function workHref(pitchingId: string, section?: string, entryId?: string): string {
+  const base = `/work/prospek/${pitchingId}`;
+  const path = section ? `${base}/${section}` : base;
+  return entryId ? `${path}?entry=${entryId}` : path;
 }
 
 function prospekStatusAfter(state: AppState, prospekId: string): Prospek[] {
   return state.prospeks.map((prospek) => {
-    if (prospek.id !== prospekId || prospek.status !== "active") return prospek;
-    return isProspekComplete(state, prospekId)
-      ? { ...prospek, status: "completed" as const, updatedAt: now() }
-      : prospek;
+    if (prospek.id !== prospekId || prospek.status === "cancelled") {
+      return prospek;
+    }
+    const complete = isProspekComplete(state, prospekId);
+    if (complete && prospek.status !== "completed") {
+      return { ...prospek, status: "completed" as const, updatedAt: now() };
+    }
+    if (!complete && prospek.status === "completed") {
+      return { ...prospek, status: "active" as const, updatedAt: now() };
+    }
+    return prospek;
   });
+}
+
+function ensureProspekGroup(
+  state: AppState,
+  prospek: Prospek,
+): { groups: AppState["groups"]; groupId: string; created: boolean } {
+  const normalized = prospek.name.trim().toLowerCase();
+  const existing = state.groups.find(
+    (group) =>
+      group.status === "active" && group.name.trim().toLowerCase() === normalized,
+  );
+  if (existing) {
+    return {
+      groups: state.groups.map((group) =>
+        group.id === existing.id && !group.prospekId
+          ? { ...group, prospekId: prospek.id }
+          : group,
+      ),
+      groupId: existing.id,
+      created: false,
+    };
+  }
+  const group = {
+    id: uid("group"),
+    name: prospek.name.trim(),
+    description: `Group otomatis dari Prospek ${prospek.name}.`,
+    status: "active" as const,
+    prospekId: prospek.id,
+    createdById: prospek.createdById,
+    createdAt: now(),
+  };
+  return { groups: [...state.groups, group], groupId: group.id, created: true };
 }
 
 function addDays(date: string, days: number): string {
@@ -780,13 +828,22 @@ export function migratePersistedState(persisted: unknown): PersistedState {
       : [],
     prospeks: Array.isArray(state.prospeks) ? state.prospeks : [],
     prospekPitchings: Array.isArray(state.prospekPitchings)
-      ? state.prospekPitchings
+      ? state.prospekPitchings.map((pitching) => ({
+          ...pitching,
+          statusBeforeLoss:
+            pitching.statusBeforeLoss ??
+            (pitching.status === "lost" ? ("draft" as const) : undefined),
+          contractStatus:
+            pitching.contractStatus ??
+            (pitching.contract ? ("submitted" as const) : undefined),
+        }))
       : [],
     pitchingRabs: Array.isArray(state.pitchingRabs) ? state.pitchingRabs : [],
     pitchingQuotations: Array.isArray(state.pitchingQuotations)
       ? state.pitchingQuotations
       : [],
     prospekEvents: Array.isArray(state.prospekEvents) ? state.prospekEvents : [],
+    groups: Array.isArray(state.groups) ? state.groups : [],
   };
 }
 
@@ -979,6 +1036,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           coverColor: input.coverColor,
           createdById: state.currentUserId,
           managerId,
+          groupId: input.groupId,
           createdAt: now(),
           templateId: template.id,
           templateVersion: template.version,
@@ -2455,8 +2513,8 @@ export const usePrototypeStore = create<PrototypeStore>()(
           return;
         }
         const href =
-          isProspek && prospek && pitching
-            ? prospekHref(prospek.id, pitching.id)
+          isProspek && pitching
+            ? workHref(pitching.id, "form", entry.id)
             : `/forms?entry=${entry.id}`;
         set({
           formEntries: state.formEntries.map((item) =>
@@ -2574,8 +2632,8 @@ export const usePrototypeStore = create<PrototypeStore>()(
           : (state.projects.find((item) => item.id === entry.projectId)
               ?.createdById ?? actor.id);
         const href =
-          isProspek && prospek && pitching
-            ? prospekHref(prospek.id, pitching.id)
+          isProspek && pitching
+            ? workHref(pitching.id, "form", entry.id)
             : `/crm/projects/${entry.projectId}?step=${entry.stepKey}`;
         set({
           formEntries: state.formEntries.map((item) =>
@@ -2644,8 +2702,8 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const pitching = pitchingForFormEntry(state, entry);
         const reviewedAt = now();
         const href =
-          isProspek && prospek && pitching
-            ? prospekHref(prospek.id, pitching.id)
+          isProspek && pitching
+            ? workHref(pitching.id, "form", entry.id)
             : `/forms?entry=${entry.id}`;
         set({
           formEntries: state.formEntries.map((item) =>
@@ -3479,7 +3537,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
               type: "prospek_assigned",
               title: "RAB Pitching di-assign",
               body: pitching.title,
-              href: prospekHref(prospek.id, pitching.id),
+              href: workHref(pitching.id, "rab"),
             }),
           ],
           prospekEvents: prospekEvent(state, {
@@ -3620,7 +3678,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
               type: "prospek_assigned",
               title: "Quotation Pitching di-assign",
               body: pitching.title,
-              href: prospekHref(prospek.id, pitching.id),
+              href: workHref(pitching.id, "quotation"),
             }),
           ],
           prospekEvents: prospekEvent(state, {
@@ -3789,7 +3847,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
                       ? "Quotation disetujui"
                       : "Quotation perlu revisi",
                   body: comment || pitching.title,
-                  href: prospekHref(prospek.id, pitching.id),
+                  href: workHref(pitching.id, "quotation"),
                 }),
               ]
             : state.notifications,
@@ -3822,24 +3880,107 @@ export const usePrototypeStore = create<PrototypeStore>()(
           !actor ||
           !pitching ||
           !prospek ||
-          pitching.status !== "draft" ||
-          !canDecidePitching(actor, prospek) ||
-          rab?.status !== "submitted" ||
-          !quotation ||
-          !["submitted", "approved"].includes(quotation.status)
+          pitching.projectId ||
+          pitching.status === "lost" ||
+          !canDecidePitching(actor, prospek)
         ) {
           return;
         }
-        if (decision === "lost" && !reason?.trim()) return;
         const decidedAt = now();
+        let nextPitchings: AppState["prospekPitchings"];
+        if (decision === "lost") {
+          if (!reason?.trim()) return;
+          nextPitchings = state.prospekPitchings.map((item) =>
+            item.id === pitchingId
+              ? {
+                  ...item,
+                  status: "lost" as const,
+                  statusBeforeLoss:
+                    pitching.status === "won" ? "won" : "draft",
+                  lostAt: decidedAt,
+                  lostById: actor.id,
+                  lostReason: reason.trim(),
+                  decidedAt,
+                  decidedById: actor.id,
+                }
+              : item,
+          );
+        } else {
+          if (
+            pitching.status !== "draft" ||
+            rab?.status !== "submitted" ||
+            !quotation ||
+            !["submitted", "approved"].includes(quotation.status)
+          ) {
+            return;
+          }
+          nextPitchings = state.prospekPitchings.map((item) =>
+            item.id === pitchingId
+              ? {
+                  ...item,
+                  status: "won" as const,
+                  decidedAt,
+                  decidedById: actor.id,
+                  lostReason: undefined,
+                }
+              : item,
+          );
+        }
+        const nextState = { ...state, prospekPitchings: nextPitchings };
+        set({
+          prospekPitchings: nextPitchings,
+          prospeks: prospekStatusAfter(nextState, prospek.id),
+          prospekEvents: prospekEvent(state, {
+            prospekId: prospek.id,
+            pitchingId,
+            eventType:
+              decision === "won" ? "pitching.decided" : "pitching.lost",
+            summary:
+              decision === "won"
+                ? `Pitching ${pitching.title} menang.`
+                : `Pitching ${pitching.title} kalah: ${reason?.trim()}`,
+            metadata: {
+              decision,
+              reason: reason?.trim() ?? null,
+              before: { status: pitching.status },
+              after: { status: decision },
+            },
+          }),
+        });
+      },
+
+      undoPitchingLoss: (pitchingId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const prospek = prospekById(state, pitching?.prospekId);
+        if (
+          !actor ||
+          !pitching ||
+          !prospek ||
+          pitching.status !== "lost" ||
+          pitching.projectId ||
+          prospek.status === "cancelled" ||
+          !canDecidePitching(actor, prospek)
+        ) {
+          return;
+        }
+        const restored = pitching.statusBeforeLoss ?? "draft";
+        const undoneAt = now();
         const nextPitchings = state.prospekPitchings.map((item) =>
           item.id === pitchingId
             ? {
                 ...item,
-                status: decision,
-                decidedAt,
-                decidedById: actor.id,
-                lostReason: decision === "lost" ? reason?.trim() : undefined,
+                status: restored,
+                statusBeforeLoss: undefined,
+                lostAt: undefined,
+                lostById: undefined,
+                lostReason: undefined,
+                decidedAt: undefined,
+                decidedById: undefined,
+                lossUndoneAt: undoneAt,
               }
             : item,
         );
@@ -3850,12 +3991,65 @@ export const usePrototypeStore = create<PrototypeStore>()(
           prospekEvents: prospekEvent(state, {
             prospekId: prospek.id,
             pitchingId,
-            eventType: "pitching.decided",
-            summary:
-              decision === "won"
-                ? `Pitching ${pitching.title} menang.`
-                : `Pitching ${pitching.title} kalah: ${reason?.trim()}`,
-            metadata: { decision, reason: reason?.trim() ?? null },
+            eventType: "pitching.loss_undone",
+            summary: `Keputusan kalah ${pitching.title} dibatalkan.`,
+            metadata: {
+              before: { status: "lost" },
+              after: { status: restored },
+            },
+          }),
+        });
+      },
+
+      assignPitchingContract: (pitchingId, userId, dueDate) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const prospek = prospekById(state, pitching?.prospekId);
+        const target = userById(state, userId);
+        if (
+          !actor ||
+          !pitching ||
+          !prospek ||
+          !target ||
+          pitching.status !== "won" ||
+          pitching.projectId ||
+          !canAssignPitchingContract(actor, prospek) ||
+          !prospekAssigneeCandidates(state, actor, prospek).some(
+            (user) => user.id === userId,
+          )
+        ) {
+          return;
+        }
+        set({
+          prospekPitchings: state.prospekPitchings.map((item) =>
+            item.id === pitchingId
+              ? {
+                  ...item,
+                  contractAssigneeId: userId,
+                  contractDueDate: dueDate,
+                  contractStatus: "assigned" as const,
+                }
+              : item,
+          ),
+          notifications: [
+            ...state.notifications,
+            notify(state, {
+              userId,
+              type: "prospek_assigned",
+              title: "Kontrak Pitching di-assign",
+              body: pitching.title,
+              href: workHref(pitching.id, "contract"),
+            }),
+          ],
+          prospekEvents: prospekEvent(state, {
+            prospekId: prospek.id,
+            pitchingId,
+            eventType: "pitching.contract_assigned",
+            summary: `Kontrak ${pitching.title} di-assign ke ${target.name}.`,
+            metadata: { assigneeId: userId, dueDate: dueDate ?? null },
           }),
         });
       },
@@ -3871,9 +4065,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           !actor ||
           !pitching ||
           !prospek ||
-          pitching.status !== "won" ||
-          pitching.projectId ||
-          !canDecidePitching(actor, prospek)
+          !canEditPitchingContract(state, actor, pitching)
         ) {
           return;
         }
@@ -3889,6 +4081,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
                     savedAt,
                     savedById: actor.id,
                   },
+                  contractStatus: "submitted" as const,
                 }
               : item,
           ),
@@ -3931,6 +4124,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           )
           .map((stage) => stage.id);
         const manager = userById(state, prospek.picId);
+        const groupPlan = ensureProspekGroup(state, prospek);
         const projectId = get().createProject({
           name: pitching.title,
           client: prospek.client,
@@ -3940,6 +4134,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           targetEndDate: prospek.periodEnd,
           coverColor: "#6366f1",
           managerId: manager?.role === "manager" ? manager.id : undefined,
+          groupId: groupPlan.groupId,
           templateId: template.id,
           prospekId: prospek.id,
           pitchingId: pitching.id,
@@ -3975,20 +4170,36 @@ export const usePrototypeStore = create<PrototypeStore>()(
           ...get(),
           prospekPitchings: nextPitchings,
         };
-        set({
-          prospekPitchings: nextPitchings,
-          prospeks: prospekStatusAfter(nextState, prospek.id),
-          prospekEvents: prospekEvent(state, {
+        let events = prospekEvent(state, {
+          prospekId: prospek.id,
+          pitchingId,
+          eventType: "pitching.converted",
+          summary: `Pitching ${pitching.title} menjadi proyek ${projectId}.`,
+          metadata: {
             prospekId: prospek.id,
             pitchingId,
-            eventType: "pitching.converted",
-            summary: `Pitching ${pitching.title} menjadi proyek ${projectId}.`,
-            metadata: {
-              prospekId: prospek.id,
-              pitchingId,
-              projectId,
-            },
-          }),
+            projectId,
+            groupId: groupPlan.groupId,
+            groupCreated: groupPlan.created,
+          },
+        });
+        events = recordProspekEvent(events, {
+          prospekId: prospek.id,
+          pitchingId,
+          eventType: "prospek.group_linked",
+          actorId: actor.id,
+          summary: `Anak proyek masuk Group ${prospek.name}.`,
+          metadata: {
+            groupId: groupPlan.groupId,
+            groupCreated: groupPlan.created,
+            projectId,
+          },
+        });
+        set({
+          groups: groupPlan.groups,
+          prospekPitchings: nextPitchings,
+          prospeks: prospekStatusAfter(nextState, prospek.id),
+          prospekEvents: events,
         });
         return projectId;
       },
@@ -4079,7 +4290,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           if (prospek.status !== "active") continue;
           for (const pitching of prospekPitchingsFor(state, prospek.id)) {
             if (pitching.status === "lost" || pitching.projectId) continue;
-            const href = prospekHref(prospek.id, pitching.id);
+            const href = workHref(pitching.id);
             const reminders: {
               assigneeId?: string;
               dueDate?: string;
@@ -4099,6 +4310,13 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 assigneeId: quotation.assigneeId,
                 dueDate: quotation.dueDate,
                 label: `Quotation ${pitching.title}`,
+              });
+            }
+            if (pitching.contractAssigneeId && pitching.contractDueDate) {
+              reminders.push({
+                assigneeId: pitching.contractAssigneeId,
+                dueDate: pitching.contractDueDate,
+                label: `Kontrak ${pitching.title}`,
               });
             }
             for (const entry of state.formEntries) {
@@ -4165,7 +4383,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
     }),
     {
       name: "crm-simpro:v1",
-      version: 5,
+      version: 6,
       migrate: (persisted) =>
         migratePersistedState(persisted) as unknown as PrototypeStore,
       partialize: (state) => ({

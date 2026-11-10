@@ -59,8 +59,13 @@ const NAV_CRM = [
 
 const PROSPEK_HREF = "/crm/prospek";
 
-function canAccessProspekPath(role: string, pathname: string): boolean {
-  return role === "assignee" && pathname.startsWith(PROSPEK_HREF);
+function isFinanceWorkPath(pathname: string): boolean {
+  return (
+    pathname === "/my-tasks" ||
+    pathname === "/forms" ||
+    pathname.startsWith("/forms/") ||
+    pathname.startsWith("/work/prospek")
+  );
 }
 
 function isActive(pathname: string, href: string): boolean {
@@ -70,6 +75,10 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 function titleForPath(pathname: string): string {
+  if (pathname.startsWith("/crm/prospek/") && pathname.includes("/pitching/")) {
+    return "Pitching";
+  }
+  if (pathname.startsWith("/work/prospek")) return "Pekerjaan Prospek";
   if (pathname.startsWith("/crm/prospek/")) return "Detail Prospek";
   if (pathname === "/crm/prospek") return "Prospek";
   if (pathname.startsWith("/crm/projects/")) return "Detail Proyek";
@@ -199,21 +208,17 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!currentUser) return;
     const isCrm = pathname.startsWith("/crm");
-    const isFormsPath = pathname === "/forms" || pathname.startsWith("/forms/");
+    const isFinanceWork = isFinanceWorkPath(pathname);
     if (isCrm && currentUser.role === "finance" && pathname.startsWith(PROSPEK_HREF)) {
       router.replace("/crm");
     }
-    if (
-      isCrm &&
-      !roleCanAccessCrm(currentUser.role) &&
-      !canAccessProspekPath(currentUser.role, pathname)
-    ) {
+    if (isCrm && !roleCanAccessCrm(currentUser.role)) {
       router.replace(landingForRole(currentUser.role));
     }
     if (
       !isCrm &&
       !roleCanAccessSimpro(currentUser.role) &&
-      !(currentUser.role === "finance" && isFormsPath)
+      !(currentUser.role === "finance" && isFinanceWork)
     ) {
       router.replace("/crm");
     }
@@ -242,13 +247,15 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const showCrm = roleCanAccessCrm(currentUser.role) || currentUser.role === "assignee";
+  const showCrm = roleCanAccessCrm(currentUser.role);
   const showSimpro = roleCanAccessSimpro(currentUser.role);
   const showSimproForms = currentUser.role === "finance";
   const simproNav = showSimpro
     ? NAV_SIMPRO
     : showSimproForms
-      ? NAV_SIMPRO.filter((item) => item.href === "/forms")
+      ? NAV_SIMPRO.filter(
+          (item) => item.href === "/forms" || item.href === "/my-tasks",
+        )
       : [];
   const isCrm = pathname.startsWith("/crm");
 
@@ -503,15 +510,15 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
                   if (
                     user &&
                     !roleCanAccessCrm(user.role) &&
-                    pathname.startsWith("/crm") &&
-                    !canAccessProspekPath(user.role, pathname)
+                    pathname.startsWith("/crm")
                   ) {
                     router.push(landingForRole(user.role));
                   }
                   if (
                     user &&
                     !roleCanAccessSimpro(user.role) &&
-                    !pathname.startsWith("/crm")
+                    !pathname.startsWith("/crm") &&
+                    !(user.role === "finance" && isFinanceWorkPath(pathname))
                   ) {
                     router.push("/crm");
                   }

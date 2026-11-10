@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
+  canViewProspek,
+  formEntryScope,
   formatDate,
+  prospekById,
+  prospekPitchingById,
   stepFor,
   userById,
   visibleProjects,
@@ -32,6 +36,7 @@ import {
 import { SurveyFormDialog } from "../forms";
 import { ProjectAccordion } from "./project-accordion";
 import { FormEntryPage } from "./form-entry-page";
+import { useViewPreference, ViewToggle } from "../view-toggle";
 
 type DisplayStatus =
   | "empty"
@@ -84,50 +89,26 @@ function StatusBadge({ status }: { status: DisplayStatus }) {
   );
 }
 
-type FormRow =
-  | {
-      kind: "entry";
-      id: string;
-      project: Project;
-      formName: string;
-      title: string;
-      assigneeId?: string;
-      status: DisplayStatus;
-      submittedAt?: string;
-      reviewComment?: string;
-      entry: FormEntry;
-    }
-  | {
-      kind: "legacy";
-      id: string;
-      project: Project;
-      formName: string;
-      title: string;
-      assigneeId?: string;
-      status: DisplayStatus;
-      submittedAt?: string;
-      reviewComment?: string;
-      form: StepForm;
-    }
-  | {
-      kind: "finance";
-      id: string;
-      project: Project;
-      formName: string;
-      title: string;
-      assigneeId?: string;
-      status: DisplayStatus;
-      submittedAt?: string;
-      reviewComment?: string;
-      form: StepForm;
-      type: SimproFinanceFormType;
-    };
-
-function rowPitching(store: ReturnType<typeof usePrototypeStore.getState>, projectId: string) {
-  return store.pitchings.find(
-    (pitching) => pitching.projectId === projectId && pitching.status === "won",
-  );
-}
+type FormRow = {
+  kind: "entry" | "legacy" | "finance" | "prospek";
+  id: string;
+  project?: Project;
+  prospekId?: string;
+  pitchingId?: string;
+  contextName: string;
+  contextCode: string;
+  formName: string;
+  title: string;
+  assigneeId?: string;
+  status: DisplayStatus;
+  submittedAt?: string;
+  dueDate?: string;
+  reviewComment?: string;
+  entry?: FormEntry;
+  form?: StepForm;
+  type?: SimproFinanceFormType;
+  href?: string;
+};
 
 function FormItem({
   row,
@@ -137,16 +118,16 @@ function FormItem({
   onOpen: () => void;
 }) {
   const store = usePrototypeStore();
-  const pitching = rowPitching(store, row.project.id);
   return (
     <div className="bg-card ring-foreground/10 flex flex-col gap-2 rounded-lg p-3 shadow-sm ring-1">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold">
-            {pitching?.title ?? row.title}
-          </p>
+          <p className="truncate text-xs font-semibold">{row.title}</p>
           <p className="text-muted-foreground mt-0.5 text-[10px]">
-            {row.formName} · {row.project.code}
+            {row.formName} · {row.contextCode}
+          </p>
+          <p className="text-muted-foreground truncate text-[10px]">
+            {row.contextName}
           </p>
         </div>
         <StatusBadge status={row.status} />
@@ -154,6 +135,10 @@ function FormItem({
       <div className="flex items-center justify-between gap-2 text-[10px]">
         <span className="text-muted-foreground">Assignee</span>
         <UserAvatar user={userById(store, row.assigneeId)} size="sm" showName />
+      </div>
+      <div className="flex items-center justify-between gap-2 text-[10px]">
+        <span className="text-muted-foreground">Due</span>
+        <span>{formatDate(row.dueDate)}</span>
       </div>
       <div className="flex items-center justify-between gap-2 text-[10px]">
         <span className="text-muted-foreground">Submitted</span>
@@ -183,6 +168,7 @@ export function SimproFormsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [openFormId, setOpenFormId] = useState<string | null>(null);
+  const [view, setView] = useViewPreference("forms");
 
   const rows = useMemo<FormRow[]>(() => {
     if (!currentUser) return [];
@@ -204,13 +190,17 @@ export function SimproFormsPage() {
         kind: "entry",
         id: entry.id,
         project,
+        contextName: project.name,
+        contextCode: project.code,
         formName: step.formTemplate?.title ?? step.name,
         title: entry.title,
         assigneeId: entry.assigneeId,
         status: entryDisplayStatus(entry.status),
         submittedAt: entry.submittedAt,
+        dueDate: entry.dueDate,
         reviewComment: entry.reviewComment,
         entry,
+        href: `/forms?entry=${entry.id}`,
       });
     }
 
@@ -232,6 +222,8 @@ export function SimproFormsPage() {
         kind: "legacy",
         id: form.id,
         project,
+        contextName: project.name,
+        contextCode: project.code,
         formName: "Form Survey",
         title: "Form Survey",
         assigneeId: form.assigneeId,
@@ -247,6 +239,8 @@ export function SimproFormsPage() {
         kind: "finance",
         id: row.form.id,
         project: row.project,
+        contextName: row.project.name,
+        contextCode: row.project.code,
         formName: row.formName,
         title: row.formName,
         assigneeId: row.form.assigneeId,
@@ -255,6 +249,42 @@ export function SimproFormsPage() {
         reviewComment: row.form.reviewComment,
         form: row.form,
         type: row.form.type as SimproFinanceFormType,
+      });
+    }
+
+    for (const entry of store.formEntries) {
+      if (formEntryScope(entry) !== "prospek") continue;
+      const pitching = prospekPitchingById(store, entry.pitchingId);
+      const prospek = prospekById(store, entry.prospekId);
+      if (!pitching || !prospek) continue;
+      const restricted =
+        currentUser.role === "assignee" || currentUser.role === "finance";
+      if (restricted && entry.assigneeId !== currentUser.id) continue;
+      if (!restricted && !canViewProspek(store, currentUser, prospek)) continue;
+      const template = store.templates.find(
+        (item) => item.id === pitching.templateId,
+      );
+      const stage = template?.stages.find(
+        (item) => item.id === entry.templateStageId,
+      );
+      result.push({
+        kind: "prospek",
+        id: entry.id,
+        prospekId: prospek.id,
+        pitchingId: pitching.id,
+        contextName: pitching.title,
+        contextCode: "PROSPEK",
+        formName: stage?.formTemplate?.title ?? stage?.name ?? entry.stepKey,
+        title: entry.title,
+        assigneeId: entry.assigneeId,
+        status: entryDisplayStatus(entry.status),
+        submittedAt: entry.submittedAt,
+        dueDate: entry.dueDate,
+        reviewComment: entry.reviewComment,
+        entry,
+        href: restricted
+          ? `/work/prospek/${pitching.id}/form?entry=${entry.id}`
+          : `/crm/prospek/${prospek.id}/pitching/${pitching.id}`,
       });
     }
     return result;
@@ -266,15 +296,20 @@ export function SimproFormsPage() {
   );
 
   const projectOptions = useMemo(() => {
-    const map = new Map<string, Project>();
-    for (const row of rows) map.set(row.project.id, row.project);
-    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      const key = row.project?.id ?? `pitching:${row.pitchingId}`;
+      const label = row.project?.name ?? `Pitching: ${row.contextName}`;
+      map.set(key, label);
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [rows]);
 
   const filtered = useMemo(
     () =>
       rows.filter((row) => {
-        if (projectFilter && row.project.id !== projectFilter) return false;
+        const rowKey = row.project?.id ?? `pitching:${row.pitchingId}`;
+        if (projectFilter && rowKey !== projectFilter) return false;
         if (typeFilter && row.formName !== typeFilter) return false;
         if (statusFilter) {
           if (statusFilter === "review") {
@@ -285,7 +320,7 @@ export function SimproFormsPage() {
         }
         if (
           search &&
-          !`${row.project.name} ${row.project.code} ${row.title}`
+          !`${row.contextName} ${row.contextCode} ${row.title}`
             .toLowerCase()
             .includes(search.toLowerCase())
         ) {
@@ -297,15 +332,23 @@ export function SimproFormsPage() {
   );
 
   const groups = useMemo(() => {
-    const map = new Map<string, { project: Project; rows: FormRow[] }>();
+    const map = new Map<
+      string,
+      { key: string; name: string; code: string; color: string; rows: FormRow[] }
+    >();
     for (const row of filtered) {
-      const group = map.get(row.project.id) ?? { project: row.project, rows: [] };
+      const key = row.project?.id ?? `pitching:${row.pitchingId}`;
+      const group = map.get(key) ?? {
+        key,
+        name: row.project?.name ?? `Pitching: ${row.contextName}`,
+        code: row.project?.code ?? "PROSPEK",
+        color: row.project?.coverColor ?? "#6366f1",
+        rows: [],
+      };
       group.rows.push(row);
-      map.set(row.project.id, group);
+      map.set(key, group);
     }
-    return [...map.values()].sort((a, b) =>
-      a.project.name.localeCompare(b.project.name),
-    );
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [filtered]);
 
   if (!currentUser) return null;
@@ -326,21 +369,26 @@ export function SimproFormsPage() {
 
   const openRow = (row: FormRow) => {
     if (row.kind === "legacy") {
-      setOpenFormId(row.form.id);
+      setOpenFormId(row.form?.id ?? null);
       return;
     }
-    if (row.kind === "finance") {
+    if (row.kind === "finance" && row.project && row.type) {
       router.push(`/crm/projects/${row.project.id}/forms/${row.type}`);
       return;
     }
-    router.push(`/forms?entry=${row.entry.id}`);
+    if (row.kind === "prospek" && row.href) {
+      router.push(row.href);
+      return;
+    }
+    if (row.entry) router.push(`/forms?entry=${row.entry.id}`);
   };
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Forms"
-        description="Form Survey, Form, dan Form Keuangan (RAB/BAST/Invoice) yang dapat Anda isi atau review, dikelompokkan per proyek dan jenis form. Badge menghitung form yang perlu Anda isi."
+        description="Form Survey, Form, Form Keuangan, dan Form Pitching yang dapat Anda isi atau review. Badge menghitung form yang perlu Anda isi."
+        actions={<ViewToggle value={view} onChange={setView} />}
       />
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_170px_160px_160px]">
@@ -354,10 +402,10 @@ export function SimproFormsPage() {
           />
         </div>
         <NativeSelect value={projectFilter} onChange={setProjectFilter}>
-          <option value="">Semua proyek</option>
-          {projectOptions.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}
+          <option value="">Semua konteks</option>
+          {projectOptions.map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
             </option>
           ))}
         </NativeSelect>
@@ -392,28 +440,71 @@ export function SimproFormsPage() {
         <EmptyState
           icon={ClipboardList}
           title="Tidak ada form yang cocok"
-          description="Ubah pencarian atau filter proyek, jenis form, dan status."
+          description="Ubah pencarian atau filter konteks, jenis form, dan status."
         />
+      ) : view === "table" ? (
+        <div className="overflow-x-auto rounded-xl border bg-card">
+          <table className="w-full min-w-[760px] text-left text-xs">
+            <thead className="text-muted-foreground border-b bg-muted/30 text-[10px] uppercase tracking-wide">
+              <tr>
+                <th className="px-3 py-2">Form</th>
+                <th className="px-3 py-2">Konteks</th>
+                <th className="px-3 py-2">Assignee</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Due</th>
+                <th className="px-3 py-2">Submit</th>
+                <th className="px-3 py-2">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((row) => (
+                <tr key={`${row.kind}-${row.id}`} className="border-b last:border-0">
+                  <td className="px-3 py-2">
+                    <p className="font-medium">{row.title}</p>
+                    <p className="text-muted-foreground text-[10px]">{row.formName}</p>
+                  </td>
+                  <td className="px-3 py-2">
+                    <p className="font-medium">{row.contextName}</p>
+                    <p className="text-muted-foreground text-[10px]">{row.contextCode}</p>
+                  </td>
+                  <td className="px-3 py-2">
+                    <UserAvatar user={userById(store, row.assigneeId)} size="sm" showName />
+                  </td>
+                  <td className="px-3 py-2">
+                    <StatusBadge status={row.status} />
+                  </td>
+                  <td className="px-3 py-2">{formatDate(row.dueDate)}</td>
+                  <td className="px-3 py-2">{formatDate(row.submittedAt)}</td>
+                  <td className="px-3 py-2">
+                    <Button size="sm" variant="outline" onClick={() => openRow(row)}>
+                      Buka
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="space-y-3">
-          {groups.map(({ project, rows: projectRows }) => {
-            const open = !collapsed.includes(project.id);
-            const typeGroups = [...new Set(projectRows.map((row) => row.formName))];
+          {groups.map(({ key, name, code, color, rows: groupRows }) => {
+            const open = !collapsed.includes(key);
+            const typeGroups = [...new Set(groupRows.map((row) => row.formName))];
             return (
               <ProjectAccordion
-                key={project.id}
-                projectId={project.id}
-                name={project.name}
-                code={project.code}
-                color={project.coverColor}
-                count={projectRows.length}
+                key={key}
+                projectId={key}
+                name={name}
+                code={code}
+                color={color}
+                count={groupRows.length}
                 unit="form"
                 open={open}
-                onToggle={() => toggleGroup(project.id)}
+                onToggle={() => toggleGroup(key)}
               >
                 <div className="space-y-4 p-3">
                   {typeGroups.map((formName) => {
-                    const typeRows = projectRows.filter(
+                    const typeRows = groupRows.filter(
                       (row) => row.formName === formName,
                     );
                     return (

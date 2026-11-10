@@ -265,9 +265,11 @@ function entrySafeId(): string {
 export function FormEntryPage({
   entryId,
   onBack,
+  hideProspekContext = false,
 }: {
   entryId: string;
   onBack: () => void;
+  hideProspekContext?: boolean;
 }) {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
@@ -286,8 +288,16 @@ export function FormEntryPage({
       ? stepFor(store, entry.projectId, entry.stepKey)
       : undefined;
   const template = entry ? formEntryTemplate(store, entry) : undefined;
-  const contextCode = isProspek ? prospek?.code : project?.code;
-  const contextName = isProspek ? prospek?.name : project?.name;
+  const contextCode = isProspek
+    ? hideProspekContext
+      ? "PROSPEK"
+      : prospek?.code
+    : project?.code;
+  const contextName = isProspek
+    ? hideProspekContext
+      ? pitching?.title
+      : prospek?.name
+    : project?.name;
   const contextStage = isProspek ? pitching?.title : step?.name;
   const [payload, setPayload] = useState<FormEntryPayload>(
     entry?.payload ?? { values: {}, photos: [] },

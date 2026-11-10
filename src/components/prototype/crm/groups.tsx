@@ -8,6 +8,7 @@ import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   completionStats,
   groupCompleted,
+  groupProgress,
   isGroupableProject,
   userById,
   visibleProjects,
@@ -15,6 +16,7 @@ import {
 import { EmptyState, NativeSelect, PageHeader, ProgressBar, SectionCard } from "../ui";
 import { GroupDialog } from "../dialogs";
 import { GroupMemberRow } from "../group-member-row";
+import { useViewPreference, ViewToggle } from "../view-toggle";
 
 export function CrmGroups() {
   const store = usePrototypeStore();
@@ -23,6 +25,7 @@ export function CrmGroups() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addProjectId, setAddProjectId] = useState<Record<string, string>>({});
+  const [view, setView] = useViewPreference("crm-groups");
 
   useEffect(() => {
     const groupId = new URLSearchParams(window.location.search).get("group");
@@ -52,16 +55,19 @@ export function CrmGroups() {
         title="Groups"
         description="Kelompokkan proyek untuk melihat rollup dan penyelesaian program."
         actions={
-          canManage ? (
-            <Button
-              onClick={() => {
-                setEditingId(null);
-                setDialogOpen(true);
-              }}
-            >
-              <Plus className="size-4" /> Group baru
-            </Button>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2">
+            <ViewToggle value={view} onChange={setView} />
+            {canManage ? (
+              <Button
+                onClick={() => {
+                  setEditingId(null);
+                  setDialogOpen(true);
+                }}
+              >
+                <Plus className="size-4" /> Group baru
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
@@ -71,6 +77,54 @@ export function CrmGroups() {
           title="Belum ada group"
           description="Group minimal berisi 2 proyek. Hanya Manager/Admin yang dapat mengelola."
         />
+      ) : view === "table" ? (
+        <div className="overflow-x-auto rounded-xl border bg-card">
+          <table className="w-full min-w-[680px] text-left text-xs">
+            <thead className="text-muted-foreground border-b bg-muted/30 text-[10px] uppercase tracking-wide">
+              <tr>
+                <th className="px-3 py-2">Group</th>
+                <th className="px-3 py-2">Deskripsi</th>
+                <th className="px-3 py-2">Proyek</th>
+                <th className="px-3 py-2">Progress</th>
+                <th className="px-3 py-2">Selesai</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((group) => {
+                const members = projects.filter(
+                  (project) => project.groupId === group.id,
+                );
+                const progress = groupProgress(store, group.id);
+                const stats = completionStats(members);
+                return (
+                  <tr key={group.id} className="border-b last:border-0">
+                    <td className="px-3 py-2">
+                      <a
+                        href={`#group-${group.id}`}
+                        className="font-medium hover:underline"
+                      >
+                        {group.name}
+                      </a>
+                    </td>
+                    <td className="px-3 py-2">
+                      {group.description || "—"}
+                    </td>
+                    <td className="px-3 py-2">{members.length}</td>
+                    <td className="w-[160px] px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <ProgressBar value={progress} className="flex-1" />
+                        <span className="tabular-nums">{progress}%</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      {stats.completed}/{stats.total}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="grid gap-4">
           {groups.map((group) => {

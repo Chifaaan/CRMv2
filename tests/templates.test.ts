@@ -303,6 +303,12 @@ describe("persistence migration", () => {
       pitchingRabs: undefined,
       pitchingQuotations: undefined,
       prospekEvents: undefined,
+      prospekPitchings: seed.prospekPitchings.map((pitching) => {
+        const copy = { ...pitching };
+        delete copy.statusBeforeLoss;
+        delete copy.contractStatus;
+        return copy;
+      }),
       formEntries: seed.formEntries.map((entry) => {
         const copy = { ...entry };
         delete copy.scope;
@@ -352,10 +358,17 @@ describe("persistence migration", () => {
       twice.steps?.find((step) => step.key === "pitching")?.phase,
     ).toBe("prospek");
     expect(twice.prospeks).toEqual([]);
-    expect(twice.prospekPitchings).toEqual([]);
+    expect(twice.prospekPitchings).toHaveLength(seed.prospekPitchings.length);
     expect(twice.pitchingRabs).toEqual([]);
     expect(twice.pitchingQuotations).toEqual([]);
     expect(twice.prospekEvents).toEqual([]);
+    expect(
+      twice.prospekPitchings?.every(
+        (pitching) =>
+          (pitching.status !== "lost" || pitching.statusBeforeLoss !== undefined) &&
+          (!pitching.contract || pitching.contractStatus !== undefined),
+      ),
+    ).toBe(true);
     expect(
       twice.formEntries?.every((entry) => entry.scope === "project"),
     ).toBe(true);
