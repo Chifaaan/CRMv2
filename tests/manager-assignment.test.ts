@@ -268,6 +268,24 @@ describe("form entry assignment and execution", () => {
     ).toBe("u-manager");
   });
 
+  it("lets Manager assign an unassigned project form entry", () => {
+    const projectId = createProject("u-manager", KOL_TEMPLATE_ID);
+    const step = usePrototypeStore
+      .getState()
+      .steps.filter((item) => item.projectId === projectId)
+      .sort((a, b) => a.order - b.order)[0];
+    const entryId = usePrototypeStore
+      .getState()
+      .createFormEntry(projectId, step.key, { title: "Entri Forms" });
+    usePrototypeStore.getState().setCurrentUser("u-manager");
+    usePrototypeStore.getState().assignFormEntry(entryId, "u-assignee1");
+    const entry = usePrototypeStore
+      .getState()
+      .formEntries.find((item) => item.id === entryId)!;
+    expect(entry.assigneeId).toBe("u-assignee1");
+    expect(entry.status).toBe("assigned");
+  });
+
   it("lets Manager fill and submit but not review the entry", () => {
     const projectId = createProject("u-manager", KOL_TEMPLATE_ID);
     const step = usePrototypeStore

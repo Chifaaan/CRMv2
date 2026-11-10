@@ -1,0 +1,117 @@
+- generic [ref=f24e1]:
+  - generic [ref=f24e3]:
+    - complementary [ref=f24e4]:
+      - generic [ref=f24e5]:
+        - generic [ref=f24e6]: S
+        - generic [ref=f24e7]:
+          - generic [ref=f24e8]: SIMPRO
+          - generic [ref=f24e9]: CRM Prototype
+      - navigation [ref=f24e10]:
+        - generic [ref=f24e11]:
+          - generic [ref=f24e12]: SIMPRO
+          - link "Dashboard" [ref=f24e13] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Projects" [ref=f24e20] [cursor=pointer]:
+            - /url: /projects
+          - link "My tasks" [ref=f24e24] [cursor=pointer]:
+            - /url: /my-tasks
+          - link "Forms" [ref=f24e29] [cursor=pointer]:
+            - /url: /forms
+        - generic [ref=f24e34]:
+          - generic [ref=f24e35]: CRM
+          - link "Dashboard" [ref=f24e36] [cursor=pointer]:
+            - /url: /crm
+          - link "Projects" [ref=f24e43] [cursor=pointer]:
+            - /url: /crm/projects
+          - link "Prospek" [ref=f24e47] [cursor=pointer]:
+            - /url: /crm/prospek
+          - link "Groups" [ref=f24e53] [cursor=pointer]:
+            - /url: /crm/groups
+          - link "Templates" [ref=f24e60] [cursor=pointer]:
+            - /url: /crm/templates
+      - generic [ref=f24e67]:
+        - generic "PM Demo 2" [ref=f24e69]: PD
+        - generic [ref=f24e70]:
+          - generic [ref=f24e71]: PM Demo 2
+          - generic [ref=f24e72]: pm
+        - button "Reset data demo" [ref=f24e73]
+    - generic [ref=f24e74]:
+      - banner [ref=f24e75]:
+        - heading "Detail Proyek" [level=1] [ref=f24e77]
+        - generic [ref=f24e78]:
+          - button "CRM" [ref=f24e80]
+          - button "Notifikasi" [ref=f24e83]:
+            - generic [ref=f24e84]: "1"
+          - combobox [ref=f24e86]:
+            - option "Admin Demo · admin"
+            - option "Manager Demo · manager"
+            - option "PM Demo 1 · pm"
+            - option "PM Demo 2 · pm" [selected]
+            - option "Assignee Demo 1 · assignee"
+            - option "Assignee Demo 2 · assignee"
+            - option "Assignee Demo 3 · assignee"
+            - option "Finance Demo · finance"
+          - generic "PM Demo 2" [ref=f24e88]: PD
+      - main [ref=f24e89]:
+        - generic [ref=f24e144]:
+          - link "Kembali ke projects" [ref=f24e145] [cursor=pointer]:
+            - /url: /crm/projects
+          - generic [ref=f24e149]:
+            - generic [ref=f24e150]:
+              - generic [ref=f24e151]:
+                - generic [ref=f24e152]:
+                  - generic [ref=f24e153]: SMOKEF
+                  - generic [ref=f24e154]: Aktif
+                  - generic [ref=f24e155]: Planning
+                  - generic "Umum v2. Template ini tidak memiliki fase Prospek, Planning, Running dan Finance." [ref=f24e156]: Umum v2
+                  - generic [ref=f24e157]: Medium
+                - heading "Smoke Fase Lengkap" [level=1] [ref=f24e158]
+                - paragraph [ref=f24e159]: Tanpa klien · PM PM Demo 2 · Manager Manager Demo
+              - generic [ref=f24e160]:
+                - button "Edit" [ref=f24e161]
+                - button "Batalkan" [ref=f24e162]
+            - generic [ref=f24e163]:
+              - generic [ref=f24e165]:
+                - generic [ref=f24e166]: Progress
+                - generic [ref=f24e167]: 0 step selesai
+              - generic [ref=f24e170]:
+                - generic [ref=f24e171]: Work step aktif
+                - generic [ref=f24e172]: 0%
+            - generic [ref=f24e174]:
+              - generic [ref=f24e175]: 10 Nov 2026 → —
+              - generic [ref=f24e178]: Tanpa group
+            - generic [ref=f24e184]:
+              - generic [ref=f24e185]:
+                - 'tablist "Fase proyek: Planning, Running, Finance" [ref=f24e186]':
+                  - tab "Planning 0 Step" [ref=f24e187]:
+                    - generic [ref=f24e188]: Planning
+                    - generic [ref=f24e189]: 0 Step
+                  - tab "Running 0 Step" [ref=f24e190]:
+                    - generic [ref=f24e191]: Running
+                    - generic [ref=f24e192]: 0 Step
+                  - tab "Finance 0 Step" [selected] [ref=f24e193]:
+                    - generic [ref=f24e194]: Finance
+                    - generic [ref=f24e195]: 0 Step
+                - tablist "Tahap fase Finance" [ref=f24e324]
+              - paragraph [ref=f24e197]: Tahapan terkunci setelah proyek dibuat. Klik fase untuk melihat tahap di dalamnya.
+          - generic [ref=f24e199]:
+            - button "Overview" [ref=f24e200]
+            - button "Journey Management" [active] [ref=f24e201]
+          - generic [ref=f24e202]:
+            - generic [ref=f24e204]:
+              - heading "Proyek belum dimulai" [level=3] [ref=f24e205]
+              - paragraph [ref=f24e206]: Pilih fase awal. Finance hanya tersedia setelah Running selesai.
+            - generic [ref=f24e208]:
+              - button "Mulai dari Planning" [ref=f24e209]
+              - button "Langsung ke Running" [ref=f24e210]
+          - generic [ref=f24e310]:
+            - generic [ref=f24e312]:
+              - heading "Semua tahap selesai" [level=3] [ref=f24e313]
+              - paragraph [ref=f24e314]: Tutup proyek untuk menandai siklus hidup Selesai.
+            - button "Selesaikan proyek" [ref=f24e316]
+          - tabpanel [ref=f24e325]:
+            - generic [ref=f24e326]:
+              - paragraph [ref=f24e331]: Belum ada step
+              - paragraph [ref=f24e332]: Fase ini belum memiliki step. PM/Admin dapat menambahkannya di Kelola fase.
+  - region "Notifications alt+T"
+  - alert [ref=f24e142]

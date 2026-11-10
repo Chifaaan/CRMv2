@@ -33,19 +33,21 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 ## Siklus proyek baru
 
 - Proyek baru memakai tiga fase: Planning → Running → Finance. Fase Prospek hanya untuk proyek legacy.
+- Detail proyek siklus baru selalu menampilkan tab Planning, Running, dan Finance; fase tanpa step menampilkan `0 Step`.
 - Proyek baru dibuat belum aktif (NEW Project). PM/Admin memulai dari Planning atau langsung Running; Finance tidak bisa menjadi fase awal.
 - Step Planning/Running memakai Kanban SIMPRO; step Finance memakai Form Keuangan (BAST, Invoice, Pembayaran).
+- Saat Running selesai, step BAST dan Invoice dibuat otomatis pada fase Finance. Step Finance lain tetap dapat ditambahkan.
 - PM/Admin mengelola step yang belum dimulai; step aktif/selesai hanya boleh mengubah nama, Manager PIC, dan deskripsi.
 - Link Pekerjaan HTTP/HTTPS wajib sebelum card masuk In Progress.
 - Finance selesai hanya setelah minimal satu step Finance selesai; proyek menjadi completed.
 
 ## Workspace proyek
 
-- Detail proyek CRM memiliki tab Overview, Journey Management, dan Board.
-- Overview berisi Asal Prospek, Riwayat Aktivitas, dan Penyelesaian Tahap.
+- Detail proyek CRM memiliki dua tab: Overview dan Journey Management.
+- Overview berisi Asal Prospek, Penyelesaian Tahap, Distribusi task, Progress overview, lalu Riwayat Aktivitas. Distribusi dan progress hanya menghitung task proyek tersebut.
 - Journey Management sepenuhnya manual: proyek baru tidak memakai template; PM/Admin membuat step bebas pada fase aktif atau fase berikutnya.
+- Journey Management menyediakan pemilih step dari Kelola fase. Card task di bawahnya menampilkan task SIMPRO untuk step terpilih; step pending tampil sebagai belum dimulai dan step non-SIMPRO menampilkan isi tahapnya sendiri.
 - Memilih Planning tidak membuat step Running; Running kosong sampai ditambahkan.
-- Tab Board mengembed board Kanban SIMPRO.
 - Link Pekerjaan wajib non-empty, tanpa validasi URL, dan memiliki tombol Simpan.
 
 ## Mesin Form
@@ -61,6 +63,7 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 ## SIMPRO
 
 - Task punya `stageId` dan terhubung ke tahap SIMPRO.
+- Board di Detail Proyek SIMPRO hanya menampilkan tahap yang sedang berjalan dan tahap yang sudah selesai untuk semua role. Tahap pending tidak ditampilkan atau dapat diakses lewat pilihan tahap maupun tautan langsung.
 - Board punya filter tahap (default tahap aktif), label tahap pada kartu, dan tahap selesai read-only.
 - Task default template SIMPRO adalah usulan; PM memilih lewat "Buat dari template".
 
@@ -79,6 +82,8 @@ Pembayaran adalah form keuangan baru (Closing) dengan tanggal bayar, nominal, me
 RAB, BAST, Invoice, dan Pembayaran dibuka sebagai halaman penuh di `/crm/projects/[id]/forms/[type]`. Detail Proyek menampilkan ringkasan (status, assignee, terakhir diubah, total RAB, komentar review) dengan tombol Buka/Lihat form, Review, dan History. Review/History tetap inline. Finance yang di-assign dan Admin dapat mengisi; PM/Manager membuka read-only. Isian tiap jenis tetap spesifik (RAB item, BAST PIC/dokumen, Invoice nilai/PPN/import Excel, Pembayaran bukti/status).
 
 RAB, BAST, dan Invoice juga muncul di menu Forms SIMPRO sebagai jenis form masing-masing. Hanya Finance yang di-assign, PM pemilik proyek, dan Admin yang melihatnya; Manager dan Assignee tidak melihat form keuangan di menu tersebut.
+
+Forms adalah inbox seluruh penugasan Form dari Prospek, Project, dan Finance. Penerima assignment selalu melihat Form miliknya, termasuk entri Form proyek yang membuat proyek terkait ikut terlihat; penugasan user lain tidak ditampilkan. Manager/Admin dapat meng-assign entri Form yang belum di-assign langsung dari halaman Forms, dan hasilnya sama dengan penugasan dari Detail Proyek CRM.
 
 ## Asumsi
 

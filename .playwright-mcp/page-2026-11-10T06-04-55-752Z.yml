@@ -1,0 +1,191 @@
+- generic [ref=f30e1]:
+  - generic [ref=f30e3]:
+    - complementary [ref=f30e4]:
+      - generic [ref=f30e5]:
+        - generic [ref=f30e6]: S
+        - generic [ref=f30e7]:
+          - generic [ref=f30e8]: SIMPRO
+          - generic [ref=f30e9]: CRM Prototype
+      - navigation [ref=f30e10]:
+        - generic [ref=f30e11]:
+          - generic [ref=f30e12]: SIMPRO
+          - link "Dashboard" [ref=f30e527] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Projects" [ref=f30e528] [cursor=pointer]:
+            - /url: /projects
+          - link "My tasks" [ref=f30e529] [cursor=pointer]:
+            - /url: /my-tasks
+          - link "Forms" [ref=f30e530] [cursor=pointer]:
+            - /url: /forms
+        - generic [ref=f30e34]:
+          - generic [ref=f30e35]: CRM
+          - link "Dashboard" [ref=f30e531] [cursor=pointer]:
+            - /url: /crm
+          - link "Projects" [ref=f30e532] [cursor=pointer]:
+            - /url: /crm/projects
+          - link "Prospek" [ref=f30e533] [cursor=pointer]:
+            - /url: /crm/prospek
+          - link "Groups" [ref=f30e534] [cursor=pointer]:
+            - /url: /crm/groups
+          - link "Templates" [ref=f30e535] [cursor=pointer]:
+            - /url: /crm/templates
+      - generic [ref=f30e66]:
+        - generic "PM Demo 1" [ref=f30e541]: PD
+        - generic [ref=f30e69]:
+          - generic [ref=f30e70]: PM Demo 1
+          - generic [ref=f30e71]: pm
+        - button "Reset data demo" [active] [ref=f30e542]
+    - generic [ref=f30e73]:
+      - banner [ref=f30e74]:
+        - heading "CRM" [level=1] [ref=f30e543]
+        - generic [ref=f30e77]:
+          - button "CRM" [ref=f30e544]
+          - button "Notifikasi" [ref=f30e545]:
+            - generic [ref=f30e83]: "1"
+          - combobox [ref=f30e85]:
+            - option "Admin Demo · admin"
+            - option "Manager Demo · manager"
+            - option "PM Demo 1 · pm" [selected]
+            - option "PM Demo 2 · pm"
+            - option "Assignee Demo 1 · assignee"
+            - option "Assignee Demo 2 · assignee"
+            - option "Assignee Demo 3 · assignee"
+            - option "Finance Demo · finance"
+          - generic "PM Demo 1" [ref=f30e546]: PD
+      - main [ref=f30e88]:
+        - generic [ref=f30e547]:
+          - generic [ref=f30e548]:
+            - generic [ref=f30e549]:
+              - heading "Selamat datang, PM" [level=1] [ref=f30e550]
+              - paragraph [ref=f30e551]: Pantau journey proyek, pitching, form, dan pekerjaan yang menunggu tindakan.
+            - link "Lihat semua proyek" [ref=f30e553] [cursor=pointer]:
+              - /url: /crm/projects
+          - generic [ref=f30e556]:
+            - generic [ref=f30e559]:
+              - paragraph [ref=f30e560]: Proyek aktif
+              - paragraph [ref=f30e561]: "3"
+              - paragraph [ref=f30e562]: 4 total terlihat
+            - generic [ref=f30e568]:
+              - paragraph [ref=f30e569]: Prospek
+              - paragraph [ref=f30e570]: "3"
+              - paragraph [ref=f30e571]: Brief sampai menang
+            - generic [ref=f30e579]:
+              - paragraph [ref=f30e580]: Planning
+              - paragraph [ref=f30e581]: "0"
+              - paragraph [ref=f30e582]: Komitmen vendor & venue
+            - generic [ref=f30e590]:
+              - paragraph [ref=f30e591]: Running
+              - paragraph [ref=f30e592]: "0"
+              - paragraph [ref=f30e593]: Eksekusi di SIMPRO
+            - generic [ref=f30e600]:
+              - paragraph [ref=f30e601]: Closing
+              - paragraph [ref=f30e602]: "0"
+              - paragraph [ref=f30e603]: BAST, Invoice, evaluasi
+          - generic [ref=f30e608]:
+            - generic [ref=f30e609]:
+              - generic [ref=f30e611]:
+                - heading "Pipeline proyek" [level=3] [ref=f30e612]
+                - paragraph [ref=f30e613]: Proyek aktif berdasarkan fase yang sedang berjalan.
+              - generic [ref=f30e615]:
+                - generic [ref=f30e616]:
+                  - generic [ref=f30e617]:
+                    - generic [ref=f30e618]: Prospek
+                    - generic [ref=f30e619]: "3"
+                  - generic [ref=f30e620]:
+                    - link "Proyek Alpha Pitching 0%" [ref=f30e621] [cursor=pointer]:
+                      - /url: /crm/projects/p-alpha
+                      - generic [ref=f30e622]:
+                        - generic [ref=f30e623]:
+                          - paragraph [ref=f30e624]: Proyek Alpha
+                          - paragraph [ref=f30e625]: Pitching
+                        - generic [ref=f30e626]: 0%
+                    - link "Proyek Beta Survey 20%" [ref=f30e628] [cursor=pointer]:
+                      - /url: /crm/projects/p-beta
+                      - generic [ref=f30e629]:
+                        - generic [ref=f30e630]:
+                          - paragraph [ref=f30e631]: Proyek Beta
+                          - paragraph [ref=f30e632]: Survey
+                        - generic [ref=f30e633]: 20%
+                    - link "Proyek Gamma RAB 40%" [ref=f30e636] [cursor=pointer]:
+                      - /url: /crm/projects/p-gamma
+                      - generic [ref=f30e637]:
+                        - generic [ref=f30e638]:
+                          - paragraph [ref=f30e639]: Proyek Gamma
+                          - paragraph [ref=f30e640]: RAB
+                        - generic [ref=f30e641]: 40%
+                - generic [ref=f30e644]:
+                  - generic [ref=f30e645]:
+                    - generic [ref=f30e646]: Planning
+                    - generic [ref=f30e647]: "0"
+                  - paragraph [ref=f30e649]: Tidak ada proyek.
+                - generic [ref=f30e650]:
+                  - generic [ref=f30e651]:
+                    - generic [ref=f30e652]: Running
+                    - generic [ref=f30e653]: "0"
+                  - paragraph [ref=f30e655]: Tidak ada proyek.
+                - generic [ref=f30e656]:
+                  - generic [ref=f30e657]:
+                    - generic [ref=f30e658]: Finance
+                    - generic [ref=f30e659]: "0"
+                  - paragraph [ref=f30e661]: Tidak ada proyek.
+            - generic [ref=f30e662]:
+              - generic [ref=f30e664]:
+                - heading "Perlu tindakan" [level=3] [ref=f30e665]
+                - paragraph [ref=f30e666]: Item yang menunggu role Anda.
+              - generic [ref=f30e668]:
+                - link "SURVEY menunggu review Proyek Beta" [ref=f30e669] [cursor=pointer]:
+                  - /url: /crm/projects/p-beta
+                  - generic [ref=f30e673]:
+                    - generic [ref=f30e674]: SURVEY menunggu review
+                    - generic [ref=f30e675]: Proyek Beta
+                - link "RAB menunggu review Proyek Gamma" [ref=f30e678] [cursor=pointer]:
+                  - /url: /crm/projects/p-gamma
+                  - generic [ref=f30e682]:
+                    - generic [ref=f30e683]: RAB menunggu review
+                    - generic [ref=f30e684]: Proyek Gamma
+          - generic [ref=f30e687]:
+            - generic [ref=f30e688]:
+              - generic [ref=f30e690]:
+                - heading "Proyek terbaru" [level=3] [ref=f30e691]
+                - paragraph [ref=f30e692]: Urut berdasarkan aktivitas terakhir.
+              - generic [ref=f30e694]:
+                - link "Proyek Alpha PRJ-01 · Pitching 0% PD" [ref=f30e695] [cursor=pointer]:
+                  - /url: /crm/projects/p-alpha
+                  - generic [ref=f30e697]:
+                    - paragraph [ref=f30e698]: Proyek Alpha
+                    - paragraph [ref=f30e699]: PRJ-01 · Pitching
+                  - paragraph [ref=f30e702]: 0%
+                  - generic "PM Demo 1" [ref=f30e704]: PD
+                - link "Proyek Beta PRJ-02 · Survey 20% PD" [ref=f30e705] [cursor=pointer]:
+                  - /url: /crm/projects/p-beta
+                  - generic [ref=f30e707]:
+                    - paragraph [ref=f30e708]: Proyek Beta
+                    - paragraph [ref=f30e709]: PRJ-02 · Survey
+                  - paragraph [ref=f30e713]: 20%
+                  - generic "PM Demo 1" [ref=f30e715]: PD
+                - link "Proyek Gamma PRJ-03 · RAB 40% PD" [ref=f30e716] [cursor=pointer]:
+                  - /url: /crm/projects/p-gamma
+                  - generic [ref=f30e718]:
+                    - paragraph [ref=f30e719]: Proyek Gamma
+                    - paragraph [ref=f30e720]: PRJ-03 · RAB
+                  - paragraph [ref=f30e724]: 40%
+                  - generic "PM Demo 1" [ref=f30e726]: PD
+                - link "Proyek Lama PRJ-07 · Pitching 0% PD" [ref=f30e727] [cursor=pointer]:
+                  - /url: /crm/projects/p-legacy
+                  - generic [ref=f30e729]:
+                    - paragraph [ref=f30e730]: Proyek Lama
+                    - paragraph [ref=f30e731]: PRJ-07 · Pitching
+                  - paragraph [ref=f30e734]: 0%
+                  - generic "PM Demo 1" [ref=f30e736]: PD
+            - generic [ref=f30e737]:
+              - generic [ref=f30e739]:
+                - heading "Group" [level=3] [ref=f30e740]
+                - paragraph [ref=f30e741]: Rollup proyek yang dikelompokkan.
+              - link [ref=f30e744] [cursor=pointer]:
+                - /url: /crm/groups
+                - generic [ref=f30e749]:
+                  - paragraph [ref=f30e750]: Grup Demo Q4
+                  - paragraph [ref=f30e751]: 2 proyek · 15 Okt 2026
+                - paragraph [ref=f30e754]: 0%
+  - region "Notifications alt+T"
+  - alert [ref=f30e448]

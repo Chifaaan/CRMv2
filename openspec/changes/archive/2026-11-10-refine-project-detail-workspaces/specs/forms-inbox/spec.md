@@ -57,3 +57,19 @@ Halaman Forms SHALL menampilkan Form yang di-assign kepada pengguna dan SHALL NO
 
 - **WHEN** PM pemilik proyek membuka Forms
 - **THEN** Form proyek yang boleh ia review tetap tampil sesuai aturan review yang berlaku
+
+### Requirement: Managers can assign forms from the Forms menu
+
+Manager dan Admin SHALL dapat meng-assign entri Form yang belum memiliki assignee langsung dari halaman Forms, tanpa membuka Detail Proyek CRM. Penugasan dari Forms SHALL menghasilkan status, notifikasi, dan audit yang sama dengan penugasan dari CRM.
+
+#### Scenario: Assign a project form from Forms
+- **WHEN** Manager meng-assign entri Form proyek yang belum memiliki assignee dari halaman Forms
+- **THEN** entri tersebut menjadi assigned, penerima mendapat notifikasi, dan audit trail proyek mencatat assignment
+
+#### Scenario: Assign a Prospek form from Forms
+- **WHEN** Manager meng-assign entri Form Prospek yang belum memiliki assignee dari halaman Forms
+- **THEN** entri tersebut menjadi assigned dan audit Prospek mencatat assignment
+
+#### Scenario: Non-manager cannot assign from Forms
+- **WHEN** Assignee atau Finance mencoba meng-assign entri Form dari halaman Forms
+- **THEN** kontrol assignment tidak tersedia atau aksi tersebut ditolak

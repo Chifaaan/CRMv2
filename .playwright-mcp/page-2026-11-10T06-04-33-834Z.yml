@@ -1,0 +1,382 @@
+- generic [ref=f30e1]:
+  - generic [ref=f30e3]:
+    - complementary [ref=f30e4]:
+      - generic [ref=f30e5]:
+        - generic [ref=f30e6]: S
+        - generic [ref=f30e7]:
+          - generic [ref=f30e8]: SIMPRO
+          - generic [ref=f30e9]: CRM Prototype
+      - navigation [ref=f30e10]:
+        - generic [ref=f30e11]:
+          - generic [ref=f30e12]: SIMPRO
+          - link "Dashboard" [ref=f30e13] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Projects" [ref=f30e20] [cursor=pointer]:
+            - /url: /projects
+          - link "My tasks" [ref=f30e24] [cursor=pointer]:
+            - /url: /my-tasks
+          - link "Forms" [ref=f30e29] [cursor=pointer]:
+            - /url: /forms
+        - generic [ref=f30e34]:
+          - generic [ref=f30e35]: CRM
+          - link "Dashboard" [ref=f30e36] [cursor=pointer]:
+            - /url: /crm
+          - link "Projects" [ref=f30e43] [cursor=pointer]:
+            - /url: /crm/projects
+          - link "Prospek" [ref=f30e47] [cursor=pointer]:
+            - /url: /crm/prospek
+          - link "Groups" [ref=f30e53] [cursor=pointer]:
+            - /url: /crm/groups
+          - link "Workload" [ref=f30e60] [cursor=pointer]:
+            - /url: /crm/workload
+      - generic [ref=f30e66]:
+        - generic "Manager Demo" [ref=f30e68]: MD
+        - generic [ref=f30e69]:
+          - generic [ref=f30e70]: Manager Demo
+          - generic [ref=f30e71]: manager
+        - button "Reset data demo" [ref=f30e72]
+    - generic [ref=f30e73]:
+      - banner [ref=f30e74]:
+        - heading "Forms" [level=1] [ref=f30e76]
+        - generic [ref=f30e77]:
+          - button "SIMPRO" [ref=f30e79]
+          - button "Notifikasi" [ref=f30e82]:
+            - generic [ref=f30e83]: "2"
+          - combobox [ref=f30e85]:
+            - option "Admin Demo · admin"
+            - option "Manager Demo · manager" [selected]
+            - option "PM Demo 1 · pm"
+            - option "PM Demo 2 · pm"
+            - option "Assignee Demo 1 · assignee"
+            - option "Assignee Demo 2 · assignee"
+            - option "Assignee Demo 3 · assignee"
+            - option "Finance Demo · finance"
+          - generic "Manager Demo" [ref=f30e87]: MD
+      - main [ref=f30e88]:
+        - generic [ref=f30e89]:
+          - generic [ref=f30e90]:
+            - generic [ref=f30e91]:
+              - heading "Forms" [level=1] [ref=f30e92]
+              - paragraph [ref=f30e93]: Form Survey, Form, Form Keuangan, dan Form Pitching yang dapat Anda isi atau review. Badge menghitung form yang perlu Anda isi.
+            - generic [ref=f30e95]:
+              - button "Card" [ref=f30e96]
+              - button "Table" [ref=f30e102]
+          - generic [ref=f30e104]:
+            - textbox "Cari proyek atau formâ€¦" [ref=f30e109]
+            - combobox [ref=f30e110]:
+              - option "Semua konteks" [selected]
+              - 'option "Pitching: Grand Launch Event"'
+              - 'option "Pitching: KOL Ramadan"'
+              - option "Proyek Alpha"
+              - option "Proyek Beta"
+              - option "Proyek Delta"
+              - option "Proyek Epsilon"
+              - option "Proyek Gamma"
+              - option "Proyek Lama"
+              - option "Proyek Zeta"
+            - combobox [ref=f30e111]:
+              - option "Semua kategori" [selected]
+              - option "Project"
+              - option "Prospek"
+            - combobox [ref=f30e112]:
+              - option "Semua jenis" [selected]
+              - option "BAST"
+              - option "Create Strategy & Concept"
+              - option "Form Survey"
+              - option "KOL Listing"
+            - combobox [ref=f30e113]:
+              - option "Semua status" [selected]
+              - option "Menunggu review"
+              - option "Belum diisi"
+              - option "Submitted"
+              - option "Perlu revisi"
+              - option "Selesai"
+              - option "Dibatalkan"
+          - generic [ref=f30e114]:
+            - generic [ref=f30e115]:
+              - 'button "Pitching: Grand Launch Event PROSPEK · 1 form" [expanded] [ref=f30e116]':
+                - generic [ref=f30e118]:
+                  - generic [ref=f30e119]: "Pitching: Grand Launch Event"
+                  - generic [ref=f30e120]: PROSPEK · 1 form
+              - generic [ref=f30e125]:
+                - generic [ref=f30e126]:
+                  - heading "Create Strategy & Concept" [level=3] [ref=f30e127]
+                  - generic [ref=f30e128]: 1 form
+                - generic [ref=f30e130]:
+                  - generic [ref=f30e131]:
+                    - generic [ref=f30e132]:
+                      - paragraph [ref=f30e133]: Concept Deck Grand Launch
+                      - paragraph [ref=f30e134]: Create Strategy & Concept · Prospek · PROSPEK
+                      - paragraph [ref=f30e135]: Grand Launch Event
+                    - generic [ref=f30e136]: Belum diisi
+                  - generic [ref=f30e137]:
+                    - generic [ref=f30e138]: Assignee
+                    - generic [ref=f30e139]:
+                      - generic "Assignee Demo 3" [ref=f30e140]: AD
+                      - generic [ref=f30e141]: Assignee Demo 3
+                  - generic [ref=f30e142]:
+                    - generic [ref=f30e143]: Due
+                    - generic [ref=f30e144]: 10 Okt 2026
+                  - generic [ref=f30e145]:
+                    - generic [ref=f30e146]: Submitted
+                    - generic [ref=f30e147]: —
+                  - button "Buka form" [ref=f30e148]
+            - generic [ref=f30e149]:
+              - 'button "Pitching: KOL Ramadan PROSPEK · 1 form" [expanded] [ref=f30e150]':
+                - generic [ref=f30e152]:
+                  - generic [ref=f30e153]: "Pitching: KOL Ramadan"
+                  - generic [ref=f30e154]: PROSPEK · 1 form
+              - generic [ref=f30e159]:
+                - generic [ref=f30e160]:
+                  - heading "KOL Listing" [level=3] [ref=f30e161]
+                  - generic [ref=f30e162]: 1 form
+                - generic [ref=f30e164]:
+                  - generic [ref=f30e165]:
+                    - generic [ref=f30e166]:
+                      - paragraph [ref=f30e167]: Presentasi KOL Ramadan
+                      - paragraph [ref=f30e168]: KOL Listing · Prospek · PROSPEK
+                      - paragraph [ref=f30e169]: KOL Ramadan
+                    - generic [ref=f30e170]: Belum diisi
+                  - generic [ref=f30e171]:
+                    - generic [ref=f30e172]: Assignee
+                    - generic [ref=f30e173]:
+                      - generic "Assignee Demo 2" [ref=f30e174]: AD
+                      - generic [ref=f30e175]: Assignee Demo 2
+                  - generic [ref=f30e176]:
+                    - generic [ref=f30e177]: Due
+                    - generic [ref=f30e178]: 18 Nov 2026
+                  - generic [ref=f30e179]:
+                    - generic [ref=f30e180]: Submitted
+                    - generic [ref=f30e181]: —
+                  - button "Buka form" [ref=f30e182]
+            - generic [ref=f30e183]:
+              - button "Proyek Alpha PRJ-01 · 1 form" [expanded] [ref=f30e184]:
+                - generic [ref=f30e186]:
+                  - generic [ref=f30e187]: Proyek Alpha
+                  - generic [ref=f30e188]: PRJ-01 · 1 form
+              - generic [ref=f30e193]:
+                - generic [ref=f30e194]:
+                  - heading "Form Survey" [level=3] [ref=f30e195]
+                  - generic [ref=f30e196]: 1 form
+                - generic [ref=f30e198]:
+                  - generic [ref=f30e199]:
+                    - generic [ref=f30e200]:
+                      - paragraph [ref=f30e201]: Form Survey
+                      - paragraph [ref=f30e202]: Form Survey · Project · PRJ-01
+                      - paragraph [ref=f30e203]: Proyek Alpha
+                    - generic [ref=f30e204]: Belum diisi
+                  - generic [ref=f30e205]:
+                    - generic [ref=f30e206]: Assignee
+                    - generic [ref=f30e207]:
+                      - generic [ref=f30e208]: "?"
+                      - generic [ref=f30e209]: Unassigned
+                  - generic [ref=f30e210]:
+                    - generic [ref=f30e211]: Due
+                    - generic [ref=f30e212]: —
+                  - generic [ref=f30e213]:
+                    - generic [ref=f30e214]: Submitted
+                    - generic [ref=f30e215]: —
+                  - button "Buka form" [ref=f30e216]
+            - generic [ref=f30e217]:
+              - button "Proyek Beta PRJ-02 · 1 form" [expanded] [ref=f30e218]:
+                - generic [ref=f30e220]:
+                  - generic [ref=f30e221]: Proyek Beta
+                  - generic [ref=f30e222]: PRJ-02 · 1 form
+              - generic [ref=f30e227]:
+                - generic [ref=f30e228]:
+                  - heading "Form Survey" [level=3] [ref=f30e229]
+                  - generic [ref=f30e230]: 1 form
+                - generic [ref=f30e232]:
+                  - generic [ref=f30e233]:
+                    - generic [ref=f30e234]:
+                      - paragraph [ref=f30e235]: Form Survey
+                      - paragraph [ref=f30e236]: Form Survey · Project · PRJ-02
+                      - paragraph [ref=f30e237]: Proyek Beta
+                    - generic [ref=f30e238]: Submitted
+                  - generic [ref=f30e239]:
+                    - generic [ref=f30e240]: Assignee
+                    - generic [ref=f30e241]:
+                      - generic "Assignee Demo 1" [ref=f30e242]: AD
+                      - generic [ref=f30e243]: Assignee Demo 1
+                  - generic [ref=f30e244]:
+                    - generic [ref=f30e245]: Due
+                    - generic [ref=f30e246]: —
+                  - generic [ref=f30e247]:
+                    - generic [ref=f30e248]: Submitted
+                    - generic [ref=f30e249]: 29 Okt 2026
+                  - button "Buka form" [ref=f30e250]
+            - generic [ref=f30e251]:
+              - button "Proyek Delta PRJ-04 · 2 form" [expanded] [ref=f30e252]:
+                - generic [ref=f30e254]:
+                  - generic [ref=f30e255]: Proyek Delta
+                  - generic [ref=f30e256]: PRJ-04 · 2 form
+              - generic [ref=f30e260]:
+                - generic [ref=f30e261]:
+                  - generic [ref=f30e262]:
+                    - heading "BAST" [level=3] [ref=f30e263]
+                    - generic [ref=f30e264]: 1 form
+                  - generic [ref=f30e266]:
+                    - generic [ref=f30e267]:
+                      - generic [ref=f30e268]:
+                        - paragraph [ref=f30e269]: Smoke Assign BAST
+                        - paragraph [ref=f30e270]: BAST · Project · PRJ-04
+                        - paragraph [ref=f30e271]: Proyek Delta
+                      - generic [ref=f30e272]: Belum diisi
+                    - generic [ref=f30e273]:
+                      - generic [ref=f30e274]: Assignee
+                      - generic [ref=f30e275]:
+                        - generic [ref=f30e276]: "?"
+                        - generic [ref=f30e277]: Unassigned
+                    - generic [ref=f30e278]:
+                      - generic [ref=f30e279]: Due
+                      - generic [ref=f30e280]: —
+                    - generic [ref=f30e281]:
+                      - generic [ref=f30e282]: Submitted
+                      - generic [ref=f30e283]: —
+                    - generic [ref=f30e284]:
+                      - combobox [active] [ref=f30e285]:
+                        - option "Pilih assignee"
+                        - option "Manager Demo"
+                        - option "Assignee Demo 1" [selected]
+                        - option "Assignee Demo 2"
+                        - option "Assignee Demo 3"
+                      - button "Assign" [ref=f30e449]
+                    - button "Buka form" [ref=f30e286]
+                - generic [ref=f30e287]:
+                  - generic [ref=f30e288]:
+                    - heading "Form Survey" [level=3] [ref=f30e289]
+                    - generic [ref=f30e290]: 1 form
+                  - generic [ref=f30e292]:
+                    - generic [ref=f30e293]:
+                      - generic [ref=f30e294]:
+                        - paragraph [ref=f30e295]: Form Survey
+                        - paragraph [ref=f30e296]: Form Survey · Project · PRJ-04
+                        - paragraph [ref=f30e297]: Proyek Delta
+                      - generic [ref=f30e298]: Selesai
+                    - generic [ref=f30e299]:
+                      - generic [ref=f30e300]: Assignee
+                      - generic [ref=f30e301]:
+                        - generic "Assignee Demo 3" [ref=f30e302]: AD
+                        - generic [ref=f30e303]: Assignee Demo 3
+                    - generic [ref=f30e304]:
+                      - generic [ref=f30e305]: Due
+                      - generic [ref=f30e306]: —
+                    - generic [ref=f30e307]:
+                      - generic [ref=f30e308]: Submitted
+                      - generic [ref=f30e309]: 15 Okt 2026
+                    - button "Buka form" [ref=f30e310]
+            - generic [ref=f30e311]:
+              - button "Proyek Epsilon PRJ-05 · 1 form" [expanded] [ref=f30e312]:
+                - generic [ref=f30e314]:
+                  - generic [ref=f30e315]: Proyek Epsilon
+                  - generic [ref=f30e316]: PRJ-05 · 1 form
+              - generic [ref=f30e321]:
+                - generic [ref=f30e322]:
+                  - heading "Form Survey" [level=3] [ref=f30e323]
+                  - generic [ref=f30e324]: 1 form
+                - generic [ref=f30e326]:
+                  - generic [ref=f30e327]:
+                    - generic [ref=f30e328]:
+                      - paragraph [ref=f30e329]: Form Survey
+                      - paragraph [ref=f30e330]: Form Survey · Project · PRJ-05
+                      - paragraph [ref=f30e331]: Proyek Epsilon
+                    - generic [ref=f30e332]: Selesai
+                  - generic [ref=f30e333]:
+                    - generic [ref=f30e334]: Assignee
+                    - generic [ref=f30e335]:
+                      - generic "Assignee Demo 1" [ref=f30e336]: AD
+                      - generic [ref=f30e337]: Assignee Demo 1
+                  - generic [ref=f30e338]:
+                    - generic [ref=f30e339]: Due
+                    - generic [ref=f30e340]: —
+                  - generic [ref=f30e341]:
+                    - generic [ref=f30e342]: Submitted
+                    - generic [ref=f30e343]: 10 Sep 2026
+                  - button "Buka form" [ref=f30e344]
+            - generic [ref=f30e345]:
+              - button "Proyek Gamma PRJ-03 · 1 form" [expanded] [ref=f30e346]:
+                - generic [ref=f30e348]:
+                  - generic [ref=f30e349]: Proyek Gamma
+                  - generic [ref=f30e350]: PRJ-03 · 1 form
+              - generic [ref=f30e355]:
+                - generic [ref=f30e356]:
+                  - heading "Form Survey" [level=3] [ref=f30e357]
+                  - generic [ref=f30e358]: 1 form
+                - generic [ref=f30e360]:
+                  - generic [ref=f30e361]:
+                    - generic [ref=f30e362]:
+                      - paragraph [ref=f30e363]: Form Survey
+                      - paragraph [ref=f30e364]: Form Survey · Project · PRJ-03
+                      - paragraph [ref=f30e365]: Proyek Gamma
+                    - generic [ref=f30e366]: Selesai
+                  - generic [ref=f30e367]:
+                    - generic [ref=f30e368]: Assignee
+                    - generic [ref=f30e369]:
+                      - generic "Assignee Demo 2" [ref=f30e370]: AD
+                      - generic [ref=f30e371]: Assignee Demo 2
+                  - generic [ref=f30e372]:
+                    - generic [ref=f30e373]: Due
+                    - generic [ref=f30e374]: —
+                  - generic [ref=f30e375]:
+                    - generic [ref=f30e376]: Submitted
+                    - generic [ref=f30e377]: 18 Okt 2026
+                  - paragraph [ref=f30e378]: Data survey lengkap.
+                  - button "Buka form" [ref=f30e379]
+            - generic [ref=f30e380]:
+              - button "Proyek Lama PRJ-07 · 1 form" [expanded] [ref=f30e381]:
+                - generic [ref=f30e383]:
+                  - generic [ref=f30e384]: Proyek Lama
+                  - generic [ref=f30e385]: PRJ-07 · 1 form
+              - generic [ref=f30e390]:
+                - generic [ref=f30e391]:
+                  - heading "Form Survey" [level=3] [ref=f30e392]
+                  - generic [ref=f30e393]: 1 form
+                - generic [ref=f30e395]:
+                  - generic [ref=f30e396]:
+                    - generic [ref=f30e397]:
+                      - paragraph [ref=f30e398]: Form Survey
+                      - paragraph [ref=f30e399]: Form Survey · Project · PRJ-07
+                      - paragraph [ref=f30e400]: Proyek Lama
+                    - generic [ref=f30e401]: Belum diisi
+                  - generic [ref=f30e402]:
+                    - generic [ref=f30e403]: Assignee
+                    - generic [ref=f30e404]:
+                      - generic [ref=f30e405]: "?"
+                      - generic [ref=f30e406]: Unassigned
+                  - generic [ref=f30e407]:
+                    - generic [ref=f30e408]: Due
+                    - generic [ref=f30e409]: —
+                  - generic [ref=f30e410]:
+                    - generic [ref=f30e411]: Submitted
+                    - generic [ref=f30e412]: —
+                  - button "Buka form" [ref=f30e413]
+            - generic [ref=f30e414]:
+              - button "Proyek Zeta PRJ-06 · 1 form" [expanded] [ref=f30e415]:
+                - generic [ref=f30e417]:
+                  - generic [ref=f30e418]: Proyek Zeta
+                  - generic [ref=f30e419]: PRJ-06 · 1 form
+              - generic [ref=f30e424]:
+                - generic [ref=f30e425]:
+                  - heading "Form Survey" [level=3] [ref=f30e426]
+                  - generic [ref=f30e427]: 1 form
+                - generic [ref=f30e429]:
+                  - generic [ref=f30e430]:
+                    - generic [ref=f30e431]:
+                      - paragraph [ref=f30e432]: Form Survey
+                      - paragraph [ref=f30e433]: Form Survey · Project · PRJ-06
+                      - paragraph [ref=f30e434]: Proyek Zeta
+                    - generic [ref=f30e435]: Selesai
+                  - generic [ref=f30e436]:
+                    - generic [ref=f30e437]: Assignee
+                    - generic [ref=f30e438]:
+                      - generic "Assignee Demo 2" [ref=f30e439]: AD
+                      - generic [ref=f30e440]: Assignee Demo 2
+                  - generic [ref=f30e441]:
+                    - generic [ref=f30e442]: Due
+                    - generic [ref=f30e443]: —
+                  - generic [ref=f30e444]:
+                    - generic [ref=f30e445]: Submitted
+                    - generic [ref=f30e446]: 15 Jul 2026
+                  - button "Buka form" [ref=f30e447]
+  - region "Notifications alt+T"
+  - alert [ref=f30e448]

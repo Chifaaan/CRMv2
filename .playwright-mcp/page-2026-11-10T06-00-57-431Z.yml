@@ -1,0 +1,184 @@
+- generic [active] [ref=f22e1]:
+  - generic [ref=f22e3]:
+    - complementary [ref=f22e4]:
+      - generic [ref=f22e5]:
+        - generic [ref=f22e6]: S
+        - generic [ref=f22e7]:
+          - generic [ref=f22e8]: SIMPRO
+          - generic [ref=f22e9]: CRM Prototype
+      - navigation [ref=f22e10]:
+        - generic [ref=f22e11]:
+          - generic [ref=f22e12]: SIMPRO
+          - link "Dashboard" [ref=f22e13] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Projects" [ref=f22e20] [cursor=pointer]:
+            - /url: /projects
+          - link "My tasks" [ref=f22e24] [cursor=pointer]:
+            - /url: /my-tasks
+          - link "Forms 1 form perlu diisi" [ref=f22e29] [cursor=pointer]:
+            - /url: /forms
+            - generic [ref=f22e33]: Forms
+            - generic "1 form perlu diisi" [ref=f22e34]: "1"
+      - generic [ref=f22e36]:
+        - generic "Assignee Demo 2" [ref=f22e38]: AD
+        - generic [ref=f22e39]:
+          - generic [ref=f22e40]: Assignee Demo 2
+          - generic [ref=f22e41]: assignee
+        - button "Reset data demo" [ref=f22e42]
+    - generic [ref=f22e43]:
+      - banner [ref=f22e44]:
+        - heading "My tasks" [level=1] [ref=f22e46]
+        - generic [ref=f22e47]:
+          - button "SIMPRO" [ref=f22e49]
+          - button "Notifikasi" [ref=f22e52]
+          - combobox [ref=f22e54]:
+            - option "Admin Demo · admin"
+            - option "Manager Demo · manager"
+            - option "PM Demo 1 · pm"
+            - option "PM Demo 2 · pm"
+            - option "Assignee Demo 1 · assignee"
+            - option "Assignee Demo 2 · assignee" [selected]
+            - option "Assignee Demo 3 · assignee"
+            - option "Finance Demo · finance"
+          - generic "Assignee Demo 2" [ref=f22e56]: AD
+      - main [ref=f22e57]:
+        - generic [ref=f22e58]:
+          - generic [ref=f22e59]:
+            - generic [ref=f22e60]:
+              - heading "My tasks" [level=1] [ref=f22e61]
+              - paragraph [ref=f22e62]: Task yang di-assign kepada Anda, dikelompokkan per proyek. Sinkron dengan board tiap proyek.
+            - generic [ref=f22e64]:
+              - button "Board" [ref=f22e65]
+              - button "List" [ref=f22e67]
+              - button "Swimlane" [ref=f22e71]
+          - generic [ref=f22e74]:
+            - textbox "Cari judul task…" [ref=f22e75]
+            - combobox [ref=f22e76]:
+              - option "Semua proyek" [selected]
+              - option "Proyek Alpha"
+              - option "Proyek Delta"
+            - combobox [ref=f22e77]:
+              - option "Semua status" [selected]
+              - option "Backlog"
+              - option "To Do"
+              - option "In Progress"
+              - option "Awaiting Approval"
+              - option "Need Revision"
+              - option "Completed"
+          - generic [ref=f22e78]:
+            - generic [ref=f22e79]:
+              - heading "Pekerjaan Prospek" [level=2] [ref=f22e80]
+              - generic [ref=f22e81]: 3 pekerjaan
+            - generic [ref=f22e82]:
+              - link [ref=f22e83] [cursor=pointer]:
+                - /url: /work/prospek/pp-beta-kol/form?entry=fentry-prospek-presentasi
+                - paragraph [ref=f22e84]: form · KOL Ramadan
+                - paragraph [ref=f22e85]: Presentasi KOL Ramadan
+                - paragraph [ref=f22e86]: assigned · Due 18 Nov 2026
+              - link [ref=f22e87] [cursor=pointer]:
+                - /url: /work/prospek/pp-beta-kol/rab
+                - paragraph [ref=f22e88]: rab · KOL Ramadan
+                - paragraph [ref=f22e89]: RAB KOL Ramadan
+                - paragraph [ref=f22e90]: assigned · Due 20 Nov 2026
+              - link [ref=f22e91] [cursor=pointer]:
+                - /url: /work/prospek/pp-beta-kol/quotation
+                - paragraph [ref=f22e92]: quotation · KOL Ramadan
+                - paragraph [ref=f22e93]: Quotation KOL Ramadan
+                - paragraph [ref=f22e94]: assigned · Due 22 Nov 2026
+          - generic [ref=f22e95]:
+            - generic [ref=f22e96]:
+              - button "Proyek Alpha PRJ-01 · 1 task" [expanded] [ref=f22e97]:
+                - generic [ref=f22e99]:
+                  - generic [ref=f22e100]: Proyek Alpha
+                  - generic [ref=f22e101]: PRJ-01 · 1 task
+              - generic [ref=f22e106]:
+                - generic [ref=f22e107]:
+                  - generic [ref=f22e108]:
+                    - generic [ref=f22e109]: Backlog
+                    - generic [ref=f22e110]: "0"
+                  - generic [ref=f22e111]: Belum ada task
+                - generic [ref=f22e113]:
+                  - generic [ref=f22e114]:
+                    - generic [ref=f22e115]: To Do
+                    - generic [ref=f22e116]: "0"
+                  - generic [ref=f22e117]: Belum ada task
+                - generic [ref=f22e119]:
+                  - generic [ref=f22e120]:
+                    - generic [ref=f22e121]: In Progress
+                    - generic [ref=f22e122]: "0"
+                  - generic [ref=f22e123]: Belum ada task
+                - generic [ref=f22e125]:
+                  - generic [ref=f22e126]:
+                    - generic [ref=f22e127]: Awaiting Approval
+                    - generic [ref=f22e128]: "1"
+                  - button "Pitching Medium [Konsep Alpha] Presenter PRJ1-002 Assignee Demo 2 4 Nov 2026" [ref=f22e130] [cursor=pointer]:
+                    - generic [ref=f22e132]:
+                      - generic [ref=f22e133]: Pitching
+                      - generic [ref=f22e134]: Medium
+                    - paragraph [ref=f22e142]: "[Konsep Alpha] Presenter"
+                    - paragraph [ref=f22e143]: PRJ1-002
+                    - generic [ref=f22e144]:
+                      - generic [ref=f22e145]: Assignee Demo 2
+                      - generic [ref=f22e149]: 4 Nov 2026
+                - generic [ref=f22e152]:
+                  - generic [ref=f22e153]:
+                    - generic [ref=f22e154]: Need Revision
+                    - generic [ref=f22e155]: "0"
+                  - generic [ref=f22e156]: Belum ada task
+                - generic [ref=f22e158]:
+                  - generic [ref=f22e159]:
+                    - generic [ref=f22e160]: Completed
+                    - generic [ref=f22e161]: "0"
+                  - generic [ref=f22e162]: Belum ada task
+            - generic [ref=f22e164]:
+              - button "Proyek Delta PRJ-04 · 2 task" [expanded] [ref=f22e165]:
+                - generic [ref=f22e167]:
+                  - generic [ref=f22e168]: Proyek Delta
+                  - generic [ref=f22e169]: PRJ-04 · 2 task
+              - generic [ref=f22e174]:
+                - generic [ref=f22e175]:
+                  - generic [ref=f22e176]:
+                    - generic [ref=f22e177]: Backlog
+                    - generic [ref=f22e178]: "0"
+                  - generic [ref=f22e179]: Belum ada task
+                - generic [ref=f22e181]:
+                  - generic [ref=f22e182]:
+                    - generic [ref=f22e183]: To Do
+                    - generic [ref=f22e184]: "0"
+                  - generic [ref=f22e185]: Belum ada task
+                - generic [ref=f22e187]:
+                  - generic [ref=f22e188]:
+                    - generic [ref=f22e189]: In Progress
+                    - generic [ref=f22e190]: "0"
+                  - generic [ref=f22e191]: Belum ada task
+                - generic [ref=f22e193]:
+                  - generic [ref=f22e194]:
+                    - generic [ref=f22e195]: Awaiting Approval
+                    - generic [ref=f22e196]: "1"
+                  - button "Running Medium Desain Halaman Notifikasi PRJ4-002 Assignee Demo 2 5 Nov 2026" [ref=f22e198] [cursor=pointer]:
+                    - generic [ref=f22e200]:
+                      - generic [ref=f22e201]: Running
+                      - generic [ref=f22e202]: Medium
+                    - paragraph [ref=f22e210]: Desain Halaman Notifikasi
+                    - paragraph [ref=f22e211]: PRJ4-002
+                    - generic [ref=f22e212]:
+                      - generic [ref=f22e213]: Assignee Demo 2
+                      - generic [ref=f22e217]: 5 Nov 2026
+                - generic [ref=f22e220]:
+                  - generic [ref=f22e221]:
+                    - generic [ref=f22e222]: Need Revision
+                    - generic [ref=f22e223]: "0"
+                  - generic [ref=f22e224]: Belum ada task
+                - generic [ref=f22e226]:
+                  - generic [ref=f22e227]:
+                    - generic [ref=f22e228]: Completed
+                    - generic [ref=f22e229]: "1"
+                  - button "Running Low Dokumentasi API PRJ4-006 Assignee Demo 2" [ref=f22e231] [cursor=pointer]:
+                    - generic [ref=f22e233]:
+                      - generic [ref=f22e234]: Running
+                      - generic [ref=f22e235]: Low
+                    - paragraph [ref=f22e243]: Dokumentasi API
+                    - paragraph [ref=f22e244]: PRJ4-006
+                    - generic [ref=f22e245]: Assignee Demo 2
+  - region "Notifications alt+T"
+  - alert [ref=f22e250]

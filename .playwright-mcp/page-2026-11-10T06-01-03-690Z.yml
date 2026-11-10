@@ -1,0 +1,81 @@
+- generic [active] [ref=f22e1]:
+  - generic [ref=f22e3]:
+    - complementary [ref=f22e4]:
+      - generic [ref=f22e5]:
+        - generic [ref=f22e6]: S
+        - generic [ref=f22e7]:
+          - generic [ref=f22e8]: SIMPRO
+          - generic [ref=f22e9]: CRM Prototype
+      - navigation [ref=f22e10]:
+        - generic [ref=f22e11]:
+          - generic [ref=f22e12]: SIMPRO
+          - link "Dashboard" [ref=f22e13] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Projects" [ref=f22e20] [cursor=pointer]:
+            - /url: /projects
+          - link "My tasks" [ref=f22e24] [cursor=pointer]:
+            - /url: /my-tasks
+          - link "Forms" [ref=f22e253] [cursor=pointer]:
+            - /url: /forms
+        - generic [ref=f22e254]:
+          - generic [ref=f22e255]: CRM
+          - link "Dashboard" [ref=f22e256] [cursor=pointer]:
+            - /url: /crm
+          - link "Projects" [ref=f22e263] [cursor=pointer]:
+            - /url: /crm/projects
+          - link "Prospek" [ref=f22e267] [cursor=pointer]:
+            - /url: /crm/prospek
+          - link "Groups" [ref=f22e273] [cursor=pointer]:
+            - /url: /crm/groups
+          - link "Templates" [ref=f22e280] [cursor=pointer]:
+            - /url: /crm/templates
+      - generic [ref=f22e36]:
+        - generic "PM Demo 2" [ref=f22e286]: PD
+        - generic [ref=f22e39]:
+          - generic [ref=f22e40]: PM Demo 2
+          - generic [ref=f22e41]: pm
+        - button "Reset data demo" [ref=f22e42]
+    - generic [ref=f22e43]:
+      - banner [ref=f22e44]:
+        - heading "My tasks" [level=1] [ref=f22e46]
+        - generic [ref=f22e47]:
+          - button "SIMPRO" [ref=f22e49]
+          - button "Notifikasi" [ref=f22e52]:
+            - generic [ref=f22e287]: "1"
+          - combobox [ref=f22e54]:
+            - option "Admin Demo · admin"
+            - option "Manager Demo · manager"
+            - option "PM Demo 1 · pm"
+            - option "PM Demo 2 · pm" [selected]
+            - option "Assignee Demo 1 · assignee"
+            - option "Assignee Demo 2 · assignee"
+            - option "Assignee Demo 3 · assignee"
+            - option "Finance Demo · finance"
+          - generic "PM Demo 2" [ref=f22e288]: PD
+      - main [ref=f22e57]:
+        - generic [ref=f22e58]:
+          - generic [ref=f22e59]:
+            - generic [ref=f22e60]:
+              - heading "My tasks" [level=1] [ref=f22e61]
+              - paragraph [ref=f22e62]: Task yang di-assign kepada Anda, dikelompokkan per proyek. Sinkron dengan board tiap proyek.
+            - generic [ref=f22e64]:
+              - button "Board" [ref=f22e65]
+              - button "List" [ref=f22e67]
+              - button "Swimlane" [ref=f22e71]
+          - generic [ref=f22e74]:
+            - textbox "Cari judul task…" [ref=f22e75]
+            - combobox [ref=f22e76]:
+              - option "Semua proyek" [selected]
+            - combobox [ref=f22e77]:
+              - option "Semua status" [selected]
+              - option "Backlog"
+              - option "To Do"
+              - option "In Progress"
+              - option "Awaiting Approval"
+              - option "Need Revision"
+              - option "Completed"
+          - generic [ref=f22e289]:
+            - paragraph [ref=f22e292]: Belum ada task
+            - paragraph [ref=f22e293]: Manager/Admin akan meng-assign task kepada Anda.
+  - region "Notifications alt+T"
+  - alert [ref=f22e250]

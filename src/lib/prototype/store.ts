@@ -31,6 +31,7 @@ import {
   groupCompleted,
   isNewLifecycleProject,
   isProspekComplete,
+  missingFinanceSteps,
   pitchingForFormEntry,
   pitchingQuotationFor,
   pitchingRabFor,
@@ -810,7 +811,7 @@ export function migratePersistedState(persisted: unknown): PersistedState {
       })
     : [];
 
-  const steps = Array.isArray(state.steps)
+  let steps = Array.isArray(state.steps)
     ? (state.steps as ProjectStep[]).map((step) => {
         const project = projects.find((item) => item.id === step.projectId);
         const template = templates.find((item) => item.id === project?.templateId);
@@ -861,6 +862,14 @@ export function migratePersistedState(persisted: unknown): PersistedState {
         return base;
       })
     : [];
+
+  for (const project of projects) {
+    if (!isNewLifecycleProject(project) || project.status !== "active") continue;
+    const projectSteps = steps.filter((step) => step.projectId === project.id);
+    if (projectPhase(project, projectSteps) !== "finance") continue;
+    const additions = missingFinanceSteps(project, projectSteps);
+    if (additions.length > 0) steps = [...steps, ...additions];
+  }
 
   const tasks = Array.isArray(state.tasks)
     ? (state.tasks as Task[]).map((task) => {
@@ -1636,6 +1645,30 @@ export const usePrototypeStore = create<PrototypeStore>()(
           summary: `Fase ${phase} selesai.`,
           metadata: { phase, completedAt },
         });
+        if (phase === "running") {
+          const additions = missingFinanceSteps(project, steps);
+          if (additions.length > 0) {
+            steps = [...steps, ...additions];
+            for (const step of additions) {
+              events = recordProjectEvent(events, {
+                projectId,
+                step: step.key,
+                eventType: "project.step_added",
+                actorId: actor.id,
+                summary: `Tahap ${step.name} dibuat otomatis untuk fase Finance.`,
+                metadata: {
+                  after: {
+                    name: step.name,
+                    phase: step.phase,
+                    kind: step.kind,
+                    status: step.status,
+                    financeKind: step.financeKind,
+                  },
+                },
+              });
+            }
+          }
+        }
         if (nextPhase) {
           const nextStep = steps
             .filter((step) => step.phase === nextPhase && step.status === "pending")
@@ -5029,7 +5062,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
     }),
     {
       name: "crm-simpro:v1",
-      version: 7,
+      version: 8,
       migrate: (persisted) =>
         migratePersistedState(persisted) as unknown as PrototypeStore,
       partialize: (state) => ({

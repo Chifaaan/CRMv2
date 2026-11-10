@@ -78,3 +78,41 @@ Setiap tab workspace SHALL menampilkan tombol Selesaikan Tahap di bawah header. 
 
 - **WHEN** pengguna membuka Overview
 - **THEN** sistem menampilkan jumlah task per status SIMPRO, hitungan Completed, Open, Overdue, dan persentase task selesai hanya untuk proyek tersebut
+
+## ADDED Requirements
+
+### Requirement: All lifecycle phases are always visible
+
+Detail proyek siklus baru SHALL selalu menampilkan tab fase Planning, Running, dan Finance, termasuk fase yang belum memiliki step. Fase tanpa step SHALL menampilkan keterangan `0 Step`.
+
+#### Scenario: Show empty phases on a new project
+- **WHEN** PM membuka detail proyek siklus baru yang belum memiliki step
+- **THEN** tab Planning, Running, dan Finance tetap tampil dan setiap fase kosong menampilkan `0 Step`
+
+#### Scenario: Open an empty phase
+- **WHEN** pengguna memilih fase yang belum memiliki step
+- **THEN** panel menampilkan bahwa fase tersebut belum memiliki step dan tidak menampilkan task dari fase lain
+
+#### Scenario: Keep legacy phases data-driven
+- **WHEN** pengguna membuka proyek legacy
+- **THEN** tab fase yang tampil mengikuti fase yang benar-benar ada pada proyek legacy tersebut
+
+### Requirement: Finance phase auto-creates BAST and Invoice steps
+
+Saat proyek siklus baru masuk fase Finance, sistem SHALL otomatis membuat step BAST dan Invoice jika belum ada. PM/Admin SHALL tetap dapat menambahkan step Finance lain, dan step yang sudah ada MUST NOT diduplikasi.
+
+#### Scenario: Enter Finance from Running
+- **WHEN** fase Running diselesaikan pada proyek siklus baru
+- **THEN** sistem membuat step BAST dan Invoice pada fase Finance
+
+#### Scenario: Keep existing Finance steps
+- **WHEN** proyek sudah memiliki step BAST atau Invoice pada fase Finance
+- **THEN** sistem tidak membuat duplikat untuk step yang sudah ada
+
+#### Scenario: Add another Finance step
+- **WHEN** PM/Admin menambahkan step Finance baru setelah BAST dan Invoice otomatis dibuat
+- **THEN** step tambahan tersebut tersimpan pada fase Finance
+
+#### Scenario: Backfill an existing Finance project
+- **WHEN** proyek aktif sudah berada di fase Finance tetapi belum memiliki step BAST atau Invoice
+- **THEN** sistem melengkapi step yang belum ada tanpa mengubah step lain

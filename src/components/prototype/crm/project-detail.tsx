@@ -74,7 +74,7 @@ import {
   LIFECYCLE_LABEL,
   PHASE_HINT,
   PHASE_LABEL,
-  TASK_STATUS_LABEL,
+  PHASE_ORDER,
   type FormEntry,
   type FormStepKey,
   type Phase,
@@ -87,7 +87,7 @@ import {
   missingPhaseTooltip,
   phaseStageCounts,
   phaseTransitionBanner,
-  phasesPresent,
+  phasesForProject,
 } from "@/lib/prototype/stepper";
 import {
   DataRow,
@@ -101,11 +101,18 @@ import {
   UserAvatar,
 } from "../ui";
 import { PitchingDialog, ProjectDialog, TaskDialog } from "../dialogs";
-import { TaskBoard } from "../simpro/board";
+import { TaskProgressPanels } from "../simpro/task-progress";
 import { ProjectStepHistory } from "./project-history";
 import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
 
 type StepTone = "done" | "active" | "attention" | "empty";
+
+const STEP_STATUS_TEXT: Record<string, string> = {
+  pending: "Belum dimulai",
+  active: "Berjalan",
+  completed: "Selesai",
+  skipped: "Dilewati",
+};
 
 const STEP_TONE_CLASS: Record<
   StepTone,
@@ -258,10 +265,11 @@ function ProjectStepper({
   panelId: string;
 }) {
   const store = usePrototypeStore();
+  const project = store.projects.find((item) => item.id === projectId);
   const steps = store.steps
     .filter((step) => step.projectId === projectId)
     .sort((a, b) => a.order - b.order);
-  const phases = phasesPresent(steps);
+  const phases = phasesForProject(project, steps);
   const counts = phaseStageCounts(steps);
   const activePhase = steps.find((step) => step.status === "active")?.phase;
   const effectivePhase = phases.includes(selectedPhase)
@@ -366,7 +374,9 @@ function ProjectStepper({
               <span className="block truncate text-[10px] text-white/50">
                 {isActive
                   ? "Sedang berjalan"
-                  : `${counts[phase] ?? 0} tahap`}
+                  : (counts[phase] ?? 0) === 0
+                    ? "0 Step"
+                    : `${counts[phase]} tahap`}
               </span>
             </button>
           );
@@ -1491,7 +1501,7 @@ function SimproStagePanel({
           />
         ) : (
           <div className="space-y-1.5">
-            {tasks.slice(0, 8).map((task) => (
+            {tasks.map((task) => (
               <div
                 key={task.id}
                 className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs"
@@ -1811,17 +1821,23 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const [selectedStepKey, setSelectedStepKey] = useState<string | null>(null);
   const [selectedPhase, setSelectedPhase] = useState<Phase>("prospek");
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<"overview" | "journey" | "board">("overview");
-  const [boardTaskId, setBoardTaskId] = useState<string | null>(null);
+  const [workspaceTab, setWorkspaceTab] = useState<"overview" | "journey">("overview");
 
   useEffect(() => {
-    const value = new URLSearchParams(window.location.search).get("tab");
-    if (value === "overview" || value === "journey" || value === "board") {
-      setWorkspaceTab(value);
+    const url = new URL(window.location.href);
+    const value = url.searchParams.get("tab");
+    if (value === "journey") {
+      setWorkspaceTab("journey");
+      return;
+    }
+    setWorkspaceTab("overview");
+    if (value && value !== "overview") {
+      url.searchParams.delete("tab");
+      window.history.replaceState(null, "", url);
     }
   }, []);
 
-  const switchWorkspaceTab = (tab: "overview" | "journey" | "board") => {
+  const switchWorkspaceTab = (tab: "overview" | "journey") => {
     setWorkspaceTab(tab);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", tab);
@@ -1836,12 +1852,13 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     const fromUrl = new URLSearchParams(window.location.search).get("step");
-    const valid = projectSteps.find(
-      (step) => step.key === fromUrl && step.status !== "pending",
-    );
+    const valid = projectSteps.find((step) => step.key === fromUrl);
     const initial = valid ?? fallbackStep;
     setSelectedStepKey(initial?.key ?? null);
-    setSelectedPhase(initial?.phase ?? "prospek");
+    setSelectedPhase(
+      initial?.phase ??
+        (isNewLifecycleProject(project) ? "planning" : "prospek"),
+    );
     // Only initialize when the project changes; later store updates must not
     // reset the user's selected step.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1887,16 +1904,29 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
       (step) => step.status === "completed" || step.status === "skipped",
     );
   const overviewTasks = store.tasks.filter(
-    (task) => task.projectId === project.id && !task.archivedAt,
+    (task) =>
+      task.projectId === project.id &&
+      !task.archivedAt &&
+      (currentUser.role !== "assignee" || task.assigneeId === currentUser.id),
   );
   const canCancel = canCancelProject(currentUser, project);
+  const selectedPhaseSteps = projectSteps.filter(
+    (step) => step.phase === selectedPhase,
+  );
   const selectedStep =
-    projectSteps.find((step) => step.key === selectedStepKey) ?? fallbackStep;
+    selectedPhaseSteps.find((step) => step.key === selectedStepKey) ??
+    selectedPhaseSteps.find((step) => step.status === "active") ??
+    [...selectedPhaseSteps]
+      .reverse()
+      .find((step) => step.status !== "pending") ??
+    selectedPhaseSteps[0];
   const selectedKey = selectedStep?.key;
   const readOnly = project.status !== "active" || selectedStep?.status !== "active";
-  const allStepsDone = projectSteps.every(
-    (step) => step.status === "completed" || step.status === "skipped",
-  );
+  const allStepsDone =
+    projectSteps.length > 0 &&
+    projectSteps.every(
+      (step) => step.status === "completed" || step.status === "skipped",
+    );
   const template = project.templateId
     ? store.templates.find((item) => item.id === project.templateId)
     : undefined;
@@ -1904,7 +1934,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
 
   const selectStep = (stepKey: string) => {
     const next = projectSteps.find((step) => step.key === stepKey);
-    if (!next || next.status === "pending") return;
+    if (!next) return;
     if (stepKey !== selectedStepKey && hasUnsavedFormChanges()) {
       const proceed = window.confirm(
         "Ada perubahan form yang belum tersimpan. Pindah tahap akan membuang perubahan tersebut. Lanjutkan?",
@@ -1919,17 +1949,37 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   };
 
   const selectPhase = (phase: Phase) => {
-    setSelectedPhase(phase);
     const candidates = projectSteps.filter((step) => step.phase === phase);
     const next =
       candidates.find((step) => step.status === "active") ??
-      [...candidates].reverse().find((step) => step.status !== "pending");
-    if (next) selectStep(next.key);
+      [...candidates].reverse().find((step) => step.status !== "pending") ??
+      candidates[0];
+    if (next) {
+      selectStep(next.key);
+      return;
+    }
+    if (selectedStep && hasUnsavedFormChanges()) {
+      const proceed = window.confirm(
+        "Ada perubahan form yang belum tersimpan. Pindah fase akan membuang perubahan tersebut. Lanjutkan?",
+      );
+      if (!proceed) return;
+    }
+    setSelectedPhase(phase);
+    setSelectedStepKey(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("step");
+    window.history.replaceState(null, "", url);
   };
 
   const stepContent = (() => {
     if (!selectedStep) {
-      return <EmptyState icon={Clock3} title="Tidak ada tahap" />;
+      return (
+        <EmptyState
+          icon={Clock3}
+          title="Belum ada step"
+          description="Fase ini belum memiliki step. PM/Admin dapat menambahkannya di Kelola fase."
+        />
+      );
     }
     if (selectedStep.status === "pending") {
       return (
@@ -2098,7 +2148,6 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           {[
             { key: "overview" as const, label: "Overview" },
             { key: "journey" as const, label: "Journey Management" },
-            { key: "board" as const, label: "Board" },
           ].map((item) => (
             <button
               key={item.key}
@@ -2451,6 +2500,11 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
               <p>Belum selesai: {projectSteps.filter((step) => step.status === "pending" || step.status === "active").length}</p>
             </div>
           </SectionCard>
+          <TaskProgressPanels
+            tasks={overviewTasks}
+            distributionDescription="Status task SIMPRO proyek ini."
+            progressDescription="Ringkasan penyelesaian task proyek ini."
+          />
           <SectionCard title="Riwayat Aktivitas" description="Event proyek terbaru.">
             <div className="space-y-1 text-[11px]">
               {store.projectEvents
@@ -2469,62 +2523,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
                 ))}
             </div>
           </SectionCard>
-          <SectionCard
-            title="Distribusi Task SIMPRO"
-            description="Ringkasan task proyek ini, scoped hanya untuk proyek ini."
-          >
-            <div className="grid gap-2 text-xs sm:grid-cols-3">
-              {Object.entries(TASK_STATUS_LABEL).map(([status, label]) => (
-                <div key={status} className="rounded-lg border p-2">
-                  <p className="text-muted-foreground text-[10px]">{label}</p>
-                  <p className="font-semibold">
-                    {overviewTasks.filter((task) => task.status === status).length}
-                  </p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-3">
-              <div className="mb-1 flex justify-between text-[11px]">
-                <span>Progress task</span>
-                <span>
-                  {overviewTasks.filter((task) => task.status === "completed").length}
-                  /{overviewTasks.length}
-                </span>
-              </div>
-              <ProgressBar
-                value={
-                  overviewTasks.length === 0
-                    ? 0
-                    : Math.round(
-                        (overviewTasks.filter((task) => task.status === "completed")
-                          .length /
-                          overviewTasks.length) *
-                          100,
-                      )
-                }
-              />
-            </div>
-          </SectionCard>
         </div>
-      ) : null}
-
-      {workspaceTab === "board" ? (
-        <SectionCard
-          title="Board"
-          description="Board SIMPRO untuk step aktif. Task tetap dibuat dan dikelola di SIMPRO."
-        >
-          {selectedStep ? (
-            <TaskBoard
-              tasks={tasksForStep(store, project.id, selectedStep.key)}
-              onTaskClick={(task) => setBoardTaskId(task.id)}
-              readOnly={selectedStep.status !== "active"}
-            />
-          ) : (
-            <p className="text-muted-foreground text-xs">
-              Tidak ada step dipilih. Pilih step di Journey Management.
-            </p>
-          )}
-        </SectionCard>
       ) : null}
 
       {project.status === "completed" ? (
@@ -2584,22 +2583,50 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           }
           className="space-y-4"
         >
+          {projectSteps.length > 0 ? (
+            <SectionCard
+              title="Pilih step"
+              description="Task di bawah mengikuti step yang dipilih dari Kelola fase."
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <NativeSelect
+                  value={selectedKey ?? ""}
+                  onChange={selectStep}
+                  className="w-full max-w-[360px]"
+                >
+                  <option value="">Pilih step</option>
+                  {PHASE_ORDER.filter((phase) =>
+                    projectSteps.some((step) => step.phase === phase),
+                  ).map((phase) => (
+                    <optgroup key={phase} label={PHASE_LABEL[phase]}>
+                      {projectSteps
+                        .filter((step) => step.phase === phase)
+                        .sort((a, b) => a.order - b.order)
+                        .map((step) => (
+                          <option key={step.id} value={step.key}>
+                            {step.name} ·{" "}
+                            {STEP_STATUS_TEXT[step.status] ?? step.status}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </NativeSelect>
+                <p className="text-muted-foreground text-xs">
+                  {selectedStep
+                    ? `${selectedStep.name} — ${
+                        STEP_STATUS_TEXT[selectedStep.status] ??
+                        selectedStep.status
+                      }`
+                    : "Belum ada step dipilih."}
+                </p>
+              </div>
+            </SectionCard>
+          ) : null}
           {stepContent}
           {selectedKey ? (
             <ProjectStepHistory projectId={project.id} stepKey={selectedKey} />
           ) : null}
         </div>
-      ) : null}
-
-      {boardTaskId ? (
-        <TaskDialog
-          open={Boolean(boardTaskId)}
-          onOpenChange={(open) => {
-            if (!open) setBoardTaskId(null);
-          }}
-          projectId={project.id}
-          taskId={boardTaskId}
-        />
       ) : null}
 
       <ProjectDialog open={editOpen} onOpenChange={setEditOpen} project={project} />

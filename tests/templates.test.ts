@@ -373,5 +373,39 @@ describe("persistence migration", () => {
     ).toBe(true);
     expect(JSON.stringify(twice)).toBe(JSON.stringify(migratePersistedState(twice)));
   });
+
+  it("backfills Finance BAST and Invoice idempotently", () => {
+    const seed = createSeedState();
+    const financeProject = {
+      ...seed.projects[0],
+      id: "p-finance-auto",
+      name: "Finance Auto",
+      creationMode: "manual" as const,
+      managerId: "u-manager",
+      phaseCompletedAt: { running: new Date().toISOString() },
+    };
+    const persisted = {
+      ...seed,
+      projects: [...seed.projects, financeProject],
+      steps: seed.steps.filter(
+        (step) => step.projectId !== financeProject.id,
+      ),
+    };
+    const once = migratePersistedState(persisted);
+    const twice = migratePersistedState(once);
+    const financeSteps = (twice.steps ?? [])
+      .filter((step) => step.projectId === financeProject.id)
+      .sort((a, b) => a.order - b.order);
+
+    expect(financeSteps.map((step) => step.financeKind)).toEqual([
+      "bast",
+      "invoice",
+    ]);
+    expect(
+      (migratePersistedState(twice).steps ?? []).filter(
+        (step) => step.projectId === financeProject.id,
+      ),
+    ).toHaveLength(2);
+  });
 });
 

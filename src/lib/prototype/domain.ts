@@ -117,6 +117,73 @@ export function tasksForStep(
   );
 }
 
+export const AUTO_FINANCE_STEP_KINDS = ["bast", "invoice"] as const;
+
+/**
+ * Finance always starts with BAST and Invoice. Returns only the missing
+ * steps so callers can persist them idempotently.
+ */
+export function missingFinanceSteps(
+  project: Project,
+  steps: ProjectStep[],
+): ProjectStep[] {
+  const projectSteps = steps.filter((step) => step.projectId === project.id);
+  const existingKinds = new Set(
+    projectSteps
+      .filter((step) => step.phase === "finance")
+      .map((step) => step.financeKind)
+      .filter(Boolean),
+  );
+  const existingKeys = new Set(projectSteps.map((step) => step.key));
+  let order = Math.max(0, ...projectSteps.map((step) => step.order));
+  const additions: ProjectStep[] = [];
+
+  for (const kind of AUTO_FINANCE_STEP_KINDS) {
+    if (existingKinds.has(kind) || existingKeys.has(kind)) continue;
+    order += 1;
+    additions.push({
+      id: `step-${project.id}-finance-${kind}`,
+      projectId: project.id,
+      key: kind,
+      name: kind === "bast" ? "BAST" : "Invoice",
+      description:
+        kind === "bast"
+          ? "Dokumen serah terima proyek."
+          : "Tagihan akhir proyek.",
+      phase: "finance",
+      order,
+      status: "pending",
+      kind: "finance_form",
+      required: true,
+      weight: 1,
+      financeKind: kind,
+      tasks: [],
+      managerPicId: project.managerId,
+    });
+  }
+
+  return additions;
+}
+
+/**
+ * SIMPRO Board only exposes stages that have already run in CRM. Pending
+ * stages stay hidden for every role; completed stages remain available
+ * read-only.
+ */
+export function boardVisibleStages(
+  state: AppState,
+  projectId: string,
+): ProjectStep[] {
+  return state.steps
+    .filter(
+      (step) =>
+        step.projectId === projectId &&
+        step.kind === "simpro" &&
+        (step.status === "active" || step.status === "completed"),
+    )
+    .sort((a, b) => a.order - b.order);
+}
+
 export function tasksForProject(state: AppState, projectId: string): Task[] {
   return state.tasks.filter(
     (task) => task.projectId === projectId && !task.archivedAt,
@@ -510,8 +577,14 @@ export function canViewProject(
   }
   if (user.role === "finance") {
     if (!isNewLifecycleProject(project)) return true;
-    return state.forms.some(
-      (form) => form.projectId === project.id && form.assigneeId === user.id,
+    return (
+      state.forms.some(
+        (form) => form.projectId === project.id && form.assigneeId === user.id,
+      ) ||
+      state.formEntries.some(
+        (entry) =>
+          entry.projectId === project.id && entry.assigneeId === user.id,
+      )
     );
   }
   if (user.role === "pm") return project.createdById === user.id;
@@ -525,7 +598,11 @@ export function canViewProject(
     const hasForm = state.forms.some(
       (form) => form.projectId === project.id && form.assigneeId === user.id,
     );
-    return hasTask || hasForm;
+    const hasFormEntry = state.formEntries.some(
+      (entry) =>
+        entry.projectId === project.id && entry.assigneeId === user.id,
+    );
+    return hasTask || hasForm || hasFormEntry;
   }
   return false;
 }
@@ -1702,6 +1779,29 @@ export function taskCountsByStatus(tasks: Task[]): Record<TaskStatus, number> {
   } as Record<TaskStatus, number>;
   for (const task of tasks) counts[task.status] += 1;
   return counts;
+}
+
+export type TaskProgressSummary = {
+  counts: Record<TaskStatus, number>;
+  total: number;
+  completed: number;
+  open: number;
+  overdue: number;
+  percent: number;
+};
+
+export function taskProgressSummary(tasks: Task[]): TaskProgressSummary {
+  const counts = taskCountsByStatus(tasks);
+  const total = tasks.length;
+  const completed = counts.completed;
+  return {
+    counts,
+    total,
+    completed,
+    open: total - completed,
+    overdue: tasks.filter((task) => isOverdue(task)).length,
+    percent: total === 0 ? 0 : Math.round((completed / total) * 100),
+  };
 }
 
 export function formLabel(key: FormStepKey): string {

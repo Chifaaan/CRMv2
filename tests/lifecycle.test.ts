@@ -216,6 +216,69 @@ describe("post-prospek project lifecycle", () => {
     expect(steps(projectId).find((step) => step.id === running)?.status).toBe("pending");
   });
 
+  it("auto-creates BAST and Invoice when Running becomes Finance", () => {
+    state().setCurrentUser("u-pm1");
+    const projectId = state().createProject({
+      name: "Finance Auto",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      mode: "manual",
+      managerId: "u-manager",
+    });
+    expect(
+      state().startProject(projectId, "running", {
+        managerPicId: "u-manager",
+      }),
+    ).toBe(true);
+    const runningId = state().addProjectStep(projectId, {
+      name: "Running Step",
+      phase: "running",
+      managerPicId: "u-manager",
+    });
+    expect(runningId).not.toBe("");
+    usePrototypeStore.setState({
+      steps: state().steps.map((step) =>
+        step.id === runningId
+          ? {
+              ...step,
+              status: "completed" as const,
+              completedAt: new Date().toISOString(),
+            }
+          : step,
+      ),
+    });
+
+    expect(state().completeProjectPhase(projectId, "running")).toBe(true);
+    const financeSteps = steps(projectId).filter(
+      (step) => step.phase === "finance",
+    );
+    expect(financeSteps.map((step) => step.financeKind)).toEqual([
+      "bast",
+      "invoice",
+    ]);
+    expect(
+      financeSteps.find((step) => step.financeKind === "bast")?.status,
+    ).toBe("active");
+    expect(
+      financeSteps.find((step) => step.financeKind === "invoice")?.status,
+    ).toBe("pending");
+
+    const extra = state().addProjectStep(projectId, {
+      name: "Pembayaran",
+      phase: "finance",
+      financeKind: "payment",
+      managerPicId: "u-manager",
+    });
+    expect(extra).not.toBe("");
+    expect(
+      steps(projectId).filter((step) => step.phase === "finance"),
+    ).toHaveLength(3);
+  });
+
   it("lets PM move a card to any status when an assignee exists", () => {
     state().setCurrentUser("u-pm1");
     const projectId = state().createProject({

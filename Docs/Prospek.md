@@ -25,8 +25,8 @@ Prospek adalah wadah CRM untuk peluang sebelum proyek berjalan. Satu Prospek ber
 - **Read-only:** Pitching kalah mengunci RAB, Quotation, Form, dan kontraknya. Kontrak terkunci setelah konversi. Undo kalah mengembalikan status sebelumnya.
 - **Reminder:** hanya in-app untuk penugasan, mendekati due date (3 hari), dan overdue; tidak ada email.
 - **Siklus anak proyek:** anak proyek hasil konversi memakai tiga fase Planning → Running → Finance, dibuat belum aktif, dan menampilkan snapshot PIC/client/periode/pagu Prospek.
-- **Forms:** pekerjaan Prospek yang di-assign muncul di Forms SIMPRO dengan kategori Prospek; Form proyek berkategori Project.
-- **Journey manual:** proyek baru tidak memakai template; step dibuat PM/Admin di tab Journey Management.
+- **Forms:** halaman Forms adalah inbox seluruh penugasan Form dari Prospek, Project, dan Finance. Penerima assignment selalu melihat Form miliknya, penugasan user lain tidak ditampilkan, dan Manager/Admin dapat meng-assign entri yang belum di-assign langsung dari halaman Forms.
+- **Journey manual:** proyek baru tidak memakai template; step dibuat PM/Admin di tab Journey Management, lalu pemilih step menentukan card task SIMPRO yang tampil.
 - **Tampilan:** CRM Projects, CRM Groups, dan Forms punya toggle Card/Table; default Card dan preferensi disimpan per halaman.
 - **Legacy:** proyek lama dengan step Pitching dan `ProjectGroup` lama tidak dimigrasikan ke Prospek.
 

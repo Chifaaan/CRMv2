@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   activeSteps,
+  boardVisibleStages,
   calculateJourneyProgress,
   canCreateTask,
   canManageProject,
@@ -511,18 +512,11 @@ export function SimproProjectPage({
     );
   }
 
-  const allSimproStages = store.steps
-    .filter((step) => step.projectId === project.id && step.kind === "simpro")
-    .sort((a, b) => a.order - b.order);
-  const simproStages =
-    currentUser.role === "assignee"
-      ? allSimproStages.filter(
-          (step) => step.status === "active" || step.status === "completed",
-        )
-      : allSimproStages;
+  const simproStages = boardVisibleStages(store, project.id);
   const selectedStage =
     simproStages.find((step) => step.key === stageKey) ??
     simproStages.find((step) => step.status === "active") ??
+    [...simproStages].reverse().find((step) => step.status === "completed") ??
     simproStages[0];
   const isBoardStep = Boolean(selectedStage);
   const stageTasks = selectedStage
@@ -604,8 +598,8 @@ export function SimproProjectPage({
         ) : (
           <EmptyState
             icon={ClipboardList}
-            title="Board tidak tersedia"
-            description="Proyek ini tidak memiliki tahap SIMPRO."
+            title="Belum ada tahap berjalan"
+            description="Tahap SIMPRO muncul di Board setelah berjalan di CRM. Tahap yang sudah selesai tetap dapat dibuka read-only."
           />
         )
       ) : null}

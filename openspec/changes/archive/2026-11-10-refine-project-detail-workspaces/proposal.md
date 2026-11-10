@@ -11,6 +11,9 @@ Detail proyek CRM saat ini punya tab Board terpisah dari Journey Management, seh
 - Overview menampilkan **Distribusi task** dan **Progress overview** bergaya Dashboard SIMPRO, khusus untuk proyek tersebut, ditempatkan di atas **Riwayat Aktivitas**.
 - Board Detail Proyek SIMPRO hanya menawarkan tahap yang sedang berjalan dan tahap yang sudah selesai; tahap yang belum berjalan tidak ditampilkan atau dapat diakses oleh role mana pun, dan tahap selesai tetap read-only.
 - Halaman Forms menampilkan semua Form yang di-assign kepada pengguna dari tahap **Prospek**, **Project**, maupun **Finance**, termasuk entri Form proyek yang sebelumnya dapat hilang karena proyek tidak masuk daftar proyek terlihat.
+- Detail proyek CRM siklus baru selalu menampilkan tab fase **Planning, Running, dan Finance**, termasuk fase yang belum memiliki step; fase kosong diberi keterangan **0 Step**.
+- Saat proyek siklus baru masuk fase **Finance**, sistem otomatis membuat step **BAST** dan **Invoice** bila belum ada. PM/Admin tetap dapat menambahkan step Finance lain.
+- Manager dapat meng-assign entri Form yang belum memiliki assignee langsung dari halaman **Forms**, setara dengan penugasan dari Detail Proyek CRM.
 - **BREAKING (UI)**: tab Board di Detail Proyek CRM dihapus; deep link `?tab=board` tidak lagi membuka board.
 
 ## Capabilities
@@ -21,13 +24,15 @@ Detail proyek CRM saat ini punya tab Board terpisah dari Journey Management, seh
 
 ### Modified Capabilities
 
-- `project-lifecycle`: tab workspace CRM berubah dari Overview/Journey Management/Board menjadi Overview/Journey Management; Journey Management memilih step untuk card task; Overview menampilkan distribusi dan progress task proyek.
+- `project-lifecycle`: tab workspace CRM berubah dari Overview/Journey Management/Board menjadi Overview/Journey Management; Journey Management memilih step untuk card task; Overview menampilkan distribusi dan progress task proyek; tab fase siklus baru selalu lengkap; Finance otomatis memiliki step BAST dan Invoice.
 - `simpro-kanban-delivery`: pilihan tahap Board SIMPRO dibatasi ke tahap aktif dan selesai untuk semua role, dengan tahap pending tersembunyi dan tidak dapat diakses.
+- `forms-inbox`: Manager dapat meng-assign entri Form dari halaman Forms, bukan hanya dari Detail Proyek CRM.
 
 ## Impact
 
 - UI CRM: `src/components/prototype/crm/project-detail.tsx`.
 - UI SIMPRO: `src/components/prototype/simpro/project-page.tsx`, `src/components/prototype/simpro/forms-page.tsx`, dan komponen distribusi/progress task yang dapat dipakai ulang dari `src/components/prototype/simpro/dashboard.tsx`.
-- Domain/visibilitas: `src/lib/prototype/domain.ts` (`canViewProject`, filter Forms, kandidat step).
+- Fase dan step: `src/lib/prototype/stepper.ts`, `src/lib/prototype/store.ts`, dan `src/lib/prototype/domain.ts`.
+- Domain/visibilitas: `src/lib/prototype/domain.ts` (`canViewProject`, filter Forms, kandidat step, helper step Finance otomatis).
 - Dokumentasi: `Docs/Stage-Types.md`, `Docs/Prospek.md`, dan `AGENTS.md` bila aturan workspace/Forms berubah.
-- Test: `tests/domain.test.ts`, `tests/simpro-forms.test.ts`, `tests/stage-types.test.ts`, dan test baru untuk visibilitas tahap Board serta inbox Forms.
+- Test: `tests/domain.test.ts`, `tests/simpro-forms.test.ts`, `tests/stage-types.test.ts`, `tests/lifecycle.test.ts`, `tests/stepper.test.ts`, dan test baru untuk visibilitas tahap Board serta inbox Forms.

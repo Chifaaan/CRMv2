@@ -3,13 +3,17 @@
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ClipboardList, Search } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
+  canAssignFormEntry,
   canViewProspek,
   formEntryScope,
   formatDate,
+  operationalAssigneeCandidates,
+  prospekAssigneeCandidates,
   prospekById,
   prospekPitchingById,
   prospekWorkItemsForUser,
@@ -112,6 +116,60 @@ type FormRow = {
   href?: string;
 };
 
+function FormRowAssignControl({ row }: { row: FormRow }) {
+  const store = usePrototypeStore();
+  const currentUser = userById(store, store.currentUserId);
+  const [userId, setUserId] = useState("");
+  const entry = row.entry;
+  if (
+    !entry ||
+    entry.status !== "unassigned" ||
+    !currentUser ||
+    !canAssignFormEntry(currentUser)
+  ) {
+    return null;
+  }
+  const candidates =
+    row.kind === "prospek" && row.prospekId
+      ? prospekAssigneeCandidates(
+          store,
+          currentUser,
+          prospekById(store, row.prospekId),
+        )
+      : row.project
+        ? operationalAssigneeCandidates(store, currentUser, row.project)
+        : [];
+  if (candidates.length === 0) return null;
+  return (
+    <div className="flex items-center gap-1.5">
+      <NativeSelect
+        value={userId}
+        onChange={setUserId}
+        className="h-7 w-[130px] text-[10px]"
+      >
+        <option value="">Pilih assignee</option>
+        {candidates.map((user) => (
+          <option key={user.id} value={user.id}>
+            {user.name}
+          </option>
+        ))}
+      </NativeSelect>
+      <Button
+        size="xs"
+        variant="outline"
+        disabled={!userId}
+        onClick={() => {
+          store.assignFormEntry(entry.id, userId);
+          toast.success("Entri form di-assign.");
+          setUserId("");
+        }}
+      >
+        Assign
+      </Button>
+    </div>
+  );
+}
+
 function FormItem({
   row,
   onOpen,
@@ -146,6 +204,7 @@ function FormItem({
         <span className="text-muted-foreground">Submitted</span>
         <span>{formatDate(row.submittedAt)}</span>
       </div>
+      <FormRowAssignControl row={row} />
       {row.reviewComment ? (
         <p className="text-muted-foreground line-clamp-2 rounded bg-muted/40 p-1.5 text-[10px]">
           {row.reviewComment}
@@ -180,10 +239,13 @@ export function SimproFormsPage() {
     const result: FormRow[] = [];
 
     for (const entry of store.formEntries) {
-      if (currentUser.role === "finance") continue;
       if (!entry.projectId) continue;
       if (!visibleIds.has(entry.projectId)) continue;
-      if (currentUser.role === "assignee" && entry.assigneeId !== currentUser.id) {
+      if (
+        (currentUser.role === "assignee" ||
+          currentUser.role === "finance") &&
+        entry.assigneeId !== currentUser.id
+      ) {
         continue;
       }
       const project = projects.find((item) => item.id === entry.projectId);
@@ -517,9 +579,12 @@ export function SimproFormsPage() {
                   <td className="px-3 py-2">{formatDate(row.dueDate)}</td>
                   <td className="px-3 py-2">{formatDate(row.submittedAt)}</td>
                   <td className="px-3 py-2">
-                    <Button size="sm" variant="outline" onClick={() => openRow(row)}>
-                      Buka
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <FormRowAssignControl row={row} />
+                      <Button size="sm" variant="outline" onClick={() => openRow(row)}>
+                        Buka
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

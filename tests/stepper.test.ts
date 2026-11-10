@@ -3,6 +3,7 @@ import {
   missingPhaseTooltip,
   phaseStageCounts,
   phaseTransitionBanner,
+  phasesForProject,
   phasesPresent,
 } from "../src/lib/prototype/stepper";
 import { phaseOfProject } from "../src/lib/prototype/domain";
@@ -80,6 +81,28 @@ describe("data-driven stepper", () => {
       running: 1,
       finance: 2,
     });
+  });
+
+  it("always shows Planning, Running, and Finance for new projects", () => {
+    const state = createSeedState();
+    const legacy = state.projects.find((project) => project.id === "p-alpha")!;
+    const manual = { ...legacy, creationMode: "manual" as const };
+
+    expect(phasesForProject(legacy, umumSteps)).toEqual([
+      "prospek",
+      "running",
+      "finance",
+    ]);
+    expect(phasesForProject(manual, [])).toEqual([
+      "planning",
+      "running",
+      "finance",
+    ]);
+    expect(phasesForProject(manual, umumSteps)).toEqual([
+      "planning",
+      "running",
+      "finance",
+    ]);
   });
 });
 

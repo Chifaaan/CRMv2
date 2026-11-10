@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  boardVisibleStages,
   calculateJourneyProgress,
   calculateWorkProgress,
   canViewProject,
@@ -7,6 +8,8 @@ import {
   evaluateGate,
   groupProgress,
   isGroupableProject,
+  missingFinanceSteps,
+  taskProgressSummary,
   taskTransition,
   userById,
   visibleProjects,
@@ -36,6 +39,74 @@ describe("work progress", () => {
     expect(calculateWorkProgress(state, "p-epsilon", "invoice")).toBe(0);
     expect(workProgressForProject(state, "p-epsilon")).toBe(50);
     expect(workProgressForProject(state, "p-zeta")).toBe(100);
+  });
+});
+
+describe("task progress summary", () => {
+  it("summarizes one project's tasks without leaking another project's data", () => {
+    const state = createSeedState();
+    const pool = state.tasks.filter(
+      (task) => task.projectId === "p-delta" && !task.archivedAt,
+    );
+    const statuses = [
+      "completed",
+      "todo",
+      "in_progress",
+      "awaiting_approval",
+    ] as const;
+    const tasks = pool.slice(0, 4).map((task, index) => ({
+      ...task,
+      status: statuses[index],
+      dueDate:
+        index === 2
+          ? new Date(Date.now() - 86400000).toISOString()
+          : new Date(Date.now() + 86400000).toISOString(),
+    }));
+    const summary = taskProgressSummary(tasks);
+
+    expect(summary.total).toBe(4);
+    expect(summary.completed).toBe(1);
+    expect(summary.open).toBe(3);
+    expect(summary.overdue).toBe(1);
+    expect(summary.percent).toBe(25);
+    expect(summary.counts.in_progress).toBe(1);
+    expect(taskProgressSummary(pool.slice(0, 4)).total).toBe(4);
+  });
+});
+
+describe("SIMPRO board stages", () => {
+  it("only exposes active and completed stages in order", () => {
+    const state = createSeedState();
+    const stages = boardVisibleStages(state, "p-delta");
+
+    expect(stages.map((stage) => stage.key)).toEqual(["pitching", "running"]);
+    expect(stages.map((stage) => stage.status)).toEqual([
+      "completed",
+      "active",
+    ]);
+    expect(stages.every((stage) => stage.kind === "simpro")).toBe(true);
+    expect(
+      boardVisibleStages(state, "p-alpha").map((stage) => stage.key),
+    ).toEqual(["pitching"]);
+  });
+});
+
+describe("automatic Finance steps", () => {
+  it("adds only missing BAST and Invoice steps", () => {
+    const state = createSeedState();
+    const project = state.projects.find((item) => item.id === "p-alpha")!;
+    const first = missingFinanceSteps(project, []);
+    expect(first.map((step) => step.financeKind)).toEqual(["bast", "invoice"]);
+    expect(first.every((step) => step.phase === "finance")).toBe(true);
+    expect(first.every((step) => step.status === "pending")).toBe(true);
+    expect(first.every((step) => step.managerPicId === "u-manager")).toBe(true);
+
+    const afterBast = missingFinanceSteps(project, [
+      { ...first[0], status: "active" },
+    ]);
+    expect(afterBast).toHaveLength(1);
+    expect(afterBast[0].financeKind).toBe("invoice");
+    expect(missingFinanceSteps(project, first)).toEqual([]);
   });
 });
 
@@ -141,6 +212,68 @@ describe("visibility", () => {
     ).toBe(false);
     expect(visibleProjects({ ...state, currentUserId: "u-pm1" }).length).toBe(4);
     expect(manager.role).toBe("manager");
+  });
+});
+
+describe("forms visibility", () => {
+  function formEntry(projectId: string, assigneeId: string) {
+    return {
+      id: `fentry-${projectId}-${assigneeId}`,
+      scope: "project" as const,
+      projectId,
+      stepKey: "survey",
+      title: "Form entry assignment",
+      assigneeId,
+      status: "assigned" as const,
+      payload: { values: {}, photos: [] },
+      versions: [],
+      createdById: "u-pm1",
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  it("makes a project visible to an assignee from a form entry assignment", () => {
+    const state = createSeedState();
+    const projectId = "p-gamma";
+    state.tasks = state.tasks.filter(
+      (task) =>
+        !(task.projectId === projectId && task.assigneeId === "u-assignee2"),
+    );
+    state.forms = state.forms.filter(
+      (form) =>
+        !(form.projectId === projectId && form.assigneeId === "u-assignee2"),
+    );
+    state.formEntries = state.formEntries.filter(
+      (entry) =>
+        !(entry.projectId === projectId && entry.assigneeId === "u-assignee2"),
+    );
+    const assignee = userById(state, "u-assignee2")!;
+    const project = state.projects.find((item) => item.id === projectId)!;
+
+    expect(canViewProject(state, assignee, project)).toBe(false);
+    state.formEntries.push(formEntry(projectId, "u-assignee1"));
+    expect(canViewProject(state, assignee, project)).toBe(false);
+    state.formEntries.push(formEntry(projectId, assignee.id));
+    expect(canViewProject(state, assignee, project)).toBe(true);
+  });
+
+  it("makes a new-lifecycle project visible to Finance from a form entry assignment", () => {
+    const state = createSeedState();
+    const project = state.projects.find((item) => item.id === "p-gamma")!;
+    project.creationMode = "manual";
+    state.forms = state.forms.filter(
+      (form) =>
+        !(form.projectId === project.id && form.assigneeId === "u-finance"),
+    );
+    state.formEntries = state.formEntries.filter(
+      (entry) =>
+        !(entry.projectId === project.id && entry.assigneeId === "u-finance"),
+    );
+    const finance = userById(state, "u-finance")!;
+
+    expect(canViewProject(state, finance, project)).toBe(false);
+    state.formEntries.push(formEntry(project.id, finance.id));
+    expect(canViewProject(state, finance, project)).toBe(true);
   });
 });
 

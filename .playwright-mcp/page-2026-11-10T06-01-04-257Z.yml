@@ -1,0 +1,116 @@
+- generic [active] [ref=f24e1]:
+  - generic [ref=f24e3]:
+    - complementary [ref=f24e4]:
+      - generic [ref=f24e5]:
+        - generic [ref=f24e6]: S
+        - generic [ref=f24e7]:
+          - generic [ref=f24e8]: SIMPRO
+          - generic [ref=f24e9]: CRM Prototype
+      - navigation [ref=f24e10]:
+        - generic [ref=f24e11]:
+          - generic [ref=f24e12]: SIMPRO
+          - link "Dashboard" [ref=f24e13] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Projects" [ref=f24e20] [cursor=pointer]:
+            - /url: /projects
+          - link "My tasks" [ref=f24e24] [cursor=pointer]:
+            - /url: /my-tasks
+          - link "Forms" [ref=f24e29] [cursor=pointer]:
+            - /url: /forms
+        - generic [ref=f24e34]:
+          - generic [ref=f24e35]: CRM
+          - link "Dashboard" [ref=f24e36] [cursor=pointer]:
+            - /url: /crm
+          - link "Projects" [ref=f24e43] [cursor=pointer]:
+            - /url: /crm/projects
+          - link "Prospek" [ref=f24e47] [cursor=pointer]:
+            - /url: /crm/prospek
+          - link "Groups" [ref=f24e53] [cursor=pointer]:
+            - /url: /crm/groups
+          - link "Templates" [ref=f24e60] [cursor=pointer]:
+            - /url: /crm/templates
+      - generic [ref=f24e67]:
+        - generic "PM Demo 2" [ref=f24e69]: PD
+        - generic [ref=f24e70]:
+          - generic [ref=f24e71]: PM Demo 2
+          - generic [ref=f24e72]: pm
+        - button "Reset data demo" [ref=f24e73]
+    - generic [ref=f24e74]:
+      - banner [ref=f24e75]:
+        - heading "Detail Proyek" [level=1] [ref=f24e77]
+        - generic [ref=f24e78]:
+          - button "CRM" [ref=f24e80]
+          - button "Notifikasi" [ref=f24e83]:
+            - generic [ref=f24e84]: "1"
+          - combobox [ref=f24e86]:
+            - option "Admin Demo · admin"
+            - option "Manager Demo · manager"
+            - option "PM Demo 1 · pm"
+            - option "PM Demo 2 · pm" [selected]
+            - option "Assignee Demo 1 · assignee"
+            - option "Assignee Demo 2 · assignee"
+            - option "Assignee Demo 3 · assignee"
+            - option "Finance Demo · finance"
+          - generic "PM Demo 2" [ref=f24e88]: PD
+      - main [ref=f24e89]:
+        - generic [ref=f24e90]:
+          - link "Kembali ke projects" [ref=f24e91] [cursor=pointer]:
+            - /url: /crm/projects
+          - generic [ref=f24e94]:
+            - generic [ref=f24e95]:
+              - heading "Proyek baru" [level=1] [ref=f24e96]
+              - paragraph [ref=f24e97]: "Proyek baru dibuat manual: isi informasi proyek, lalu susun step di Journey Management setelah proyek dimulai."
+            - generic [ref=f24e98]:
+              - button "Buat proyek" [disabled]
+          - generic [ref=f24e99]:
+            - heading "Informasi proyek" [level=3] [ref=f24e102]
+            - generic [ref=f24e104]:
+              - generic [ref=f24e105]:
+                - generic [ref=f24e106]: Nama proyek
+                - textbox "Nama proyek" [ref=f24e107]:
+                  - /placeholder: "Contoh: Kampanye KOL Ramadan"
+              - generic [ref=f24e108]:
+                - generic [ref=f24e109]: Klien
+                - textbox "Klien" [ref=f24e110]:
+                  - /placeholder: Nama klien
+              - generic [ref=f24e111]:
+                - generic [ref=f24e112]: Prioritas
+                - combobox "Prioritas" [ref=f24e113]:
+                  - option "Low"
+                  - option "Medium" [selected]
+                  - option "High"
+                  - option "Critical"
+              - generic [ref=f24e114]:
+                - generic [ref=f24e115]: Tanggal mulai
+                - textbox "Tanggal mulai" [ref=f24e116]: 2026-11-10
+              - generic [ref=f24e117]:
+                - generic [ref=f24e118]: Target selesai
+                - textbox "Target selesai" [ref=f24e119]
+              - generic [ref=f24e120]:
+                - generic [ref=f24e121]: Deskripsi
+                - textbox "Deskripsi" [ref=f24e122]:
+                  - /placeholder: Ringkasan proyek
+              - generic [ref=f24e123]:
+                - generic [ref=f24e124]: Warna cover
+                - generic [ref=f24e125]:
+                  - 'button "Pilih warna #9f1239" [ref=f24e126]'
+                  - 'button "Pilih warna #1e40af" [ref=f24e127]'
+                  - 'button "Pilih warna #7c3aed" [ref=f24e128]'
+                  - 'button "Pilih warna #0f766e" [ref=f24e129]'
+                  - 'button "Pilih warna #b45309" [ref=f24e130]'
+                  - 'button "Pilih warna #0369a1" [ref=f24e131]'
+                  - 'button "Pilih warna #be123c" [ref=f24e132]'
+                  - 'button "Pilih warna #4d7c0f" [ref=f24e133]'
+              - generic [ref=f24e134]:
+                - generic [ref=f24e135]: Mode proyek
+                - combobox "Mode proyek Manual membuat proyek tanpa step; step ditambahkan setelah mulai." [ref=f24e136]:
+                  - option "Manual" [selected]
+                - generic [ref=f24e137]: Manual membuat proyek tanpa step; step ditambahkan setelah mulai.
+              - generic [ref=f24e138]:
+                - generic [ref=f24e139]: Manager penanggung jawab
+                - combobox "Manager penanggung jawab Hanya user role Manager yang dapat dipilih." [ref=f24e140]:
+                  - option "Belum ditugaskan" [selected]
+                  - option "Manager Demo"
+                - generic [ref=f24e141]: Hanya user role Manager yang dapat dipilih.
+  - region "Notifications alt+T"
+  - alert [ref=f24e142]
