@@ -12,7 +12,7 @@ Sistem SHALL menyediakan toggle Card/Table pada halaman CRM Projects dan CRM Gro
 
 #### Scenario: Switch projects to table view
 - **WHEN** pengguna memilih tampilan Table pada halaman CRM Projects
-- **THEN** sistem menampilkan daftar proyek dalam tabel dengan kolom proyek, client, status, fase, progress, dan anggota utama
+- **THEN** sistem menampilkan daftar proyek dalam tabel dengan kolom proyek, client, Prospek, status, fase, progress, dan anggota utama
 
 #### Scenario: Switch groups to table view
 - **WHEN** pengguna memilih tampilan Table pada halaman CRM Groups
@@ -21,6 +21,14 @@ Sistem SHALL menyediakan toggle Card/Table pada halaman CRM Projects dan CRM Gro
 #### Scenario: Default view is card
 - **WHEN** pengguna membuka CRM Projects atau CRM Groups untuk pertama kali
 - **THEN** sistem menampilkan tampilan Card
+
+#### Scenario: Show prospek column
+- **WHEN** proyek berasal dari Prospek
+- **THEN** kolom Prospek menampilkan nama Prospek asal dan dapat diklik menuju Prospek
+
+#### Scenario: Direct project has empty prospek column
+- **WHEN** proyek dibuat langsung tanpa Prospek
+- **THEN** kolom Prospek menampilkan tanda kosong
 
 ### Requirement: Forms supports Card and Table views
 

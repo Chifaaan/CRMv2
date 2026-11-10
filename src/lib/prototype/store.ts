@@ -57,13 +57,8 @@ import { createSeedState } from "./seed";
 import { recordProspekEvent } from "./prospek-events";
 import {
   createSeedTemplates,
-  EVENT_EXECUTION_TEMPLATE_ID,
-  EVENT_TEMPLATE_ID,
   isNewProjectTemplate,
-  KOL_EXECUTION_TEMPLATE_ID,
-  KOL_TEMPLATE_ID,
   stageTasksForProject,
-  UMUM_EXECUTION_TEMPLATE_ID,
   UMUM_TEMPLATE_ID,
 } from "./templates";
 import {
@@ -1359,14 +1354,19 @@ export const usePrototypeStore = create<PrototypeStore>()(
           (step) => step.projectId === projectId,
         );
         const currentPhase = projectPhase(project, projectSteps);
+        const allowedPhases: Phase[] =
+          currentPhase === "finance"
+            ? ["finance"]
+            : ["planning", "running"];
         const phase = input.phase ?? currentPhase;
-        if (phase !== currentPhase) return "";
+        if (!allowedPhases.includes(phase)) return "";
         const finance = phase === "finance";
         if (finance && !input.financeKind) return "";
         const stepId = uid("step");
         const managerPicId = input.managerPicId;
         const active = projectSteps.some((step) => step.status === "active");
-        if (!active && !managerPicId) return "";
+        const activating = !active && phase === currentPhase;
+        if (activating && !managerPicId) return "";
         const step: ProjectStep = {
           id: stepId,
           projectId,
@@ -1376,14 +1376,14 @@ export const usePrototypeStore = create<PrototypeStore>()(
           phase,
           order:
             Math.max(0, ...projectSteps.map((item) => item.order)) + 1,
-          status: active ? "pending" : "active",
+          status: activating ? "active" : "pending",
           kind: finance ? "finance_form" : "simpro",
           required: true,
           weight: 1,
           financeKind: finance ? input.financeKind : undefined,
           tasks: [],
           managerPicId,
-          startedAt: active ? undefined : now(),
+          startedAt: activating ? undefined : now(),
         };
         set({
           steps: [...state.steps, step],
@@ -4763,18 +4763,6 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const rab = pitchingRabFor(state, pitchingId);
         const quotation = pitchingQuotationFor(state, pitchingId);
         if (!pitching.contract) return "";
-        const executionTemplateId =
-          pitching.templateId === KOL_TEMPLATE_ID
-            ? KOL_EXECUTION_TEMPLATE_ID
-            : pitching.templateId === EVENT_TEMPLATE_ID
-              ? EVENT_EXECUTION_TEMPLATE_ID
-              : UMUM_EXECUTION_TEMPLATE_ID;
-        const executionTemplate = state.templates.find(
-          (item) => item.id === executionTemplateId,
-        );
-        if (!executionTemplate || !isNewProjectTemplate(executionTemplate)) {
-          return "";
-        }
         const manager = userById(state, prospek.picId);
         const groupPlan = ensureProspekGroup(state, prospek);
         const projectId = get().createProject({
@@ -4787,8 +4775,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           coverColor: "#6366f1",
           managerId: manager?.role === "manager" ? manager.id : undefined,
           groupId: groupPlan.groupId,
-          mode: "template",
-          templateId: executionTemplate.id,
+          mode: "manual",
           prospekId: prospek.id,
           pitchingId: pitching.id,
           prospekSnapshot: {

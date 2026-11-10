@@ -96,15 +96,21 @@ function BoardCard({
       <p className="mt-1.5 line-clamp-3 text-xs font-medium leading-snug">{task.title}</p>
       <p className="text-muted-foreground mt-1 text-[10px]">{task.code}</p>
       {task.workUrl && canSeeWorkLink ? (
-        <a
-          href={task.workUrl}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(event) => event.stopPropagation()}
-          className="text-primary mt-1 block truncate text-[10px] hover:underline"
-        >
-          Link Pekerjaan
-        </a>
+        task.workUrl.startsWith("http://") || task.workUrl.startsWith("https://") ? (
+          <a
+            href={task.workUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            className="text-primary mt-1 block truncate text-[10px] hover:underline"
+          >
+            Link Pekerjaan
+          </a>
+        ) : (
+          <span className="text-muted-foreground mt-1 block truncate text-[10px]">
+            Link: {task.workUrl}
+          </span>
+        )
       ) : null}
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="text-muted-foreground inline-flex items-center gap-1 text-[10px]">

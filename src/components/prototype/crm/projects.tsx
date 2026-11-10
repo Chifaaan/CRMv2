@@ -469,6 +469,7 @@ export function CrmProjects() {
               <tr>
                 <th className="px-3 py-2">Proyek</th>
                 <th className="px-3 py-2">Client</th>
+                <th className="px-3 py-2">Prospek</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Fase</th>
                 <th className="px-3 py-2">Progress</th>
@@ -498,6 +499,20 @@ export function CrmProjects() {
                       </p>
                     </td>
                     <td className="px-3 py-2">{project.client || "—"}</td>
+                    <td className="px-3 py-2">
+                      {project.prospekId ? (
+                        <Link
+                          href={`/crm/prospek/${project.prospekId}`}
+                          className="text-primary hover:underline"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          {prospekById(store, project.prospekId)?.name ??
+                            project.prospekId}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="px-3 py-2 capitalize">{project.status}</td>
                     <td className="px-3 py-2">
                       {activeStep ? PHASE_LABEL[activeStep.phase] : "—"}

@@ -511,9 +511,15 @@ export function SimproProjectPage({
     );
   }
 
-  const simproStages = store.steps
+  const allSimproStages = store.steps
     .filter((step) => step.projectId === project.id && step.kind === "simpro")
     .sort((a, b) => a.order - b.order);
+  const simproStages =
+    currentUser.role === "assignee"
+      ? allSimproStages.filter(
+          (step) => step.status === "active" || step.status === "completed",
+        )
+      : allSimproStages;
   const selectedStage =
     simproStages.find((step) => step.key === stageKey) ??
     simproStages.find((step) => step.status === "active") ??

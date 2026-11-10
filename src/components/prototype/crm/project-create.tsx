@@ -120,10 +120,10 @@ export function CrmProjectCreate() {
     startDate: new Date().toISOString().slice(0, 10),
     targetEndDate: "",
     coverColor: COVER_COLORS[0],
-    templateId: activeTemplates[0]?.id ?? "",
+    templateId: "",
     managerId: "",
-    mode: "template",
-    stages: cloneStages(activeTemplates[0]?.stages ?? []),
+    mode: "manual",
+    stages: [],
   });
   const [dirty, setDirty] = useState(false);
   const [restored, setRestored] = useState(false);
@@ -135,7 +135,7 @@ export function CrmProjectCreate() {
         const parsed = JSON.parse(raw) as Draft;
         if (parsed?.stages?.length) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
-          setDraft({ ...parsed, managerId: parsed.managerId ?? "", mode: parsed.mode ?? "template" });
+          setDraft({ ...parsed, managerId: parsed.managerId ?? "", mode: "manual", templateId: "", stages: [] });
           setRestored(true);
         }
       }
@@ -277,14 +277,7 @@ export function CrmProjectCreate() {
       return;
     }
     if (draft.mode === "template") {
-      if (!template) {
-        toast.error("Pilih template terlebih dahulu.");
-        return;
-      }
-      if (!validation.ok) {
-        toast.error(validation.errors[0] ?? "Tahapan belum valid.");
-        return;
-      }
+      // Template mode is no longer offered for new projects.
     }
     const id = store.createProject({
       name: draft.name.trim(),
@@ -298,10 +291,8 @@ export function CrmProjectCreate() {
         ? new Date(`${draft.targetEndDate}T00:00:00`).toISOString()
         : "",
       coverColor: draft.coverColor,
-      mode: draft.mode,
-      templateId: draft.mode === "template" ? template?.id : undefined,
+      mode: "manual",
       managerId: draft.managerId,
-      stages: draft.mode === "template" ? draft.stages : undefined,
     });
     if (!id) {
       toast.error("Gagal membuat proyek.");
@@ -328,9 +319,9 @@ export function CrmProjectCreate() {
 
       <PageHeader
         title="Proyek baru"
-        description="Proyek dibuat saat Brief Received. Pilih template, sesuaikan tahapan, lalu buat proyek."
+        description="Proyek baru dibuat manual: isi informasi proyek, lalu susun step di Journey Management setelah proyek dimulai."
         actions={
-          <Button onClick={submit} disabled={!validation.ok}>
+          <Button onClick={submit} disabled={!draft.name.trim()}>
             <CheckCircle2 className="size-4" /> Buat proyek
           </Button>
         }
@@ -416,25 +407,14 @@ export function CrmProjectCreate() {
             hint="Manual membuat proyek tanpa step; step ditambahkan setelah mulai."
             className="sm:col-span-2"
           >
-            <NativeSelect
-              value={draft.mode}
-              onChange={(value) =>
-                patch({
-                  mode: value as "template" | "manual",
-                  ...(value === "template"
-                    ? {}
-                    : { stages: [], templateId: "" }),
-                })
-              }
-            >
-              <option value="template">Dari template</option>
+            <NativeSelect value={draft.mode} onChange={() => {}}>
               <option value="manual">Manual</option>
             </NativeSelect>
           </Field>
           <Field
             label="Template"
-            hint="Satu proyek memakai tepat satu template."
-            className="sm:col-span-2"
+            hint="Template tidak lagi dipakai untuk proyek baru."
+            className="hidden"
           >
             <NativeSelect
               value={draft.templateId}
@@ -473,6 +453,7 @@ export function CrmProjectCreate() {
       <SectionCard
         title="Sesuaikan tahapan"
         description="Tahap dan task disalin dari template. Perubahan hanya berlaku untuk proyek ini."
+        className="hidden"
         actions={
           <Button
             variant="outline"
@@ -756,6 +737,7 @@ export function CrmProjectCreate() {
       <SectionCard
         title="Ringkasan sebelum dibuat"
         description="Struktur terkunci setelah proyek dibuat."
+        className="hidden"
       >
         <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
           {summary.map((item) => (
@@ -779,7 +761,7 @@ export function CrmProjectCreate() {
           </ul>
         ) : null}
         <div className="mt-3 flex flex-wrap gap-2">
-          <Button onClick={submit} disabled={!validation.ok}>
+          <Button onClick={submit} disabled={!draft.name.trim()}>
             <CheckCircle2 className="size-4" /> Buat proyek
           </Button>
           <Link href="/crm/projects">

@@ -32,6 +32,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   canCancelKanbanTask,
+  canManageProject,
   canReviewTask,
   canWorkTask,
   formatDate,
@@ -537,6 +538,7 @@ export function TaskDialog({
   const [comment, setComment] = useState("");
   const [reviewComment, setReviewComment] = useState("");
   const [workUrl, setWorkUrl] = useState("");
+  const [pmTarget, setPmTarget] = useState<TaskStatus>("todo");
   const [checklistText, setChecklistText] = useState("");
 
   useEffect(() => {
@@ -549,6 +551,7 @@ export function TaskDialog({
     setComment("");
     setReviewComment("");
     setWorkUrl(task?.workUrl ?? "");
+    setPmTarget(task?.status ?? "todo");
     setChecklistText("");
   }, [open, task]);
 
@@ -565,6 +568,15 @@ export function TaskDialog({
     task.status !== "completed";
   const canReview = task && currentUser ? canReviewTask(store, currentUser, task) : false;
   const canWork = task && currentUser ? canWorkTask(currentUser, task) : false;
+  const canMoveAny =
+    Boolean(
+      task &&
+        currentUser &&
+        project &&
+        canManageProject(currentUser, project) &&
+        task.assigneeId &&
+        task.status !== "completed",
+    );
   const canSeeWorkLink = Boolean(
     currentUser &&
       (currentUser.role === "admin" ||
@@ -723,17 +735,52 @@ export function TaskDialog({
               </Field>
             </div>
 
-            {canWork && (task.status === "todo" || task.status === "need_revision") ? (
+            {((canWork && (task.status === "todo" || task.status === "need_revision")) ||
+              (canMoveAny && pmTarget === "in_progress")) ? (
               <Field
                 label="Link Pekerjaan"
-                hint="URL HTTP/HTTPS absolut; pastikan dapat diakses PM dan Manager."
+                hint="Wajib diisi; tidak ada validasi URL. Pastikan dapat diakses PM dan Manager."
               >
                 <Input
                   value={workUrl}
                   onChange={(event) => setWorkUrl(event.target.value)}
                   placeholder="https://..."
                 />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-1"
+                  disabled={!workUrl.trim()}
+                  onClick={() => {
+                    store.updateTaskWorkUrl(task.id, workUrl);
+                    toast.success("Link Pekerjaan disimpan.");
+                  }}
+                >
+                  Simpan Link
+                </Button>
               </Field>
+            ) : null}
+
+            {canMoveAny ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed p-2">
+                <span className="text-muted-foreground text-[11px]">
+                  PM/Admin: pindahkan card
+                </span>
+                <NativeSelect
+                  value={pmTarget}
+                  onChange={(value) => setPmTarget(value as TaskStatus)}
+                  className="h-8 w-[170px] text-xs"
+                >
+                  {Object.entries(TASK_STATUS_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <Button size="sm" onClick={() => move(pmTarget)}>
+                  Pindahkan
+                </Button>
+              </div>
             ) : null}
 
             {task.workUrl && canSeeWorkLink ? (
@@ -793,7 +840,8 @@ export function TaskDialog({
               ) : null}
             </div>
 
-            {canReview && task.status === "awaiting_approval" ? (
+            {(canReview && task.status === "awaiting_approval") ||
+            (canMoveAny && pmTarget === "need_revision") ? (
               <Field label="Komentar review (wajib jika minta revisi)">
                 <Textarea
                   value={reviewComment}

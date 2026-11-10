@@ -6,6 +6,30 @@ Mengatur Pitching di dalam Prospek, termasuk RAB dan Quotation per Pitching, tug
 
 ## Requirements
 
+### Requirement: Assigned prospek work appears in SIMPRO Forms with a category
+
+Sistem SHALL menampilkan pekerjaan Prospek yang di-assign kepada Assignee, Manager, atau Finance pada halaman Forms SIMPRO dengan kategori **Prospek**, dan Form proyek dengan kategori **Project**.
+
+#### Scenario: Assigned RAB appears in Forms
+- **WHEN** RAB Pitching di-assign kepada pengguna
+- **THEN** pekerjaan tersebut tampil di Forms SIMPRO dengan kategori Prospek dan tautan untuk membuka pekerjaan
+
+#### Scenario: Assigned quotation appears in Forms
+- **WHEN** Quotation Pitching di-assign kepada pengguna
+- **THEN** pekerjaan tersebut tampil di Forms SIMPRO dengan kategori Prospek
+
+#### Scenario: Assigned contract appears in Forms
+- **WHEN** Kontrak Pitching di-assign kepada pengguna
+- **THEN** pekerjaan tersebut tampil di Forms SIMPRO dengan kategori Prospek
+
+#### Scenario: Assigned pitching form appears in Forms
+- **WHEN** entri Form Pitching di-assign kepada pengguna
+- **THEN** entri tersebut tampil di Forms SIMPRO dengan kategori Prospek
+
+#### Scenario: Project forms use the Project category
+- **WHEN** pengguna melihat Form proyek pada halaman Forms SIMPRO
+- **THEN** Form tersebut tampil dengan kategori Project
+
 ### Requirement: Pitching cards and detail page
 
 Sistem SHALL menampilkan Pitching pada detail Prospek sebagai card ringkas dan membuka card tersebut menjadi halaman Pitching dengan section RAB, Quotation, Form Pitching, Kontrak, dan Finishing.
@@ -208,11 +232,15 @@ Sistem SHALL mengunci section Kontrak sampai Pitching menang, mengizinkan kontra
 
 ### Requirement: Termine is a closing payment reference
 
-Sistem SHALL menampilkan Termine kontrak sebagai acuan pembayaran pada fase Closing anak proyek, tanpa membuat form Invoice atau Pembayaran secara otomatis.
+Sistem SHALL menampilkan Termine kontrak sebagai acuan awal Invoice dan Pembayaran pada fase Finance anak proyek, tanpa membuat form Invoice atau Pembayaran secara otomatis.
 
 #### Scenario: Show termine on the child project
-- **WHEN** pengguna membuka fase Closing anak proyek hasil konversi
-- **THEN** sistem menampilkan daftar Termine beserta nilai dan tanggal jatuh temponya sebagai referensi
+- **WHEN** pengguna membuka fase Finance anak proyek hasil konversi
+- **THEN** sistem menampilkan daftar Termine beserta nilai dan tanggal jatuh temponya sebagai referensi pembayaran
+
+#### Scenario: Use Termine as payment references
+- **WHEN** Finance mengisi Invoice atau Pembayaran pada anak proyek
+- **THEN** nilai dan tanggal Termine tersedia sebagai acuan awal tanpa menggantikan isian atau keputusan Finance
 
 #### Scenario: Termine does not create finance forms
 - **WHEN** kontrak dengan Termine disimpan atau dikonversi

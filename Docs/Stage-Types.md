@@ -39,6 +39,15 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 - Link Pekerjaan HTTP/HTTPS wajib sebelum card masuk In Progress.
 - Finance selesai hanya setelah minimal satu step Finance selesai; proyek menjadi completed.
 
+## Workspace proyek
+
+- Detail proyek CRM memiliki tab Overview, Journey Management, dan Board.
+- Overview berisi Asal Prospek, Riwayat Aktivitas, dan Penyelesaian Tahap.
+- Journey Management sepenuhnya manual: proyek baru tidak memakai template; PM/Admin membuat step bebas pada fase aktif atau fase berikutnya.
+- Memilih Planning tidak membuat step Running; Running kosong sampai ditambahkan.
+- Tab Board mengembed board Kanban SIMPRO.
+- Link Pekerjaan wajib non-empty, tanpa validasi URL, dan memiliki tombol Simpan.
+
 ## Mesin Form
 
 - Satu tahap Form punya satu template form dan banyak entri.

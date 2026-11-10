@@ -596,13 +596,7 @@ export function isTemplateCompatibleForNewProject(template: ProjectTemplate): bo
 }
 
 export function validWorkUrl(value?: string): boolean {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
+  return Boolean(value?.trim());
 }
 
 export function canAssignKanbanTask(
@@ -1294,6 +1288,31 @@ export function taskTransition(
     }
 
     return { ok: false, reason: "Transisi status tidak diizinkan." };
+  }
+
+  const owner =
+    user.role === "admin" ||
+    (user.role === "pm" && project.createdById === user.id);
+  if (owner) {
+    if (!task.assigneeId) {
+      return {
+        ok: false,
+        reason: "Tetapkan assignee sebelum memindahkan card.",
+      };
+    }
+    if (
+      to === "in_progress" &&
+      !validWorkUrl(options?.workUrl ?? task.workUrl)
+    ) {
+      return {
+        ok: false,
+        reason: "Link Pekerjaan wajib diisi sebelum masuk In Progress.",
+      };
+    }
+    if (to === "need_revision" && !options?.comment?.trim()) {
+      return { ok: false, reason: "Komentar revisi wajib diisi." };
+    }
+    return { ok: true };
   }
 
   if (to === "todo") {

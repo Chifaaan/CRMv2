@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+﻿import { beforeEach, describe, expect, it } from "vitest";
 import { usePrototypeStore } from "../src/lib/prototype/store";
 import { UMUM_EXECUTION_TEMPLATE_ID } from "../src/lib/prototype/templates";
 import type { Project } from "../src/lib/prototype/types";
@@ -154,7 +154,7 @@ describe("post-prospek project lifecycle", () => {
       state().tasks.find((task) => task.id === taskId)?.status,
     ).toBe("todo");
     state().transitionTask(taskId, "in_progress", {
-      workUrl: "https://example.com/work",
+      workUrl: "catatan pekerjaan",
     });
     expect(
       state().tasks.find((task) => task.id === taskId)?.status,
@@ -173,7 +173,7 @@ describe("post-prospek project lifecycle", () => {
 
     state().setCurrentUser("u-assignee1");
     state().transitionTask(taskId, "in_progress", {
-      workUrl: "https://example.com/work-v2",
+      workUrl: "catatan pekerjaan v2",
     });
     state().transitionTask(taskId, "awaiting_approval");
     state().setCurrentUser("u-pm1");
@@ -184,6 +184,85 @@ describe("post-prospek project lifecycle", () => {
     ).toBe("completed");
     expect(state().completeProjectPhase(projectId, "planning")).toBe(true);
     expect(project(projectId).phaseCompletedAt?.planning).toBeTruthy();
+  });
+
+  it("keeps Running empty for a manual Planning start and allows next-phase steps", () => {
+    state().setCurrentUser("u-pm1");
+    const projectId = state().createProject({
+      name: "Manual Journey",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      mode: "manual",
+    });
+    expect(state().startProject(projectId, "planning", { managerPicId: "u-manager" })).toBe(true);
+    expect(steps(projectId)).toHaveLength(0);
+    const planning = state().addProjectStep(projectId, {
+      name: "Planning Bebas",
+      phase: "planning",
+      managerPicId: "u-manager",
+    });
+    expect(planning).not.toBe("");
+    expect(steps(projectId).find((step) => step.id === planning)?.status).toBe("active");
+    const running = state().addProjectStep(projectId, {
+      name: "Running Nanti",
+      phase: "running",
+      managerPicId: "u-manager",
+    });
+    expect(running).not.toBe("");
+    expect(steps(projectId).find((step) => step.id === running)?.status).toBe("pending");
+  });
+
+  it("lets PM move a card to any status when an assignee exists", () => {
+    state().setCurrentUser("u-pm1");
+    const projectId = state().createProject({
+      name: "PM Kanban",
+      client: "Klien",
+      description: "",
+      priority: "medium",
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000000",
+      mode: "manual",
+    });
+    state().startProject(projectId, "planning", { managerPicId: "u-manager" });
+    const stepId = state().addProjectStep(projectId, {
+      name: "Step",
+      phase: "planning",
+      managerPicId: "u-manager",
+    });
+    const step = state().steps.find((item) => item.id === stepId)!;
+    const taskId = state().createTask(projectId, {
+      title: "Card PM",
+      description: "",
+      priority: "medium",
+      stepKey: step.key,
+    });
+    state().setCurrentUser("u-manager");
+    state().assignTask(taskId, "u-assignee1");
+
+    state().setCurrentUser("u-pm1");
+    state().transitionTask(taskId, "in_progress");
+    expect(state().tasks.find((task) => task.id === taskId)?.status).toBe("todo");
+    state().transitionTask(taskId, "in_progress", { workUrl: "catatan link" });
+    expect(state().tasks.find((task) => task.id === taskId)?.status).toBe(
+      "in_progress",
+    );
+    state().transitionTask(taskId, "need_revision", { comment: "Revisi" });
+    expect(state().tasks.find((task) => task.id === taskId)?.status).toBe(
+      "need_revision",
+    );
+    state().transitionTask(taskId, "completed");
+    expect(state().tasks.find((task) => task.id === taskId)?.status).toBe(
+      "completed",
+    );
+    state().transitionTask(taskId, "todo");
+    expect(state().tasks.find((task) => task.id === taskId)?.status).toBe(
+      "completed",
+    );
   });
 
   it("rejects completing an empty SIMPRO step and cancelling started cards", () => {
@@ -206,7 +285,7 @@ describe("post-prospek project lifecycle", () => {
     state().assignTask(taskId, "u-assignee1");
     state().setCurrentUser("u-assignee1");
     state().transitionTask(taskId, "in_progress", {
-      workUrl: "https://example.com/work",
+      workUrl: "catatan pekerjaan",
     });
     state().setCurrentUser("u-pm1");
     state().deleteTask(taskId, "Batal");

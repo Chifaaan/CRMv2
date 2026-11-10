@@ -74,6 +74,7 @@ import {
   LIFECYCLE_LABEL,
   PHASE_HINT,
   PHASE_LABEL,
+  TASK_STATUS_LABEL,
   type FormEntry,
   type FormStepKey,
   type Phase,
@@ -100,6 +101,7 @@ import {
   UserAvatar,
 } from "../ui";
 import { PitchingDialog, ProjectDialog, TaskDialog } from "../dialogs";
+import { TaskBoard } from "../simpro/board";
 import { ProjectStepHistory } from "./project-history";
 import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
 
@@ -1809,6 +1811,22 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const [selectedStepKey, setSelectedStepKey] = useState<string | null>(null);
   const [selectedPhase, setSelectedPhase] = useState<Phase>("prospek");
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<"overview" | "journey" | "board">("overview");
+  const [boardTaskId, setBoardTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const value = new URLSearchParams(window.location.search).get("tab");
+    if (value === "overview" || value === "journey" || value === "board") {
+      setWorkspaceTab(value);
+    }
+  }, []);
+
+  const switchWorkspaceTab = (tab: "overview" | "journey" | "board") => {
+    setWorkspaceTab(tab);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState(null, "", url);
+  };
   const transitionBanner = project
     ? phaseTransitionBanner(projectSteps, project.status)
     : null;
@@ -1868,6 +1886,9 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     currentPhaseSteps.every(
       (step) => step.status === "completed" || step.status === "skipped",
     );
+  const overviewTasks = store.tasks.filter(
+    (task) => task.projectId === project.id && !task.archivedAt,
+  );
   const canCancel = canCancelProject(currentUser, project);
   const selectedStep =
     projectSteps.find((step) => step.key === selectedStepKey) ?? fallbackStep;
@@ -2072,7 +2093,44 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </div>
       </div>
 
-      {newLifecycle && !project.startedAt ? (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1 rounded-lg border bg-muted/30 p-1">
+          {[
+            { key: "overview" as const, label: "Overview" },
+            { key: "journey" as const, label: "Journey Management" },
+            { key: "board" as const, label: "Board" },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => switchWorkspaceTab(item.key)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium ${
+                workspaceTab === item.key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {canManage && selectedStep?.status === "active" ? (
+          <Button
+            size="sm"
+            onClick={() => {
+              store.completeStep(project.id, selectedStep.key);
+              toast.success(`Tahap ${selectedStep.name} diselesaikan.`);
+            }}
+          >
+            Selesaikan Tahap
+          </Button>
+        ) : null}
+      </div>
+
+      {(workspaceTab === "journey" ||
+        (workspaceTab === "overview" && !project.startedAt)) &&
+      newLifecycle &&
+      !project.startedAt ? (
         <SectionCard
           title="Proyek belum dimulai"
           description={
@@ -2129,7 +2187,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </SectionCard>
       ) : null}
 
-      {newLifecycle && project.startedAt && canManageSteps ? (
+      {workspaceTab === "journey" && newLifecycle && project.startedAt && canManageSteps ? (
         <SectionCard
           title="Kelola fase"
           description="Tambah step pada fase aktif atau selesaikan fase setelah semua step selesai."
@@ -2141,8 +2199,19 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
                 onClick={() => {
                   const name = window.prompt("Nama step baru");
                   if (!name?.trim()) return;
+                  const phaseValue =
+                    currentPhase === "finance"
+                      ? "finance"
+                      : ((window.prompt(
+                          "Fase step: planning atau running",
+                          currentPhase,
+                        ) ?? currentPhase) as Phase);
+                  if (!["planning", "running", "finance"].includes(phaseValue)) {
+                    toast.error("Fase step tidak valid.");
+                    return;
+                  }
                   let financeKind: FormStepKey | undefined;
-                  if (currentPhase === "finance") {
+                  if (phaseValue === "finance") {
                     const value = window.prompt(
                       "Jenis form Finance: bast, invoice, atau payment",
                       "bast",
@@ -2155,7 +2224,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
                   }
                   const id = store.addProjectStep(project.id, {
                     name,
-                    phase: currentPhase,
+                    phase: phaseValue,
                     financeKind,
                     managerPicId,
                   });
@@ -2205,34 +2274,67 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
                         ? ` · PIC ${userById(store, step.managerPicId)?.name ?? "-"}`
                         : ""}
                     </span>
-                    {step.status === "pending" ? (
-                      <span className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 text-[10px]"
-                          onClick={() => store.reorderProjectStep(project.id, step.id, "up")}
-                        >
-                          ↑
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 text-[10px]"
-                          onClick={() => store.reorderProjectStep(project.id, step.id, "down")}
-                        >
-                          ↓
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 text-[10px]"
-                          onClick={() => store.deleteProjectStep(project.id, step.id)}
-                        >
-                          Hapus
-                        </Button>
-                      </span>
-                    ) : null}
+                    <span className="flex flex-wrap gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[10px]"
+                        onClick={() => {
+                          const name = window.prompt("Nama step", step.name);
+                          if (!name?.trim()) return;
+                          const description = window.prompt(
+                            "Deskripsi step",
+                            step.description ?? "",
+                          );
+                          const manager = window.prompt(
+                            "Manager PIC (user id)",
+                            step.managerPicId ?? managerPicId ?? "",
+                          );
+                          const ok = store.updateProjectStep(project.id, step.id, {
+                            name,
+                            description: description ?? "",
+                            managerPicId: manager ?? "",
+                          });
+                          toast[ok ? "success" : "error"](
+                            ok ? "Step diperbarui." : "Gagal memperbarui step.",
+                          );
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      {step.status === "pending" ? (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-[10px]"
+                            onClick={() =>
+                              store.reorderProjectStep(project.id, step.id, "up")
+                            }
+                          >
+                            ↑
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-[10px]"
+                            onClick={() =>
+                              store.reorderProjectStep(project.id, step.id, "down")
+                            }
+                          >
+                            ↓
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-[10px]"
+                            onClick={() => store.deleteProjectStep(project.id, step.id)}
+                          >
+                            Hapus
+                          </Button>
+                        </>
+                      ) : null}
+                    </span>
                   </div>
                 ))
             )}
@@ -2266,7 +2368,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
-      {project.prospekId ? (
+      {workspaceTab === "overview" && project.prospekId ? (
         <SectionCard
           title="Asal Prospek"
           description="Proyek ini lahir dari Pitching yang menang. Data kontrak dan Termine menjadi acuan pembayaran di Closing."
@@ -2337,6 +2439,94 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </SectionCard>
       ) : null}
 
+      {workspaceTab === "overview" ? (
+        <div className="space-y-3">
+          <SectionCard
+            title="Penyelesaian Tahap"
+            description="Ringkasan step selesai, dilewati, dan belum selesai."
+          >
+            <div className="grid gap-2 text-xs sm:grid-cols-3">
+              <p>Selesai: {projectSteps.filter((step) => step.status === "completed").length}</p>
+              <p>Dilewati: {projectSteps.filter((step) => step.status === "skipped").length}</p>
+              <p>Belum selesai: {projectSteps.filter((step) => step.status === "pending" || step.status === "active").length}</p>
+            </div>
+          </SectionCard>
+          <SectionCard title="Riwayat Aktivitas" description="Event proyek terbaru.">
+            <div className="space-y-1 text-[11px]">
+              {store.projectEvents
+                .filter((event) => event.projectId === project.id)
+                .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+                .slice(0, 10)
+                .map((event) => (
+                  <div key={event.id} className="flex flex-wrap gap-2 rounded border px-2 py-1">
+                    <span className="font-semibold">{event.eventType}</span>
+                    <span className="text-muted-foreground">
+                      {formatDateTime(event.occurredAt)}
+                    </span>
+                    <span>{userById(store, event.actorId)?.name ?? "User"}</span>
+                    <span className="text-muted-foreground">{event.summary}</span>
+                  </div>
+                ))}
+            </div>
+          </SectionCard>
+          <SectionCard
+            title="Distribusi Task SIMPRO"
+            description="Ringkasan task proyek ini, scoped hanya untuk proyek ini."
+          >
+            <div className="grid gap-2 text-xs sm:grid-cols-3">
+              {Object.entries(TASK_STATUS_LABEL).map(([status, label]) => (
+                <div key={status} className="rounded-lg border p-2">
+                  <p className="text-muted-foreground text-[10px]">{label}</p>
+                  <p className="font-semibold">
+                    {overviewTasks.filter((task) => task.status === status).length}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3">
+              <div className="mb-1 flex justify-between text-[11px]">
+                <span>Progress task</span>
+                <span>
+                  {overviewTasks.filter((task) => task.status === "completed").length}
+                  /{overviewTasks.length}
+                </span>
+              </div>
+              <ProgressBar
+                value={
+                  overviewTasks.length === 0
+                    ? 0
+                    : Math.round(
+                        (overviewTasks.filter((task) => task.status === "completed")
+                          .length /
+                          overviewTasks.length) *
+                          100,
+                      )
+                }
+              />
+            </div>
+          </SectionCard>
+        </div>
+      ) : null}
+
+      {workspaceTab === "board" ? (
+        <SectionCard
+          title="Board"
+          description="Board SIMPRO untuk step aktif. Task tetap dibuat dan dikelola di SIMPRO."
+        >
+          {selectedStep ? (
+            <TaskBoard
+              tasks={tasksForStep(store, project.id, selectedStep.key)}
+              onTaskClick={(task) => setBoardTaskId(task.id)}
+              readOnly={selectedStep.status !== "active"}
+            />
+          ) : (
+            <p className="text-muted-foreground text-xs">
+              Tidak ada step dipilih. Pilih step di Journey Management.
+            </p>
+          )}
+        </SectionCard>
+      ) : null}
+
       {project.status === "completed" ? (
         <CompletedSummary project={project} />
       ) : null}
@@ -2385,19 +2575,32 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
-      <div
-        role="tabpanel"
-        id="project-step-panel"
-        aria-labelledby={
-          selectedKey ? `step-tab-${selectedKey}` : undefined
-        }
-        className="space-y-4"
-      >
-        {stepContent}
-        {selectedKey ? (
-          <ProjectStepHistory projectId={project.id} stepKey={selectedKey} />
-        ) : null}
-      </div>
+      {workspaceTab === "journey" ? (
+        <div
+          role="tabpanel"
+          id="project-step-panel"
+          aria-labelledby={
+            selectedKey ? `step-tab-${selectedKey}` : undefined
+          }
+          className="space-y-4"
+        >
+          {stepContent}
+          {selectedKey ? (
+            <ProjectStepHistory projectId={project.id} stepKey={selectedKey} />
+          ) : null}
+        </div>
+      ) : null}
+
+      {boardTaskId ? (
+        <TaskDialog
+          open={Boolean(boardTaskId)}
+          onOpenChange={(open) => {
+            if (!open) setBoardTaskId(null);
+          }}
+          projectId={project.id}
+          taskId={boardTaskId}
+        />
+      ) : null}
 
       <ProjectDialog open={editOpen} onOpenChange={setEditOpen} project={project} />
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>

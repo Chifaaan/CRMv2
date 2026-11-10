@@ -12,6 +12,7 @@ import {
   formatDate,
   prospekById,
   prospekPitchingById,
+  prospekWorkItemsForUser,
   stepFor,
   userById,
   visibleProjects,
@@ -95,6 +96,7 @@ type FormRow = {
   project?: Project;
   prospekId?: string;
   pitchingId?: string;
+  category: "Prospek" | "Project";
   contextName: string;
   contextCode: string;
   formName: string;
@@ -124,7 +126,7 @@ function FormItem({
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold">{row.title}</p>
           <p className="text-muted-foreground mt-0.5 text-[10px]">
-            {row.formName} · {row.contextCode}
+            {row.formName} · {row.category} · {row.contextCode}
           </p>
           <p className="text-muted-foreground truncate text-[10px]">
             {row.contextName}
@@ -165,6 +167,7 @@ export function SimproFormsPage() {
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [openFormId, setOpenFormId] = useState<string | null>(null);
@@ -190,6 +193,7 @@ export function SimproFormsPage() {
         kind: "entry",
         id: entry.id,
         project,
+        category: "Project" as const,
         contextName: project.name,
         contextCode: project.code,
         formName: step.formTemplate?.title ?? step.name,
@@ -222,6 +226,7 @@ export function SimproFormsPage() {
         kind: "legacy",
         id: form.id,
         project,
+        category: "Project" as const,
         contextName: project.name,
         contextCode: project.code,
         formName: "Form Survey",
@@ -239,6 +244,7 @@ export function SimproFormsPage() {
         kind: "finance",
         id: row.form.id,
         project: row.project,
+        category: "Project" as const,
         contextName: row.project.name,
         contextCode: row.project.code,
         formName: row.formName,
@@ -272,6 +278,7 @@ export function SimproFormsPage() {
         id: entry.id,
         prospekId: prospek.id,
         pitchingId: pitching.id,
+        category: "Prospek" as const,
         contextName: pitching.title,
         contextCode: "PROSPEK",
         formName: stage?.formTemplate?.title ?? stage?.name ?? entry.stepKey,
@@ -285,6 +292,34 @@ export function SimproFormsPage() {
         href: restricted
           ? `/work/prospek/${pitching.id}/form?entry=${entry.id}`
           : `/crm/prospek/${prospek.id}/pitching/${pitching.id}`,
+      });
+    }
+    for (const item of prospekWorkItemsForUser(store, currentUser.id)) {
+      if (item.kind === "form") continue;
+      result.push({
+        kind: "prospek",
+        id: item.id,
+        prospekId: item.prospekId,
+        pitchingId: item.pitchingId,
+        category: "Prospek" as const,
+        contextName: item.context,
+        contextCode: "PROSPEK",
+        formName:
+          item.kind === "rab"
+            ? "RAB Pitching"
+            : item.kind === "quotation"
+              ? "Quotation Pitching"
+              : "Kontrak Pitching",
+        title: item.title,
+        assigneeId: currentUser.id,
+        status:
+          item.status === "need_revision"
+            ? "need_revision"
+            : item.status === "submitted" || item.status === "approved"
+              ? "done"
+              : "empty",
+        dueDate: item.dueDate,
+        href: item.href,
       });
     }
     return result;
@@ -311,6 +346,7 @@ export function SimproFormsPage() {
         const rowKey = row.project?.id ?? `pitching:${row.pitchingId}`;
         if (projectFilter && rowKey !== projectFilter) return false;
         if (typeFilter && row.formName !== typeFilter) return false;
+        if (categoryFilter && row.category !== categoryFilter) return false;
         if (statusFilter) {
           if (statusFilter === "review") {
             if (row.status !== "submitted") return false;
@@ -328,7 +364,7 @@ export function SimproFormsPage() {
         }
         return true;
       }),
-    [rows, projectFilter, typeFilter, statusFilter, search],
+    [rows, projectFilter, typeFilter, categoryFilter, statusFilter, search],
   );
 
   const groups = useMemo(() => {
@@ -397,7 +433,7 @@ export function SimproFormsPage() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Cari proyek atau form…"
+            placeholder="Cari proyek atau formâ€¦"
             className="pl-8"
           />
         </div>
@@ -408,6 +444,11 @@ export function SimproFormsPage() {
               {label}
             </option>
           ))}
+        </NativeSelect>
+        <NativeSelect value={categoryFilter} onChange={setCategoryFilter}>
+          <option value="">Semua kategori</option>
+          <option value="Project">Project</option>
+          <option value="Prospek">Prospek</option>
         </NativeSelect>
         <NativeSelect value={typeFilter} onChange={setTypeFilter}>
           <option value="">Semua jenis</option>
@@ -465,7 +506,7 @@ export function SimproFormsPage() {
                   </td>
                   <td className="px-3 py-2">
                     <p className="font-medium">{row.contextName}</p>
-                    <p className="text-muted-foreground text-[10px]">{row.contextCode}</p>
+                    <p className="text-muted-foreground text-[10px]">{row.category} · {row.contextCode}</p>
                   </td>
                   <td className="px-3 py-2">
                     <UserAvatar user={userById(store, row.assigneeId)} size="sm" showName />
