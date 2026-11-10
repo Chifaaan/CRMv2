@@ -65,8 +65,10 @@ import {
   GATE_KIND_LABEL,
   LIFECYCLE_LABEL,
   PHASE_LABEL,
+  PHASE_ORDER,
   ROLE_LABEL,
   type FormEntry,
+  type Phase,
   type Project,
   type ProjectStep,
   type StepForm,
@@ -93,6 +95,110 @@ import { ProjectOverview } from "./project-overview";
 import { ProjectStepHistory } from "./project-history";
 import { ProjectMediaOrders } from "./media-order";
 import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
+
+const HEADER_STEP_STATUS_LABEL: Record<ProjectStep["status"], string> = {
+  pending: "Belum dimulai",
+  active: "Aktif",
+  completed: "Selesai",
+  skipped: "Dilewati",
+};
+
+const HEADER_STEP_DOT: Record<ProjectStep["status"], string> = {
+  pending: "bg-white/35",
+  active: "bg-sky-300",
+  completed: "bg-emerald-300",
+  skipped: "bg-amber-300",
+};
+
+function ProjectPhaseHeader({
+  projectId,
+  selectedStepKey,
+  onPhaseClick,
+  onStepClick,
+}: {
+  projectId: string;
+  selectedStepKey?: string;
+  onPhaseClick: (phase: Phase) => void;
+  onStepClick: (step: ProjectStep) => void;
+}) {
+  const store = usePrototypeStore();
+  const steps = store.steps
+    .filter((step) => step.projectId === projectId)
+    .sort((a, b) => a.order - b.order);
+  const activePhase = steps.find((step) => step.status === "active")?.phase;
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      {PHASE_ORDER.map((phase) => {
+        const phaseSteps = steps.filter((step) => step.phase === phase);
+        const isActive = activePhase === phase;
+        return (
+          <div
+            key={phase}
+            className={cn(
+              "rounded-lg border p-2",
+              isActive
+                ? "border-white/40 bg-white/12"
+                : "border-white/15 bg-white/5",
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => onPhaseClick(phase)}
+              className="flex w-full items-center justify-between gap-2 text-left"
+            >
+              <span
+                className={cn(
+                  "text-[10px] font-semibold uppercase tracking-[0.08em]",
+                  isActive ? "text-white" : "text-white/65",
+                )}
+              >
+                {PHASE_LABEL[phase]}
+              </span>
+              <span className="text-[10px] whitespace-nowrap text-white/55">
+                {isActive
+                  ? "Sedang berjalan"
+                  : `${phaseSteps.length} Tahap`}
+              </span>
+            </button>
+
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {phaseSteps.length === 0 ? (
+                <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-white/40">
+                  0 Tahap
+                </span>
+              ) : (
+                phaseSteps.map((step) => (
+                  <button
+                    key={step.id}
+                    type="button"
+                    title={`${step.name} — ${HEADER_STEP_STATUS_LABEL[step.status]}`}
+                    onClick={() => onStepClick(step)}
+                    className={cn(
+                      "inline-flex max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors hover:bg-white/15",
+                      selectedStepKey === step.key
+                        ? "bg-white/20 text-white"
+                        : "bg-white/10 text-white/75",
+                      step.status === "pending" && "text-white/45",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "size-1.5 shrink-0 rounded-full",
+                        HEADER_STEP_DOT[step.status],
+                      )}
+                    />
+                    <span className="truncate">{step.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function GatePanel({
   projectId,
@@ -1481,6 +1587,20 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     window.history.replaceState(null, "", url);
   };
 
+  const openHeaderPhase = (nextPhase: Phase) => {
+    switchTab("journey");
+    const candidates = projectSteps.filter((step) => step.phase === nextPhase);
+    const next =
+      candidates.find((step) => step.status === "active") ??
+      [...candidates].reverse().find((step) => step.status !== "pending");
+    if (next) selectStep(next.key);
+  };
+
+  const openHeaderStep = (step: ProjectStep) => {
+    switchTab("journey");
+    if (step.status !== "pending") selectStep(step.key);
+  };
+
   const activeGate = activeStep
     ? evaluateGate(store, project.id, activeStep.key)
     : null;
@@ -1646,6 +1766,19 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
             <span className="inline-flex items-center gap-1">
               <Users className="size-3.5" /> {group ? `Group ${group.name}` : "Tanpa group"}
             </span>
+          </div>
+
+          <div className="mt-5 border-t border-white/15 pt-4">
+            <ProjectPhaseHeader
+              projectId={project.id}
+              selectedStepKey={selectedKey}
+              onPhaseClick={openHeaderPhase}
+              onStepClick={openHeaderStep}
+            />
+            <p className="mt-2 text-[10px] text-white/60">
+              Setiap tahap menampilkan step-nya. Fase tanpa step tetap tampil
+              dengan 0 Tahap.
+            </p>
           </div>
         </div>
       </div>

@@ -354,7 +354,7 @@ Aturan lama yang tetap berlaku: empat fase tetap, template Umum legacy dengan en
 
 ## 12. Pembaruan November 2026: workspace proyek dan kartu SIMPRO
 
-- **Detail Proyek bertab.** `Overview` khusus proyek yang dibuka: penyelesaian tahap (selesai/dilewati/belum), distribusi task enam status, progress completed/open/overdue, riwayat aktivitas, dan `Selesaikan Tahap`. `Journey Management` menampilkan keempat fase termasuk `0 Tahap`, pemilihan fase/step, pengelolaan tahap, task ringkas, dan `Selesaikan fase`.
+- **Detail Proyek bertab dan header fase.** Header proyek selalu menampilkan keempat fase beserta step-nya; fase tanpa step tetap tampil sebagai `0 Tahap`. `Overview` khusus proyek yang dibuka: penyelesaian tahap (selesai/dilewati/belum), distribusi task enam status, progress completed/open/overdue, riwayat aktivitas, dan `Selesaikan Tahap`. `Journey Management` menyediakan pemilihan fase/step, pengelolaan tahap, task ringkas, dan `Selesaikan fase`.
 - **Tahap baru lewat dialog.** `+ Tambah step` membuka dialog `Nama Tahap`, `Format` (Form, Form Keuangan, Gerbang, SIMPRO), dan preview baris tabel (urutan, nama, format, status). Format keuangan/gerbang menampilkan pilihan tambahan; properti lain tetap diedit di baris tahap.
 - **Fase aktif lebih fleksibel.** Fase yang sudah dimulai boleh menerima tahap baru atau menghapus tahap selama tahap itu belum punya pekerjaan: tidak ada entri draft/submitted/review, tidak ada form keuangan berjalan, dan tidak ada task keluar dari Backlog. Reorder/edit tetap ditolak. Closing tetap otomatis.
 - **Persiapan fase nonaktif.** PM boleh membuat tahap dan task default pada fase yang sudah dibuka tetapi belum dimulai; task tetap Backlog tanpa assignee dan tidak bisa di-assign sampai tahap aktif.
