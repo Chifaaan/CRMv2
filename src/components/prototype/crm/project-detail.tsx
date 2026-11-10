@@ -71,9 +71,11 @@ import {
   PHASE_ORDER,
   type FormEntry,
   type FormStepKey,
+  type GateKind,
   type Phase,
   type Project,
   type ProjectStep,
+  type StageKind,
   type StepForm,
 } from "@/lib/prototype/types";
 import { cn } from "@/lib/utils";
@@ -104,15 +106,10 @@ import {
   CrmProjectFormsTab,
 } from "./project-work-panels";
 import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
+import { isMandatoryProjectStep } from "@/lib/prototype/mandatory-steps";
 
 type StepTone = "done" | "active" | "attention" | "empty";
 
-const STEP_STATUS_TEXT: Record<string, string> = {
-  pending: "Belum dimulai",
-  active: "Berjalan",
-  completed: "Selesai",
-  skipped: "Dilewati",
-};
 
 const STEP_TONE_CLASS: Record<
   StepTone,
@@ -1505,6 +1502,225 @@ function CompletedSummary({ project }: { project: Project }) {
   );
 }
 
+function StepDialog({
+  open,
+  onOpenChange,
+  project,
+  step,
+  defaultPhase,
+  defaultManagerPicId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  project: Project;
+  step?: ProjectStep;
+  defaultPhase: Phase;
+  defaultManagerPicId: string;
+}) {
+  const store = usePrototypeStore();
+  const managers = store.users.filter((user) => user.role === "manager");
+  const [name, setName] = useState(step?.name ?? "");
+  const [description, setDescription] = useState(step?.description ?? "");
+  const [phase, setPhase] = useState<Phase>(step?.phase ?? defaultPhase);
+  const [kind, setKind] = useState<StageKind>(step?.kind ?? "simpro");
+  const [financeKind, setFinanceKind] = useState<FormStepKey>(
+    step?.financeKind ?? "bast",
+  );
+  const [gateKind, setGateKind] = useState<GateKind>(
+    step?.gateKind ?? "go_no_go",
+  );
+  const [managerPicId, setManagerPicId] = useState(
+    step?.managerPicId ?? defaultManagerPicId,
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setName(step?.name ?? "");
+    setDescription(step?.description ?? "");
+    setPhase(step?.phase ?? defaultPhase);
+    setKind(step?.kind ?? (defaultPhase === "finance" ? "finance_form" : "simpro"));
+    setFinanceKind(step?.financeKind ?? "bast");
+    setGateKind(step?.gateKind ?? "go_no_go");
+    setManagerPicId(step?.managerPicId ?? defaultManagerPicId);
+    // Reset only when the dialog opens or switches step.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, step?.id]);
+
+  useEffect(() => {
+    if (phase === "finance") {
+      setKind("finance_form");
+    } else if (kind === "finance_form") {
+      setKind("simpro");
+    }
+    // Keep the kind valid for the chosen phase.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  const requestedShape = {
+    phase,
+    kind,
+    financeKind: kind === "finance_form" ? financeKind : undefined,
+    gateKind: kind === "gate" ? gateKind : undefined,
+  };
+  const mandatory = isMandatoryProjectStep(requestedShape);
+
+  const save = () => {
+    if (!name.trim()) {
+      toast.error("Nama step wajib diisi.");
+      return;
+    }
+    if (kind === "finance_form" && !financeKind) {
+      toast.error("Jenis form keuangan wajib dipilih.");
+      return;
+    }
+    if (kind === "gate" && !gateKind) {
+      toast.error("Jenis gerbang wajib dipilih.");
+      return;
+    }
+    if (step) {
+      const ok = store.updateProjectStep(project.id, step.id, {
+        name: name.trim(),
+        description: description.trim(),
+        managerPicId,
+      });
+      toast[ok ? "success" : "error"](
+        ok ? "Step diperbarui." : "Gagal memperbarui step.",
+      );
+      if (ok) onOpenChange(false);
+      return;
+    }
+    const id = store.addProjectStep(project.id, {
+      name: name.trim(),
+      description: description.trim(),
+      phase,
+      kind,
+      financeKind: kind === "finance_form" ? financeKind : undefined,
+      gateKind: kind === "gate" ? gateKind : undefined,
+      managerPicId,
+    });
+    toast[id ? "success" : "error"](
+      id ? "Step ditambahkan." : "Gagal menambah step.",
+    );
+    if (id) onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{step ? "Edit Step" : "Tambah Step"}</DialogTitle>
+          <DialogDescription>
+            {step
+              ? "Perbarui nama, deskripsi, dan Manager PIC step."
+              : "Pilih fase dan jenis step. Step wajib dapat dibuat otomatis."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 text-xs">
+          <label className="space-y-1">
+            <span className="font-medium">Nama step</span>
+            <Input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Contoh: KOL Briefing"
+            />
+          </label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="space-y-1">
+              <span className="font-medium">Fase</span>
+              <NativeSelect
+                value={phase}
+                disabled={Boolean(step)}
+                onChange={(value) => setPhase(value as Phase)}
+              >
+                {PHASE_ORDER.map((item) => (
+                  <option key={item} value={item}>
+                    {PHASE_LABEL[item]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+            <label className="space-y-1">
+              <span className="font-medium">Jenis step</span>
+              <NativeSelect
+                value={kind}
+                disabled={Boolean(step) || phase === "finance"}
+                onChange={(value) => setKind(value as StageKind)}
+              >
+                <option value="simpro">SIMPRO</option>
+                <option value="form">Form</option>
+                <option value="gate">Gerbang</option>
+                <option value="finance_form">Form keuangan</option>
+              </NativeSelect>
+            </label>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {kind === "finance_form" ? (
+              <label className="space-y-1">
+                <span className="font-medium">Jenis form keuangan</span>
+                <NativeSelect
+                  value={financeKind}
+                  onChange={(value) => setFinanceKind(value as FormStepKey)}
+                >
+                  <option value="rab">RAB</option>
+                  <option value="bast">BAST</option>
+                  <option value="invoice">Invoice</option>
+                  <option value="payment">Pembayaran</option>
+                </NativeSelect>
+              </label>
+            ) : null}
+            {kind === "gate" ? (
+              <label className="space-y-1">
+                <span className="font-medium">Jenis gerbang</span>
+                <NativeSelect
+                  value={gateKind}
+                  onChange={(value) => setGateKind(value as GateKind)}
+                >
+                  <option value="go_no_go">Go / No-Go</option>
+                  <option value="client_approval">Persetujuan klien (menang)</option>
+                </NativeSelect>
+              </label>
+            ) : null}
+            <label className="space-y-1">
+              <span className="font-medium">Manager PIC</span>
+              <NativeSelect
+                value={managerPicId}
+                onChange={(value) => setManagerPicId(value)}
+              >
+                <option value="">Belum ditugaskan</option>
+                {managers.map((manager) => (
+                  <option key={manager.id} value={manager.id}>
+                    {manager.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+          </div>
+          <label className="space-y-1">
+            <span className="font-medium">Deskripsi</span>
+            <Textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={2}
+              placeholder="Ringkasan step"
+            />
+          </label>
+          <p className="text-muted-foreground">
+            {mandatory
+              ? "Step ini wajib pada fase tersebut dan dibuat otomatis."
+              : "Step ini opsional dan dapat dihapus setelah proyek berjalan."}
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Batal
+          </Button>
+          <Button onClick={save}>{step ? "Simpan" : "Tambah"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const store = usePrototypeStore();
   const project = store.projects.find((item) => item.id === projectId);
@@ -1526,6 +1742,8 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const [workspaceTab, setWorkspaceTab] = useState<
     "overview" | "journey" | "board" | "backlog" | "forms" | "media"
   >("overview");
+  const [stepDialogOpen, setStepDialogOpen] = useState(false);
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
   const [workTaskId, setWorkTaskId] = useState<string | undefined>(undefined);
   const [workTaskStepKey, setWorkTaskStepKey] = useState<string | undefined>(undefined);
   const [workTaskOpen, setWorkTaskOpen] = useState(false);
@@ -1621,12 +1839,12 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const managerPicId =
     project.managerId ?? store.users.find((user) => user.role === "manager")?.id;
   const currentPhase = projectPhase(project, projectSteps);
-  const currentPhaseSteps = projectSteps.filter(
-    (step) => step.phase === currentPhase,
+  const selectedPhaseSteps = projectSteps.filter(
+    (step) => step.phase === selectedPhase,
   );
-  const phaseReady =
-    currentPhaseSteps.length > 0 &&
-    currentPhaseSteps.every(
+  const selectedPhaseReady =
+    selectedPhaseSteps.length > 0 &&
+    selectedPhaseSteps.every(
       (step) => step.status === "completed" || step.status === "skipped",
     );
   const overviewTasks = store.tasks.filter(
@@ -1636,9 +1854,6 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
       (currentUser.role !== "assignee" || task.assigneeId === currentUser.id),
   );
   const canCancel = canCancelProject(currentUser, project);
-  const selectedPhaseSteps = projectSteps.filter(
-    (step) => step.phase === selectedPhase,
-  );
   const selectedStep =
     selectedPhaseSteps.find((step) => step.key === selectedStepKey) ??
     selectedPhaseSteps.find((step) => step.status === "active") ??
@@ -1914,49 +2129,75 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           title="Proyek belum dimulai"
           description={
             canManage
-              ? "Pilih fase awal. Finance hanya tersedia setelah Running selesai."
+              ? "Pilih fase awal. Fase Prospek wajib dijalankan bila template memuatnya; Finance tersedia setelah Running selesai."
               : "Menunggu PM memulai proyek."
           }
         >
           {canManage ? (
             <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (!managerPicId) {
-                    toast.error("Tetapkan Manager proyek terlebih dahulu.");
-                    return;
-                  }
-                  const ok = store.startProject(project.id, "planning", {
-                    managerPicId,
-                  });
-                  toast[ok ? "success" : "error"](
-                    ok ? "Proyek dimulai dari Planning." : "Gagal memulai proyek.",
-                  );
-                }}
-              >
-                Mulai dari Planning
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  if (!managerPicId) {
-                    toast.error("Tetapkan Manager proyek terlebih dahulu.");
-                    return;
-                  }
-                  const ok = store.startProject(project.id, "running", {
-                    managerPicId,
-                  });
-                  toast[ok ? "success" : "error"](
-                    ok
-                      ? "Proyek dimulai dari Running; Planning dilewati."
-                      : "Gagal memulai proyek.",
-                  );
-                }}
-              >
-                Langsung ke Running
-              </Button>
+              {projectSteps.some((step) => step.phase === "prospek") ? (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (!managerPicId) {
+                      toast.error("Tetapkan Manager proyek terlebih dahulu.");
+                      return;
+                    }
+                    const ok = store.startProject(project.id, "prospek", {
+                      managerPicId,
+                    });
+                    toast[ok ? "success" : "error"](
+                      ok
+                        ? "Proyek dimulai dari Prospek."
+                        : "Gagal memulai proyek.",
+                    );
+                  }}
+                >
+                  Mulai dari Prospek
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (!managerPicId) {
+                        toast.error("Tetapkan Manager proyek terlebih dahulu.");
+                        return;
+                      }
+                      const ok = store.startProject(project.id, "planning", {
+                        managerPicId,
+                      });
+                      toast[ok ? "success" : "error"](
+                        ok
+                          ? "Proyek dimulai dari Planning."
+                          : "Gagal memulai proyek.",
+                      );
+                    }}
+                  >
+                    Mulai dari Planning
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (!managerPicId) {
+                        toast.error("Tetapkan Manager proyek terlebih dahulu.");
+                        return;
+                      }
+                      const ok = store.startProject(project.id, "running", {
+                        managerPicId,
+                      });
+                      toast[ok ? "success" : "error"](
+                        ok
+                          ? "Proyek dimulai dari Running; Planning dilewati."
+                          : "Gagal memulai proyek.",
+                      );
+                    }}
+                  >
+                    Langsung ke Running
+                  </Button>
+                </>
+              )}
             </div>
           ) : (
             <p className="text-muted-foreground text-xs">
@@ -1976,71 +2217,43 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
                 size="sm"
                 variant="outline"
                 onClick={() => {
-                  const name = window.prompt("Nama step baru");
-                  if (!name?.trim()) return;
-                  const phaseValue =
-                    currentPhase === "finance"
-                      ? "finance"
-                      : ((window.prompt(
-                          "Fase step: planning atau running",
-                          currentPhase,
-                        ) ?? currentPhase) as Phase);
-                  if (!["planning", "running", "finance"].includes(phaseValue)) {
-                    toast.error("Fase step tidak valid.");
-                    return;
-                  }
-                  let financeKind: FormStepKey | undefined;
-                  if (phaseValue === "finance") {
-                    const value = window.prompt(
-                      "Jenis form Finance: bast, invoice, atau payment",
-                      "bast",
-                    );
-                    if (!value || !["bast", "invoice", "payment"].includes(value)) {
-                      toast.error("Jenis form Finance tidak valid.");
-                      return;
-                    }
-                    financeKind = value as FormStepKey;
-                  }
-                  const id = store.addProjectStep(project.id, {
-                    name,
-                    phase: phaseValue,
-                    financeKind,
-                    managerPicId,
-                  });
-                  toast[id ? "success" : "error"](
-                    id ? "Step ditambahkan." : "Gagal menambah step.",
-                  );
+                  setEditingStepId(null);
+                  setStepDialogOpen(true);
                 }}
               >
                 <Plus className="size-3.5" /> Tambah step
               </Button>
               <Button
                 size="sm"
-                disabled={!phaseReady || currentPhase === "prospek"}
+                disabled={
+                  selectedPhase !== currentPhase ||
+                  !selectedPhaseReady ||
+                  selectedPhase === "prospek"
+                }
                 onClick={() => {
                   const ok = store.completeProjectPhase(
                     project.id,
-                    currentPhase,
+                    selectedPhase,
                   );
                   toast[ok ? "success" : "error"](
                     ok
-                      ? `Fase ${PHASE_LABEL[currentPhase]} selesai.`
+                      ? `Fase ${PHASE_LABEL[selectedPhase]} selesai.`
                       : "Fase belum siap diselesaikan.",
                   );
                 }}
               >
-                Selesaikan fase {PHASE_LABEL[currentPhase]}
+                Selesaikan fase {PHASE_LABEL[selectedPhase]}
               </Button>
             </div>
           }
         >
           <div className="space-y-1 text-xs">
-            {currentPhaseSteps.length === 0 ? (
+            {selectedPhaseSteps.length === 0 ? (
               <p className="text-muted-foreground">
                 Belum ada step pada fase ini.
               </p>
             ) : (
-              currentPhaseSteps
+              selectedPhaseSteps
                 .sort((a, b) => a.order - b.order)
                 .map((step) => (
                   <div
@@ -2049,6 +2262,16 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
                   >
                     <span>
                       {step.name} · {step.status}
+                      <span
+                        className={cn(
+                          "ml-1 rounded px-1.5 py-0.5 text-[9px] font-semibold",
+                          isMandatoryProjectStep(step)
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-slate-100 text-slate-600",
+                        )}
+                      >
+                        {isMandatoryProjectStep(step) ? "Wajib" : "Opsional"}
+                      </span>
                       {step.managerPicId
                         ? ` · PIC ${userById(store, step.managerPicId)?.name ?? "-"}`
                         : ""}
@@ -2059,24 +2282,8 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
                         variant="ghost"
                         className="h-6 text-[10px]"
                         onClick={() => {
-                          const name = window.prompt("Nama step", step.name);
-                          if (!name?.trim()) return;
-                          const description = window.prompt(
-                            "Deskripsi step",
-                            step.description ?? "",
-                          );
-                          const manager = window.prompt(
-                            "Manager PIC (user id)",
-                            step.managerPicId ?? managerPicId ?? "",
-                          );
-                          const ok = store.updateProjectStep(project.id, step.id, {
-                            name,
-                            description: description ?? "",
-                            managerPicId: manager ?? "",
-                          });
-                          toast[ok ? "success" : "error"](
-                            ok ? "Step diperbarui." : "Gagal memperbarui step.",
-                          );
+                          setEditingStepId(step.id);
+                          setStepDialogOpen(true);
                         }}
                       >
                         Edit
@@ -2278,45 +2485,6 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           }
           className="space-y-4"
         >
-          {projectSteps.length > 0 ? (
-            <SectionCard
-              title="Pilih step"
-              description="Task di bawah mengikuti step yang dipilih dari Kelola fase."
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <NativeSelect
-                  value={selectedKey ?? ""}
-                  onChange={selectStep}
-                  className="w-full max-w-[360px]"
-                >
-                  <option value="">Pilih step</option>
-                  {PHASE_ORDER.filter((phase) =>
-                    projectSteps.some((step) => step.phase === phase),
-                  ).map((phase) => (
-                    <optgroup key={phase} label={PHASE_LABEL[phase]}>
-                      {projectSteps
-                        .filter((step) => step.phase === phase)
-                        .sort((a, b) => a.order - b.order)
-                        .map((step) => (
-                          <option key={step.id} value={step.key}>
-                            {step.name} ·{" "}
-                            {STEP_STATUS_TEXT[step.status] ?? step.status}
-                          </option>
-                        ))}
-                    </optgroup>
-                  ))}
-                </NativeSelect>
-                <p className="text-muted-foreground text-xs">
-                  {selectedStep
-                    ? `${selectedStep.name} — ${
-                        STEP_STATUS_TEXT[selectedStep.status] ??
-                        selectedStep.status
-                      }`
-                    : "Belum ada step dipilih."}
-                </p>
-              </div>
-            </SectionCard>
-          ) : null}
           {stepContent}
           {selectedKey ? (
             <ProjectStepHistory projectId={project.id} stepKey={selectedKey} />
@@ -2339,6 +2507,21 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
       />
 
       <ProjectDialog open={editOpen} onOpenChange={setEditOpen} project={project} />
+      <StepDialog
+        open={stepDialogOpen}
+        onOpenChange={(open) => {
+          setStepDialogOpen(open);
+          if (!open) setEditingStepId(null);
+        }}
+        project={project}
+        step={
+          editingStepId
+            ? projectSteps.find((step) => step.id === editingStepId)
+            : undefined
+        }
+        defaultPhase={selectedPhase}
+        defaultManagerPicId={managerPicId ?? ""}
+      />
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <DialogContent>
           <DialogHeader>

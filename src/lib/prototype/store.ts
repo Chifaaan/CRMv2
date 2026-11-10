@@ -44,6 +44,10 @@ import {
   UMUM_TEMPLATE_ID,
 } from "./templates";
 import {
+  ensureMandatoryStages,
+  missingMandatoryProjectSteps,
+} from "./mandatory-steps";
+import {
   FORM_STEP_KEYS,
   type AppState,
   type Attachment,
@@ -53,12 +57,14 @@ import {
   type FormStepKey,
   type Phase,
   type FormTemplate,
+  type GateKind,
   type MediaOrder,
   type MediaOrderItem,
   type MediaOrderStatus,
   type Priority,
   type Project,
   type ProjectEvent,
+  type StageKind,
   type ProjectStep,
   type ProjectTemplate,
   TASK_STATUS_LABEL,
@@ -116,7 +122,7 @@ type PrototypeActions = {
   createProject: (input: CreateProjectInput) => string;
   startProject: (
     projectId: string,
-    phase: "planning" | "running",
+    phase: "prospek" | "planning" | "running",
     options?: { managerPicId?: string },
   ) => boolean;
   dismissProjectStartPrompt: (projectId: string) => void;
@@ -126,7 +132,9 @@ type PrototypeActions = {
       name: string;
       description?: string;
       phase?: Phase;
+      kind?: StageKind;
       financeKind?: FormStepKey;
+      gateKind?: GateKind;
       managerPicId?: string;
     },
   ) => string;
@@ -1021,23 +1029,34 @@ export const usePrototypeStore = create<PrototypeStore>()(
           templateVersion: input.templateVersion ?? template.version,
           structureLocked: mode === "legacy",
         };
+        const defaultTemplateStages =
+          mode === "legacy"
+            ? template.stages
+            : template.stages.filter((stage) => stage.phase !== "prospek");
+        const sourceStages =
+          mode === "template"
+            ? ensureMandatoryStages(
+                input.stages ?? defaultTemplateStages,
+                template.legacy,
+              )
+            : input.stages ?? [];
         const baseSteps =
-          mode === "manual"
+          mode === "manual" && sourceStages.length === 0
             ? []
             : stagesForProject(
                 projectId,
                 template,
-                input.stages,
+                sourceStages,
                 input.completedStageIds,
                 mode === "legacy",
               );
         const steps =
-          mode === "template"
-            ? baseSteps.map((step) => ({
+          mode === "legacy"
+            ? baseSteps
+            : baseSteps.map((step) => ({
                 ...step,
                 managerPicId: step.managerPicId ?? managerId,
-              }))
-            : baseSteps;
+              }));
         const forms = FORM_STEP_KEYS.map((key) => defaultForm(projectId, key));
         let events = projectEvent(state, {
           projectId,
@@ -1155,21 +1174,30 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const projectSteps = state.steps.filter(
           (step) => step.projectId === projectId,
         );
+        const hasProspekPhase = projectSteps.some(
+          (step) => step.phase === "prospek",
+        );
+        if (hasProspekPhase && phase !== "prospek") return false;
         const startedAt = now();
         let steps = projectSteps;
         let events = projectEvent(state, {
           projectId,
           step: null,
           eventType: "project.started",
-          summary: `Proyek dimulai dari fase ${phase === "running" ? "Running" : "Planning"}.`,
+          summary: `Proyek dimulai dari fase ${
+            phase === "running"
+              ? "Running"
+              : phase === "prospek"
+                ? "Prospek"
+                : "Planning"
+          }.`,
           metadata: {
             before: { startedAt: null, phase: null },
             after: { startedAt, phase, creationMode: project.creationMode },
           },
         });
 
-        if (project.creationMode === "template") {
-          if (phase === "running") {
+        if (project.creationMode === "template" && phase === "running") {
             const planning = projectSteps.filter(
               (step) => step.phase === "planning" && step.status === "pending",
             );
@@ -1191,11 +1219,11 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 },
               });
             }
-          }
-          const candidate = steps
-            .filter((step) => step.phase === phase && step.status === "pending")
-            .sort((a, b) => a.order - b.order)[0];
-          if (!candidate) return false;
+        }
+        const candidate = steps
+          .filter((step) => step.phase === phase && step.status === "pending")
+          .sort((a, b) => a.order - b.order)[0];
+        if (candidate) {
           const managerPicId = options?.managerPicId ?? candidate.managerPicId;
           if (!managerPicId) return false;
           steps = steps.map((step) =>
@@ -1220,6 +1248,8 @@ export const usePrototypeStore = create<PrototypeStore>()(
               managerPicId,
             },
           });
+        } else if (project.creationMode === "template") {
+          return false;
         }
 
         set({
@@ -1263,14 +1293,30 @@ export const usePrototypeStore = create<PrototypeStore>()(
           (step) => step.projectId === projectId,
         );
         const currentPhase = projectPhase(project, projectSteps);
+        const hasProspekPhase = projectSteps.some(
+          (step) => step.phase === "prospek",
+        );
         const allowedPhases: Phase[] =
           currentPhase === "finance"
             ? ["finance"]
-            : ["planning", "running"];
+            : hasProspekPhase
+              ? ["prospek", "planning", "running"]
+              : ["planning", "running"];
         const phase = input.phase ?? currentPhase;
         if (!allowedPhases.includes(phase)) return "";
         const finance = phase === "finance";
         if (finance && !input.financeKind) return "";
+        const requestedKind: StageKind =
+          input.kind ??
+          (finance
+            ? "finance_form"
+            : phase === "prospek"
+              ? input.financeKind
+                ? "finance_form"
+                : "simpro"
+              : "simpro");
+        if (requestedKind === "gate" && !input.gateKind) return "";
+        if (requestedKind === "finance_form" && !input.financeKind) return "";
         const stepId = uid("step");
         const managerPicId = input.managerPicId;
         const active = projectSteps.some((step) => step.status === "active");
@@ -1286,30 +1332,61 @@ export const usePrototypeStore = create<PrototypeStore>()(
           order:
             Math.max(0, ...projectSteps.map((item) => item.order)) + 1,
           status: activating ? "active" : "pending",
-          kind: finance ? "finance_form" : "simpro",
+          kind: requestedKind,
           required: true,
           weight: 1,
-          financeKind: finance ? input.financeKind : undefined,
+          financeKind:
+            requestedKind === "finance_form" ? input.financeKind : undefined,
+          gateKind: requestedKind === "gate" ? input.gateKind : undefined,
+          formTemplate:
+            requestedKind === "form"
+              ? defaultFormTemplate(input.name.trim(), [])
+              : undefined,
           tasks: [],
           managerPicId,
           startedAt: activating ? undefined : now(),
         };
-        set({
-          steps: [...state.steps, step],
-          projectEvents: projectEvent(state, {
-            projectId,
-            step: step.key,
-            eventType: "project.step_added",
-            summary: `Tahap ${step.name} ditambahkan.`,
-            metadata: {
-              after: {
-                name: step.name,
-                phase: step.phase,
-                kind: step.kind,
-                status: step.status,
-              },
+        const stepsWithMandatory = [...state.steps, step];
+        const phaseWasEmpty = !projectSteps.some(
+          (item) => item.phase === phase,
+        );
+        const mandatoryAdditions = phaseWasEmpty
+          ? missingMandatoryProjectSteps(project, stepsWithMandatory)
+          : [];
+        let events = projectEvent(state, {
+          projectId,
+          step: step.key,
+          eventType: "project.step_added",
+          summary: `Tahap ${step.name} ditambahkan.`,
+          metadata: {
+            after: {
+              name: step.name,
+              phase: step.phase,
+              kind: step.kind,
+              status: step.status,
             },
-          }),
+          },
+        });
+        if (mandatoryAdditions.length > 0) {
+          events = recordProjectEvent(events, {
+            projectId,
+            step: null,
+            eventType: "project.mandatory_steps_added",
+            actorId: actor.id,
+            summary: `Step wajib ${mandatoryAdditions
+              .map((item) => item.name)
+              .join(", ")} dibuat otomatis.`,
+            metadata: {
+              steps: mandatoryAdditions.map((item) => ({
+                key: item.key,
+                phase: item.phase,
+              })),
+            },
+          });
+        }
+        set({
+          steps: [...stepsWithMandatory, ...mandatoryAdditions],
+          projectEvents: events,
         });
         return stepId;
       },
@@ -1794,7 +1871,10 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const existing = input.id
           ? state.templates.find((item) => item.id === input.id)
           : undefined;
-        const stages = normalizeStageOrders(input.stages);
+        const stages = ensureMandatoryStages(
+          normalizeStageOrders(input.stages),
+          existing?.legacy ?? false,
+        );
         if (existing) {
           const next: ProjectTemplate = {
             ...existing,

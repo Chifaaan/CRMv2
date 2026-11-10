@@ -1,4 +1,8 @@
 "use client";
+import {
+  ensureMandatoryStages,
+  isMandatoryStage,
+} from "@/lib/prototype/mandatory-steps";
 
 import { useMemo, useState } from "react";
 import {
@@ -218,7 +222,7 @@ function SortableStageRow({
           {stage.gateKind ? ` · ${GATE_KIND_LABEL[stage.gateKind]}` : ""}
           {stage.financeKind ? ` · ${stage.financeKind.toUpperCase()}` : ""}
           {` · bobot ${stage.weight}`}
-          {stage.required ? "" : " · opsional"}
+{isMandatoryStage(stage) ? " · wajib" : " · opsional"}
           {stage.costBeforeCommitment ? " · berbiaya" : ""}
         </span>
       </button>
@@ -247,8 +251,11 @@ function TemplateEditor({
   const [projectType, setProjectType] = useState(
     template?.projectType ?? "Umum",
   );
-  const [stages, setStages] = useState<TemplateStage[]>(
-    template ? cloneStages(template.stages) : starterStages(),
+  const [stages, setStages] = useState<TemplateStage[]>(() =>
+    ensureMandatoryStages(
+      template ? cloneStages(template.stages) : starterStages(),
+      template?.legacy ?? false,
+    ),
   );
   const [selectedId, setSelectedId] = useState<string | null>(
     template?.stages[0]?.id ?? null,
@@ -317,8 +324,11 @@ function TemplateEditor({
   const deleteStage = (id: string) => {
     const target = stages.find((stage) => stage.id === id);
     if (!target) return;
-    if (target.kind === "gate" && target.gateKind === "client_approval") {
-      toast.error("Gerbang menang tidak bisa dihapus.");
+    if (
+      (target.kind === "gate" && target.gateKind === "client_approval") ||
+      isMandatoryStage(target)
+    ) {
+      toast.error("Step wajib tidak bisa dihapus.");
       return;
     }
     setStages((current) => normalize(current.filter((stage) => stage.id !== id)));
@@ -328,6 +338,14 @@ function TemplateEditor({
   const onDragEnd = (phase: Phase, event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+    const activeStage = stages.find((stage) => stage.id === active.id);
+    const overStage = stages.find((stage) => stage.id === over.id);
+    if (
+      (activeStage && isMandatoryStage(activeStage)) ||
+      (overStage && isMandatoryStage(overStage))
+    ) {
+      return;
+    }
     setStages((current) => {
       const phaseStages = current.filter((stage) => stage.phase === phase);
       const oldIndex = phaseStages.findIndex((stage) => stage.id === active.id);
@@ -407,16 +425,19 @@ function TemplateEditor({
   };
 
   const save = () => {
-    if (!validation.ok) {
-      toast.error(validation.errors[0] ?? "Template belum valid.");
+    const ensured = ensureMandatoryStages(stages, legacy);
+    const ensuredValidation = validateTemplateStages(ensured, { legacy });
+    if (!ensuredValidation.ok) {
+      toast.error(ensuredValidation.errors[0] ?? "Template belum valid.");
       return;
     }
+    setStages(ensured);
     const id = store.saveTemplate({
       id: template?.id,
       name,
       description,
       projectType,
-      stages,
+      stages: ensured,
       note,
     });
     if (!id) {
@@ -635,7 +656,8 @@ function TemplateEditor({
                   </Field>
                   <Field label="Jenis">
                     <NativeSelect
-                      value={selected.kind}
+                      disabled={isMandatoryStage(selected)}
+                value={selected.kind}
                       onChange={(value) =>
                         updateStage(selected.id, {
                           kind: value as StageKind,
@@ -666,7 +688,8 @@ function TemplateEditor({
                 {selected.kind === "finance_form" ? (
                   <Field label="Form keuangan">
                     <NativeSelect
-                      value={selected.financeKind ?? "rab"}
+                      disabled={isMandatoryStage(selected)}
+                  value={selected.financeKind ?? "rab"}
                       onChange={(value) =>
                         updateStage(selected.id, {
                           financeKind: value as FormStepKey,
@@ -684,7 +707,8 @@ function TemplateEditor({
                 {selected.kind === "gate" ? (
                   <Field label="Jenis gerbang">
                     <NativeSelect
-                      value={selected.gateKind ?? "go_no_go"}
+                      disabled={isMandatoryStage(selected)}
+                  value={selected.gateKind ?? "go_no_go"}
                       onChange={(value) =>
                         updateStage(selected.id, {
                           gateKind: value as GateKind,
@@ -999,7 +1023,8 @@ function TemplateEditor({
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => deleteStage(selected.id)}
+                  disabled={isMandatoryStage(selected)}
+        onClick={() => deleteStage(selected.id)}
                 >
                   <Trash2 className="size-3.5" /> Hapus tahap
                 </Button>

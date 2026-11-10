@@ -20,6 +20,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import { newProjectTemplates } from "@/lib/prototype/templates";
 import {
+  ensureMandatoryStages,
+  isMandatoryStage,
+  mandatoryStagesForPhases,
+} from "@/lib/prototype/mandatory-steps";
+import {
   canCreateProject,
   userById,
   validateTemplateStages,
@@ -76,6 +81,33 @@ function cloneStages(stages: TemplateStage[]): TemplateStage[] {
   }));
 }
 
+function templateCreationStages(template?: { stages: TemplateStage[]; legacy?: boolean }) {
+  const withoutProspek = (template?.stages ?? []).filter(
+    (stage) => stage.phase !== "prospek",
+  );
+  return cloneStages(
+    ensureMandatoryStages(withoutProspek, template?.legacy ?? false),
+  );
+}
+
+function manualCreationStages() {
+  return cloneStages(
+    ensureMandatoryStages(mandatoryStagesForPhases(["finance"])),
+  );
+}
+
+function prospekCreationStages(template?: { stages: TemplateStage[]; legacy?: boolean }) {
+  const prospek = (template?.stages ?? []).filter(
+    (stage) => stage.phase === "prospek",
+  );
+  return cloneStages(
+    ensureMandatoryStages(
+      prospek.length > 0 ? prospek : mandatoryStagesForPhases(["prospek"]),
+      template?.legacy ?? false,
+    ),
+  );
+}
+
 function formTemplateFor(title: string): NonNullable<TemplateStage["formTemplate"]> {
   return {
     title,
@@ -112,7 +144,7 @@ export function CrmProjectCreate() {
   const router = useRouter();
   const currentUser = userById(store, store.currentUserId);
   const activeTemplates = newProjectTemplates(store.templates);
-  const [draft, setDraft] = useState<Draft>({
+  const [draft, setDraft] = useState<Draft>(() => ({
     name: "",
     client: "",
     description: "",
@@ -123,8 +155,8 @@ export function CrmProjectCreate() {
     templateId: activeTemplates[0]?.id ?? "",
     managerId: "",
     mode: "template",
-    stages: cloneStages(activeTemplates[0]?.stages ?? []),
-  });
+    stages: templateCreationStages(activeTemplates[0]),
+  }));
   const [dirty, setDirty] = useState(false);
   const [restored, setRestored] = useState(false);
 
@@ -134,8 +166,20 @@ export function CrmProjectCreate() {
       if (raw) {
         const parsed = JSON.parse(raw) as Draft;
         if (parsed?.stages?.length) {
+          const restoredStages =
+            parsed.mode === "manual"
+              ? normalize([
+                  ...parsed.stages,
+                  ...mandatoryStagesForPhases(["finance"]),
+                ])
+              : parsed.stages;
           // eslint-disable-next-line react-hooks/set-state-in-effect
-          setDraft({ ...parsed, managerId: parsed.managerId ?? "", mode: parsed.mode ?? "template" });
+          setDraft({
+            ...parsed,
+            managerId: parsed.managerId ?? "",
+            mode: parsed.mode ?? "template",
+            stages: restoredStages,
+          });
           setRestored(true);
         }
       }
@@ -169,9 +213,33 @@ export function CrmProjectCreate() {
   const validation = validateTemplateStages(draft.stages, {
     legacy: template?.legacy,
   });
+  const includesProspek = draft.stages.some(
+    (stage) => stage.phase === "prospek",
+  );
+  const financeReady = ["bast", "invoice"].every((kind) =>
+    draft.stages.some(
+      (stage) => stage.phase === "finance" && stage.financeKind === kind,
+    ),
+  );
   const canSubmit =
     draft.name.trim().length > 0 &&
-    (draft.mode === "manual" || validation.ok);
+    (draft.mode === "manual" ? financeReady : validation.ok);
+  const toggleProspek = () => {
+    if (includesProspek) {
+      patch({
+        stages: normalize(
+          draft.stages.filter((stage) => stage.phase !== "prospek"),
+        ),
+      });
+      return;
+    }
+    patch({
+      stages: normalize([
+        ...prospekCreationStages(template),
+        ...draft.stages,
+      ]),
+    });
+  };
 
   const patch = (value: Partial<Draft>) => {
     setDraft((current) => ({ ...current, ...value }));
@@ -182,7 +250,7 @@ export function CrmProjectCreate() {
     const next = store.templates.find((item) => item.id === templateId);
     patch({
       templateId,
-      stages: cloneStages(next?.stages ?? []),
+      stages: templateCreationStages(next),
     });
   };
 
@@ -213,7 +281,7 @@ export function CrmProjectCreate() {
   const deleteStage = (id: string) => {
     const target = draft.stages.find((stage) => stage.id === id);
     if (!target) return;
-    if (target.required || target.kind === "gate") {
+    if (target.required || target.kind === "gate" || isMandatoryStage(target)) {
       toast.error("Tahap wajib dan gerbang tidak bisa dihapus.");
       return;
     }
@@ -288,6 +356,9 @@ export function CrmProjectCreate() {
         toast.error(validation.errors[0] ?? "Tahapan belum valid.");
         return;
       }
+    } else if (!financeReady) {
+      toast.error("Step wajib Finance (BAST dan Invoice) belum lengkap.");
+      return;
     }
     const id = store.createProject({
       name: draft.name.trim(),
@@ -304,7 +375,7 @@ export function CrmProjectCreate() {
       mode: draft.mode,
       templateId: draft.mode === "template" ? template?.id : undefined,
       managerId: draft.managerId,
-      stages: draft.mode === "template" ? draft.stages : undefined,
+      stages: draft.stages,
     });
     if (!id) {
       toast.error("Gagal membuat proyek.");
@@ -316,7 +387,11 @@ export function CrmProjectCreate() {
       /* ignore */
     }
     setDirty(false);
-    toast.success("Proyek dibuat dari template.");
+    toast.success(
+      draft.mode === "template"
+        ? "Proyek dibuat dari template."
+        : "Proyek manual dibuat.",
+    );
     router.push(`/crm/projects/${id}`);
   };
 
@@ -416,7 +491,7 @@ export function CrmProjectCreate() {
           </Field>
           <Field
             label="Mode proyek"
-            hint="Dari template menyalin tahapan dan step template; Manual dimulai tanpa step."
+            hint="Dari template menyalin tahapan dan step template; Manual membuat step wajib Finance dan step lain diatur di Journey Management."
             className="sm:col-span-2"
           >
             <NativeSelect
@@ -424,7 +499,7 @@ export function CrmProjectCreate() {
               onChange={(value) => {
                 const mode = value as "template" | "manual";
                 if (mode === "manual") {
-                  patch({ mode, stages: [], templateId: "" });
+                  patch({ mode, stages: manualCreationStages() });
                   return;
                 }
                 const next =
@@ -433,13 +508,20 @@ export function CrmProjectCreate() {
                 patch({
                   mode,
                   templateId: next?.id ?? "",
-                  stages: cloneStages(next?.stages ?? []),
+                  stages: templateCreationStages(next),
                 });
               }}
             >
               <option value="template">Dari template</option>
               <option value="manual">Manual</option>
             </NativeSelect>
+            {draft.mode === "manual" ? (
+              <p className="text-muted-foreground mt-1 text-[11px]">
+                Mode Manual: tahapan dan step dibuat di dalam proyek dan dapat
+                diatur di Journey Management. Dua step wajib Finance (BAST dan
+                Invoice) dibuat otomatis.
+              </p>
+            ) : null}
           </Field>
           <Field
             label="Template"
@@ -477,6 +559,29 @@ export function CrmProjectCreate() {
                 ))}
             </NativeSelect>
           </Field>
+          <Field
+            label="Tahap Prospek"
+            hint="Opsional. Bila disertakan, RAB dan Decision Win / Loss dibuat otomatis."
+            className="sm:col-span-2"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant={includesProspek ? "outline" : "default"}
+                size="sm"
+                onClick={toggleProspek}
+              >
+                {includesProspek
+                  ? "Hapus tahapan Prospek"
+                  : "Tambah tahapan Prospek"}
+              </Button>
+              <span className="text-muted-foreground text-[11px]">
+                {includesProspek
+                  ? "Fase Prospek disertakan dengan step wajib RAB + Decision."
+                  : "Prospek tidak termasuk dalam proyek ini."}
+              </span>
+            </div>
+          </Field>
         </div>
       </SectionCard>
 
@@ -489,7 +594,7 @@ export function CrmProjectCreate() {
             variant="outline"
             size="sm"
             onClick={() =>
-              patch({ stages: cloneStages(template?.stages ?? []) })
+              patch({ stages: templateCreationStages(template) })
             }
           >
             <RotateCcw className="size-3.5" /> Kembalikan ke template
@@ -545,10 +650,21 @@ export function CrmProjectCreate() {
                           <span className="bg-muted shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold">
                             {STAGE_KIND_LABEL[stage.kind]}
                           </span>
+                          <span
+                            className={cn(
+                              "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold",
+                              isMandatoryStage(stage)
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-slate-100 text-slate-600",
+                            )}
+                          >
+                            {isMandatoryStage(stage) ? "Wajib" : "Opsional"}
+                          </span>
                           <Button
                             variant="ghost"
                             size="icon-sm"
                             aria-label="Naikkan tahap"
+                            disabled={isMandatoryStage(stage)}
                             onClick={() => moveStage(stage.id, -1)}
                           >
                             <ArrowUp className="size-3.5" />
@@ -557,6 +673,7 @@ export function CrmProjectCreate() {
                             variant="ghost"
                             size="icon-sm"
                             aria-label="Turunkan tahap"
+                            disabled={isMandatoryStage(stage)}
                             onClick={() => moveStage(stage.id, 1)}
                           >
                             <ArrowDown className="size-3.5" />
@@ -565,9 +682,15 @@ export function CrmProjectCreate() {
                             variant="ghost"
                             size="icon-sm"
                             aria-label="Hapus tahap"
-                            disabled={stage.required || stage.kind === "gate"}
+                            disabled={
+                              stage.required ||
+                              stage.kind === "gate" ||
+                              isMandatoryStage(stage)
+                            }
                             title={
-                              stage.required || stage.kind === "gate"
+                              stage.required ||
+                              stage.kind === "gate" ||
+                              isMandatoryStage(stage)
                                 ? "Tahap wajib dan gerbang tidak bisa dihapus"
                                 : "Hapus tahap"
                             }
@@ -579,6 +702,7 @@ export function CrmProjectCreate() {
 
                         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                           <NativeSelect
+                            disabled={isMandatoryStage(stage)}
                             value={stage.kind}
                             onChange={(value) => {
                               const kind = value as StageKind;
@@ -611,6 +735,7 @@ export function CrmProjectCreate() {
                           </NativeSelect>
                           {stage.kind === "finance_form" ? (
                             <NativeSelect
+                              disabled={isMandatoryStage(stage)}
                               value={stage.financeKind ?? "rab"}
                               onChange={(value) =>
                                 updateStage(stage.id, {
@@ -627,6 +752,7 @@ export function CrmProjectCreate() {
                           ) : null}
                           {stage.kind === "gate" ? (
                             <NativeSelect
+                              disabled={isMandatoryStage(stage)}
                               value={stage.gateKind ?? "go_no_go"}
                               onChange={(value) =>
                                 updateStage(stage.id, {
@@ -763,7 +889,35 @@ export function CrmProjectCreate() {
           })}
         </div>
       </SectionCard>
-      ) : null}
+      ) : (
+        <SectionCard
+          title="Step otomatis mode Manual"
+          description="Step wajib Finance dibuat otomatis; step lain ditambahkan dan diatur di Journey Management."
+        >
+          <div className="space-y-1 text-xs">
+            {draft.stages.map((stage) => (
+              <div
+                key={stage.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded border px-2 py-1"
+              >
+                <span>
+                  {PHASE_LABEL[stage.phase]} · {stage.name}
+                </span>
+                <span className="bg-amber-100 rounded px-1.5 py-0.5 text-[9px] font-semibold text-amber-800">
+                  Wajib
+                </span>
+              </div>
+            ))}
+            {draft.stages.length === 0 ? (
+              <p className="text-muted-foreground">Belum ada step.</p>
+            ) : null}
+          </div>
+          <p className="text-muted-foreground mt-2 text-[11px]">
+            Prospek {includesProspek ? "disertakan" : "tidak disertakan"}; gunakan
+            tombol Tahap Prospek di atas untuk menambah atau menghapusnya.
+          </p>
+        </SectionCard>
+      )}
 
       <SectionCard
         title="Ringkasan sebelum dibuat"
@@ -781,8 +935,8 @@ export function CrmProjectCreate() {
         </div>
         <p className="text-muted-foreground mt-3 text-xs">
           {draft.mode === "template"
-            ? `Template ${template?.name ?? "—"} v${template?.version ?? "—"} · ${draft.stages.length} tahap total.`
-            : "Manual · tanpa step awal; step disusun di Journey Management."}
+            ? `Template ${template?.name ?? "—"} v${template?.version ?? "—"} · ${draft.stages.length} tahap total (${draft.stages.filter(isMandatoryStage).length} wajib, ${draft.stages.filter((stage) => !isMandatoryStage(stage)).length} opsional).`
+            : `Manual · ${draft.stages.filter(isMandatoryStage).length} step wajib; tahapan dan step lain diatur di Journey Management.`}
         </p>
         {draft.mode === "template" && validation.errors.length > 0 ? (
           <ul className="mt-3 space-y-1 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-800">

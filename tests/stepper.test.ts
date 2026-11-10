@@ -99,6 +99,7 @@ describe("data-driven stepper", () => {
       "finance",
     ]);
     expect(phasesForProject(manual, umumSteps)).toEqual([
+      "prospek",
       "planning",
       "running",
       "finance",
@@ -135,3 +136,50 @@ describe("mixed-template group phase badges", () => {
   });
 });
 
+describe("phasesForProject", () => {
+  it("includes Prospek when the project has Prospek steps", () => {
+    const project = {
+      id: "p1",
+      code: "PRJ-1",
+      name: "Proyek",
+      client: "",
+      description: "",
+      priority: "medium" as const,
+      status: "active" as const,
+      startDate: "",
+      targetEndDate: "",
+      coverColor: "#000",
+      createdById: "u-pm1",
+      createdAt: new Date().toISOString(),
+      lifecycle: "active" as const,
+      creationMode: "template" as const,
+    };
+    const steps = [
+      {
+        id: "s1",
+        projectId: "p1",
+        key: "s1",
+        name: "RAB",
+        phase: "prospek" as const,
+        order: 1,
+        status: "pending" as const,
+        kind: "finance_form" as const,
+        financeKind: "rab" as const,
+        required: true,
+        weight: 1,
+        tasks: [],
+      },
+    ];
+    expect(phasesForProject(project, steps)).toEqual([
+      "prospek",
+      "planning",
+      "running",
+      "finance",
+    ]);
+    expect(phasesForProject({ ...project, creationMode: "manual" }, [])).toEqual([
+      "planning",
+      "running",
+      "finance",
+    ]);
+  });
+});

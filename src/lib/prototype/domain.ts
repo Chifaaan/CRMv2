@@ -29,6 +29,10 @@ import {
   type WorkloadRow,
 } from "./types";
 import { isNewProjectTemplate } from "./templates";
+import {
+  MANDATORY_STEP_SPECS,
+  matchesMandatorySpec,
+} from "./mandatory-steps";
 
 export function userById(state: AppState, id?: string): User | undefined {
   return state.users.find((user) => user.id === id);
@@ -785,6 +789,25 @@ export function validateTemplateStages(
     }
   }
 
+  const includedPhases = new Set(stages.map((stage) => stage.phase));
+  for (const spec of options.legacy ? [] : MANDATORY_STEP_SPECS) {
+    if (!includedPhases.has(spec.phase)) continue;
+    if (!stages.some((stage) => matchesMandatorySpec(stage, spec))) {
+      errors.push(
+        `Fase ${PHASE_LABEL[spec.phase]} wajib memiliki step "${spec.name}".`,
+      );
+    }
+  }
+  const rabIndex = (options.legacy ? [] : stages)
+    .filter((stage) => stage.phase === "prospek" && stage.financeKind === "rab")
+    .reduce((min, stage) => Math.min(min, stage.order), Number.POSITIVE_INFINITY);
+  const decisionIndex = stages
+    .filter((stage) => stage.phase === "prospek" && stage.gateKind === "client_approval")
+    .reduce((min, stage) => Math.min(min, stage.order), Number.POSITIVE_INFINITY);
+  if (Number.isFinite(rabIndex) && Number.isFinite(decisionIndex) && rabIndex > decisionIndex) {
+    errors.push("Step RAB harus berada sebelum Decision Win / Loss.");
+  }
+
   const sorted = [...stages].sort((a, b) => a.order - b.order);
   let lastPhase = -1;
   for (const stage of sorted) {
@@ -1030,6 +1053,18 @@ export function taskTransition(
 
 export function canAssignForm(user: User): boolean {
   return user.role === "admin" || user.role === "manager";
+}
+
+export function financeAssigneeCandidates(
+  state: AppState,
+  form: StepForm,
+): User[] {
+  const roles: Role[] = form.type === "bast" ? ["finance", "media"] : ["finance"];
+  return state.users.filter((user) => roles.includes(user.role));
+}
+
+export function canAssignFinanceForm(user: User): boolean {
+  return canAssignForm(user);
 }
 
 export function canEditForm(

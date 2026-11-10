@@ -148,6 +148,10 @@ function kolStages(): TemplateStage[] {
       { description: "RAB draf dibentuk di tahap ini." },
       ["Minta rate card KOL"],
     ),
+    stage("tpl-kol-rab", "RAB", "prospek", "finance_form", {
+      financeKind: "rab",
+      description: "RAB wajib untuk penawaran KOL.",
+    }),
     stage("tpl-kol-approval", "KOL Approval", "prospek", "gate", {
       gateKind: "client_approval",
       description: "Persetujuan klien atas KOL dan penawaran.",
@@ -223,7 +227,7 @@ function eventStages(): TemplateStage[] {
       {},
       ["Survei lokasi acara"],
     ),
-    stage("tpl-event-budget", "Budget & Quotation Review", "prospek", "finance_form", {
+    stage("tpl-event-budget", "RAB", "prospek", "finance_form", {
       financeKind: "rab",
     }),
     formStage(
@@ -233,9 +237,9 @@ function eventStages(): TemplateStage[] {
       {},
       ["Pilih vendor dan venue"],
     ),
-    stage("tpl-event-approval", "Client Approval", "prospek", "gate", {
+    stage("tpl-event-approval", "Decision Win / Loss", "prospek", "gate", {
       gateKind: "client_approval",
-      description: "Persetujuan klien atas anggaran dan vendor.",
+      description: "Keputusan menang atau kalah atas anggaran dan vendor.",
     }),
     simproStage("tpl-event-confirm", "Confirm Vendor & Venue", "planning", {
       tasks: [task("evt-t8", "Konfirmasi booking vendor dan venue", "PM", "PO booking")],
@@ -314,9 +318,18 @@ function executionStages(
 
 export function isNewProjectTemplate(template: ProjectTemplate): boolean {
   const phases = new Set<string>(template.stages.map((stage) => stage.phase));
-  if (phases.has("prospek")) return false;
   if (!["planning", "running", "finance"].every((phase) => phases.has(phase))) {
     return false;
+  }
+  const prospek = template.stages.filter((stage) => stage.phase === "prospek");
+  if (prospek.length > 0) {
+    const hasRab = prospek.some(
+      (stage) => stage.kind === "finance_form" && stage.financeKind === "rab",
+    );
+    const hasDecision = prospek.some(
+      (stage) => stage.kind === "gate" && stage.gateKind === "client_approval",
+    );
+    if (!hasRab || !hasDecision) return false;
   }
   const planning = template.stages.filter((stage) => stage.phase === "planning");
   const running = template.stages.filter((stage) => stage.phase === "running");
@@ -370,7 +383,7 @@ export function createSeedTemplates(): ProjectTemplate[] {
       name: "KOL Campaign",
       description: "Tahap KOL dengan Form, SIMPRO, gerbang menang, dan form keuangan.",
       projectType: "KOL Campaign",
-      version: 2,
+      version: 3,
       status: "active",
       stages: withOrder(kolStages()),
       changelog: [
@@ -378,6 +391,11 @@ export function createSeedTemplates(): ProjectTemplate[] {
         {
           version: 2,
           note: "Checklist dipecah menjadi Form dan SIMPRO.",
+          createdAt,
+        },
+        {
+          version: 3,
+          note: "RAB wajib pada fase Prospek.",
           createdAt,
         },
       ],
@@ -389,7 +407,7 @@ export function createSeedTemplates(): ProjectTemplate[] {
       name: "Event Program",
       description: "Tahap event dengan Form, SIMPRO, gerbang menang, dan form keuangan.",
       projectType: "Event Program",
-      version: 2,
+      version: 3,
       status: "active",
       stages: withOrder(eventStages()),
       changelog: [
@@ -397,6 +415,11 @@ export function createSeedTemplates(): ProjectTemplate[] {
         {
           version: 2,
           note: "Checklist dipecah menjadi Form dan SIMPRO.",
+          createdAt,
+        },
+        {
+          version: 3,
+          note: "RAB dan Decision Win / Loss menjadi step wajib Prospek.",
           createdAt,
         },
       ],
@@ -442,17 +465,38 @@ export function createSeedTemplates(): ProjectTemplate[] {
     {
       id: EVENT_EXECUTION_TEMPLATE_ID,
       name: "Event Eksekusi",
-      description: "Eksekusi event pasca-Prospek: Planning, Running, Finance.",
+      description: "Prospek opsional (RAB + Decision), lalu Planning, Running, Finance.",
       projectType: "Event Eksekusi",
-      version: 1,
+      version: 2,
       status: "active",
-      stages: executionStages(
-        "tpl-event-eksekusi",
-        "Confirm Vendor",
-        "Event Execution",
-      ),
+      stages: withOrder([
+        stage("tpl-event-eksekusi-rab", "RAB", "prospek", "finance_form", {
+          financeKind: "rab",
+          description: "RAB wajib pada fase Prospek.",
+        }),
+        stage(
+          "tpl-event-eksekusi-decision",
+          "Decision Win / Loss",
+          "prospek",
+          "gate",
+          {
+            gateKind: "client_approval",
+            description: "Keputusan menang atau kalah wajib pada fase Prospek.",
+          },
+        ),
+        ...executionStages(
+          "tpl-event-eksekusi",
+          "Confirm Vendor",
+          "Event Execution",
+        ),
+      ]),
       changelog: [
         { version: 1, note: "Template eksekusi event pasca-Prospek.", createdAt },
+        {
+          version: 2,
+          note: "Fase Prospek dengan RAB dan Decision Win / Loss.",
+          createdAt,
+        },
       ],
       createdById: "u-admin",
       createdAt,

@@ -43,6 +43,8 @@ import { clearPrototypeFiles } from "@/lib/prototype/files";
 import { NativeSelect, UserAvatar } from "./ui";
 
 const NAV_SIMPRO = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/my-tasks", label: "My tasks", icon: ListTodo },
   { href: "/forms", label: "Forms", icon: CheckCheck },
 ];
@@ -248,8 +250,11 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
   const showCrm = roleCanAccessCrm(currentUser.role);
   const showSimpro = roleCanAccessSimpro(currentUser.role);
   const showSimproForms = currentUser.role === "finance";
+  const withoutProjectBrowser = (item: { href: string }) =>
+    item.href !== "/projects" ||
+    (currentUser.role !== "assignee" && currentUser.role !== "media");
   const simproNav = showSimpro
-    ? NAV_SIMPRO
+    ? NAV_SIMPRO.filter(withoutProjectBrowser)
     : showSimproForms
       ? NAV_SIMPRO.filter(
           (item) => item.href === "/forms" || item.href === "/my-tasks",

@@ -168,7 +168,7 @@ export type Project = {
   groupId?: string;
   creationMode?: ProjectCreationMode;
   startedAt?: string;
-  initialPhase?: "planning" | "running";
+  initialPhase?: "prospek" | "planning" | "running";
   phaseCompletedAt?: Partial<Record<"planning" | "running" | "finance", string>>;
   startPromptDismissedAt?: string;
   cancelReason?: string;

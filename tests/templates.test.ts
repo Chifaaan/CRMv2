@@ -40,13 +40,33 @@ function completeFormStage(projectId: string, stepKey: string) {
   usePrototypeStore.getState().completeStep(projectId, stepKey);
 }
 
-function completeFirstThreeKolStages(projectId: string) {
-  for (let index = 0; index < 3; index += 1) {
+function approveFinanceStage(projectId: string, stepKey: string) {
+  const store = usePrototypeStore.getState();
+  const form = store.forms.find(
+    (item) => item.projectId === projectId && item.type === stepKey,
+  )!;
+  store.setCurrentUser("u-manager");
+  usePrototypeStore.getState().assignForm(form.id, "u-finance");
+  usePrototypeStore.getState().setCurrentUser("u-finance");
+  usePrototypeStore.getState().saveForm(form.id, form.payload);
+  usePrototypeStore.getState().submitForm(form.id);
+  usePrototypeStore.getState().setCurrentUser("u-pm1");
+  usePrototypeStore.getState().reviewForm(form.id, "approved", "");
+}
+
+function completeKolProspekStages(projectId: string) {
+  for (let index = 0; index < 4; index += 1) {
     const step = usePrototypeStore
       .getState()
       .steps.filter((item) => item.projectId === projectId)
       .sort((a, b) => a.order - b.order)[index];
-    completeFormStage(projectId, step.key);
+    if (step.kind === "finance_form") {
+      approveFinanceStage(projectId, step.financeKind ?? "rab");
+      usePrototypeStore.getState().setCurrentUser("u-pm1");
+      usePrototypeStore.getState().completeStep(projectId, step.key);
+    } else {
+      completeFormStage(projectId, step.key);
+    }
   }
 }
 
@@ -75,7 +95,7 @@ describe("template model", () => {
       .steps.filter((step) => step.projectId === projectId);
     expect(project.templateId).toBe(KOL_TEMPLATE_ID);
     expect(project.structureLocked).toBe(true);
-    expect(steps).toHaveLength(12);
+    expect(steps).toHaveLength(13);
     expect(steps[0].formTemplate?.title).toBe("Brief Received");
     expect(steps[0].status).toBe("active");
   });
@@ -196,7 +216,7 @@ describe("gate and lifecycle", () => {
 
   it("approving the winning gate moves the project to Planning and locks RAB", () => {
     const projectId = createKolProject();
-    completeFirstThreeKolStages(projectId);
+    completeKolProspekStages(projectId);
     const gate = usePrototypeStore
       .getState()
       .steps.find(
@@ -217,7 +237,7 @@ describe("gate and lifecycle", () => {
 
   it("rejecting the gate marks the project Kalah with a reason and read-only", () => {
     const projectId = createKolProject();
-    completeFirstThreeKolStages(projectId);
+    completeKolProspekStages(projectId);
     const gate = usePrototypeStore
       .getState()
       .steps.find(
@@ -237,7 +257,7 @@ describe("gate and lifecycle", () => {
 
   it("requires a reason for rejection", () => {
     const projectId = createKolProject();
-    completeFirstThreeKolStages(projectId);
+    completeKolProspekStages(projectId);
     const gate = usePrototypeStore
       .getState()
       .steps.find(
@@ -268,11 +288,11 @@ describe("progress and permissions", () => {
       coverColor: "#000000",
       templateId: KOL_TEMPLATE_ID,
     });
-    completeFirstThreeKolStages(projectId);
-    // 3 completed form stages of 11 total weight (4 form + 1 gate + 4 simpro + 1 form + 0.5 + 0.5 + 1 payment).
+    completeKolProspekStages(projectId);
+    // 4 completed Prospek stages of 12 total weight (3 form + 1 RAB + 1 gate + 4 simpro + 1 form + 0.5 + 0.5 + 1 payment).
     expect(
       calculateJourneyProgress(usePrototypeStore.getState(), projectId),
-    ).toBe(27);
+    ).toBe(33);
   });
 
   it("allows only Admin and PM to manage templates", () => {

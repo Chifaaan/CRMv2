@@ -49,6 +49,7 @@ export function canSeeFinanceFormInSimpro(
 
   if (user.role === "admin") return true;
   if (user.role === "pm") return project.createdById === user.id;
+  if (user.role === "manager") return true;
   if (user.role === "finance") return form.assigneeId === user.id;
   if (user.role === "media") {
     return form.type === "bast" && form.assigneeId === user.id;

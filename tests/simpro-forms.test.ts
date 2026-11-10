@@ -54,11 +54,11 @@ describe("finance forms in SIMPRO Forms", () => {
     ).toBe(true);
   });
 
-  it("hides finance forms from Manager and Assignee", () => {
+  it("shows finance forms to Manager and hides them from Assignee", () => {
     const state = createSeedState();
     const manager = userById(state, "u-manager")!;
     const assignee = userById(state, "u-assignee1")!;
-    expect(simproFinanceFormRows(state, manager)).toEqual([]);
+    expect(simproFinanceFormRows(state, manager).length).toBeGreaterThan(0);
     expect(simproFinanceFormRows(state, assignee)).toEqual([]);
   });
 

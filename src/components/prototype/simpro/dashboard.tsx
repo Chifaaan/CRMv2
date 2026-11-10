@@ -38,7 +38,8 @@ export function SimproDashboard() {
     (task) =>
       !task.archivedAt &&
       projectIds.has(task.projectId) &&
-      (currentUser?.role !== "assignee" || task.assigneeId === currentUser.id),
+      (currentUser?.role !== "assignee" && currentUser?.role !== "media" ||
+        task.assigneeId === currentUser.id),
   );
   const completed = tasks.filter((task) => task.status === "completed").length;
   const openTasks = tasks.length - completed;
@@ -130,7 +131,12 @@ export function SimproDashboard() {
               return (
                 <Link
                   key={project.id}
-                  href={`/projects/${project.id}`}
+                  href={
+                    currentUser.role === "assignee" ||
+                    currentUser.role === "media"
+                      ? "/my-tasks"
+                      : `/projects/${project.id}`
+                  }
                   className="hover:bg-muted/40 flex items-center gap-3 rounded-lg px-2 py-2"
                 >
                   <div className="size-8 shrink-0 rounded-md" style={{ backgroundColor: project.coverColor }} />

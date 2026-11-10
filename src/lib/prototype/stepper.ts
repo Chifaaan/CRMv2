@@ -22,7 +22,12 @@ export function phasesForProject(
   project: Project | undefined,
   steps: ProjectStep[],
 ): Phase[] {
-  if (project && isNewLifecycleProject(project)) return [...NEW_PROJECT_PHASES];
+  if (project && isNewLifecycleProject(project)) {
+    const present = phasesPresent(steps);
+    return present.includes("prospek")
+      ? ["prospek", ...NEW_PROJECT_PHASES]
+      : [...NEW_PROJECT_PHASES];
+  }
   return phasesPresent(steps);
 }
 

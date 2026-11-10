@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { usePrototypeStore } from "../src/lib/prototype/store";
 import {
   businessDashboardRows,
+  canAssignFinanceForm,
+  financeAssigneeCandidates,
   canEditForm,
   formsNeedingAction,
   canAssignOperational,
@@ -384,5 +386,135 @@ describe("media and BOD roles", () => {
     expect(entryBadge).toBe(1);
     expect(financeBadge).toBe(1);
     expect(entryBadge + financeBadge).toBe(2);
+  });
+});
+
+describe("form assignment from Forms", () => {
+  it("assigns an unassigned form entry as Manager", () => {
+    const seed = createSeedState();
+    const project = activeProject(seed);
+    const manager = seed.users.find((user) => user.role === "manager")!;
+    const state: AppState = {
+      ...seed,
+      projects: [project],
+      steps: [
+        {
+          id: "step-form",
+          projectId: project.id,
+          key: "step-form",
+          name: "Brief",
+          phase: "planning",
+          order: 1,
+          status: "active",
+          kind: "form",
+          required: true,
+          weight: 1,
+          tasks: [],
+        },
+      ],
+      formEntries: [
+        {
+          id: "entry-unassigned",
+          projectId: project.id,
+          stepKey: "step-form",
+          title: "Brief",
+          status: "unassigned",
+          payload: { values: {} },
+          versions: [],
+          createdById: "u-pm1",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+    usePrototypeStore.getState().reset();
+    usePrototypeStore.setState({
+      projects: state.projects,
+      steps: state.steps,
+      formEntries: state.formEntries,
+      users: state.users,
+      currentUserId: manager.id,
+    });
+    usePrototypeStore.getState().assignFormEntry("entry-unassigned", "u-assignee1");
+    const entry = usePrototypeStore
+      .getState()
+      .formEntries.find((item) => item.id === "entry-unassigned")!;
+    expect(entry.assigneeId).toBe("u-assignee1");
+    expect(entry.status).toBe("assigned");
+  });
+
+  const seed = createSeedState();
+
+  it("lets Manager see and assign an unassigned finance form", () => {
+    const project = activeProject(seed);
+    const manager = seed.users.find((user) => user.role === "manager")!;
+    const form = financeForm(project, "bast", "");
+    form.assigneeId = undefined;
+    form.status = "unassigned";
+    const state: AppState = {
+      ...seed,
+      projects: [project],
+      steps: [financeStep(project, "bast")],
+      forms: [form],
+    };
+    expect(canSeeFinanceFormInSimpro(state, manager, form)).toBe(true);
+    expect(canAssignFinanceForm(manager)).toBe(true);
+    expect(
+      financeAssigneeCandidates(state, form)
+        .map((user) => user.role)
+        .sort(),
+    ).toEqual(["finance", "media"]);
+    expect(
+      financeAssigneeCandidates(state, financeForm(project, "rab", ""))
+        .map((user) => user.role),
+    ).toEqual(["finance"]);
+
+    usePrototypeStore.getState().reset();
+    usePrototypeStore.setState({
+      projects: state.projects,
+      steps: state.steps,
+      forms: state.forms,
+      users: state.users,
+      currentUserId: manager.id,
+    });
+    usePrototypeStore.getState().assignForm(form.id, "u-finance");
+    const assigned = usePrototypeStore
+      .getState()
+      .forms.find((item) => item.id === form.id)!;
+    expect(assigned.assigneeId).toBe("u-finance");
+    expect(assigned.status).toBe("assigned");
+    expect(
+      usePrototypeStore
+        .getState()
+        .projectEvents.some((event) => event.eventType === "bast.assigned"),
+    ).toBe(true);
+  });
+
+  it("lets Manager see unassigned project form entries in Forms", () => {
+    const project = activeProject(seed);
+    const manager = seed.users.find((user) => user.role === "manager")!;
+    const state: AppState = {
+      ...seed,
+      projects: [project],
+      formEntries: [
+        {
+          id: "entry-unassigned",
+          projectId: project.id,
+          stepKey: "step-form",
+          title: "Brief",
+          status: "unassigned",
+          payload: { values: {} },
+          versions: [],
+          createdById: "u-pm1",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+    expect(
+      state.formEntries.some(
+        (entry) =>
+          entry.status === "unassigned" &&
+          (manager.role === "manager" || entry.assigneeId === manager.id),
+      ),
+    ).toBe(true);
   });
 });

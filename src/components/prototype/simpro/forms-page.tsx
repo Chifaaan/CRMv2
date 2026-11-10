@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   canAssignFormEntry,
+  canAssignFinanceForm,
+  financeAssigneeCandidates,
   formatDate,
   operationalAssigneeCandidates,
   stepFor,
@@ -113,17 +115,26 @@ function FormRowAssignControl({ row }: { row: FormRow }) {
   const currentUser = userById(store, store.currentUserId);
   const [userId, setUserId] = useState("");
   const entry = row.entry;
-  if (
-    !entry ||
-    entry.status !== "unassigned" ||
-    !currentUser ||
-    !canAssignFormEntry(currentUser)
-  ) {
+  const financeForm = row.kind === "finance" ? row.form : undefined;
+  if (!currentUser) return null;
+  if (entry) {
+    if (entry.status !== "unassigned" || !canAssignFormEntry(currentUser)) {
+      return null;
+    }
+  } else if (financeForm) {
+    if (financeForm.assigneeId || !canAssignFinanceForm(currentUser)) {
+      return null;
+    }
+  } else {
     return null;
   }
-  const candidates = row.project
-    ? operationalAssigneeCandidates(store, currentUser, row.project)
-    : [];
+  const candidates = entry
+    ? row.project
+      ? operationalAssigneeCandidates(store, currentUser, row.project)
+      : []
+    : financeForm
+      ? financeAssigneeCandidates(store, financeForm)
+      : [];
   if (candidates.length === 0) return null;
   return (
     <div className="flex items-center gap-1.5">
@@ -144,8 +155,13 @@ function FormRowAssignControl({ row }: { row: FormRow }) {
         variant="outline"
         disabled={!userId}
         onClick={() => {
-          store.assignFormEntry(entry.id, userId);
-          toast.success("Entri form di-assign.");
+          if (entry) {
+            store.assignFormEntry(entry.id, userId);
+            toast.success("Entri form di-assign.");
+          } else if (financeForm) {
+            store.assignForm(financeForm.id, userId);
+            toast.success("Form keuangan di-assign.");
+          }
           setUserId("");
         }}
       >
