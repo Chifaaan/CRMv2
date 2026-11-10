@@ -335,7 +335,7 @@ export function SimproFormsPage() {
       return;
     }
     if (row.kind === "finance") {
-      router.push(`/crm/projects/${row.project.id}/forms/${row.type}`);
+      router.push(`/forms/finance/${row.project.id}/${row.type}`);
       return;
     }
     router.push(`/forms?entry=${row.entry.id}`);

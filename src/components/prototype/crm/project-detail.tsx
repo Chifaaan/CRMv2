@@ -41,11 +41,12 @@ import {
   activeSteps,
   calculateJourneyProgress,
   canApproveGate,
+  assignableUsersForForm,
+  canAssignForm,
   canAssignFormEntry,
   canCancelProject,
   canCreateFormEntry,
   canEditForm,
-  canEditPhaseStructure,
   canManageProject,
   evaluateGate,
   formatCurrency,
@@ -69,7 +70,6 @@ import {
   LIFECYCLE_LABEL,
   PHASE_HINT,
   PHASE_LABEL,
-  PHASE_ORDER,
   ROLE_LABEL,
   type FormEntry,
   type Phase,
@@ -96,6 +96,7 @@ import {
   UserAvatar,
 } from "../ui";
 import { PitchingDialog, ProjectDialog } from "../dialogs";
+import { JourneyManagement } from "./journey-management";
 import { ProjectStepHistory } from "./project-history";
 import { ProjectMediaOrders } from "./media-order";
 import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
@@ -555,10 +556,8 @@ function AssignControl({
   const currentUser = userById(store, store.currentUserId);
   const [userId, setUserId] = useState(form.assigneeId ?? "");
   if (!currentUser) return null;
-  const canAssign = currentUser.role === "admin" || currentUser.role === "manager";
-  const candidates = store.users.filter((user) =>
-    form.type === "survey" ? user.role === "assignee" : user.role === "finance",
-  );
+  const canAssign = canAssignForm(currentUser);
+  const candidates = assignableUsersForForm(store, form);
   if (form.assigneeId) {
     return (
       <div className="flex items-center gap-2 text-xs">
@@ -1774,105 +1773,6 @@ function CompletedSummary({ project }: { project: Project }) {
   );
 }
 
-function PhaseComposer({
-  project,
-  phase,
-}: {
-  project: Project;
-  phase: Phase;
-}) {
-  const store = usePrototypeStore();
-  const currentUser = userById(store, store.currentUserId);
-  const phaseState = project.phaseStates?.[phase];
-  const template = store.templates.find((item) => item.id === project.templateId);
-  const phaseSteps = store.steps
-    .filter((step) => step.projectId === project.id && step.phase === phase)
-    .sort((a, b) => a.order - b.order);
-  const canManage = Boolean(currentUser && canManageProject(currentUser, project));
-  const canEdit = canEditPhaseStructure(project, phase);
-  if (!phaseState || phaseState.startedAt) return null;
-  if (!canManage) {
-    return (
-      <SectionCard
-        title={`Fase ${PHASE_LABEL[phase]} belum dimulai`}
-        description="PM pemilik proyek menyusun fase ini setelah gerbang menang."
-      >
-        <p className="text-muted-foreground text-xs">
-          {phaseSteps.length} tahap sudah disusun.
-        </p>
-      </SectionCard>
-    );
-  }
-  const templateStages = (template?.stages ?? []).filter(
-    (stage) => stage.phase === phase,
-  );
-  const legacyEmptyPlanning =
-    template?.legacy && phase === "planning" && phaseSteps.length === 0;
-  const priorPhases = PHASE_ORDER.slice(0, PHASE_ORDER.indexOf(phase));
-  const priorDone = priorPhases.every((prior) => {
-    const steps = store.steps.filter(
-      (step) => step.projectId === project.id && step.phase === prior,
-    );
-    if (steps.length === 0) return Boolean(template?.legacy && prior === "planning");
-    return steps.every(
-      (step) => step.status === "completed" || step.status === "skipped",
-    );
-  });
-  const readyToStart = priorDone && (phaseSteps.length > 0 || legacyEmptyPlanning);
-  return (
-    <SectionCard
-      title={`Susun fase ${PHASE_LABEL[phase]}`}
-      description="Fase terkunci setelah dimulai. Susun tahap dari template sebelum mulai."
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="text-muted-foreground">
-          {phaseSteps.length > 0
-            ? `${phaseSteps.length} tahap: ${phaseSteps.map((step) => step.name).join(", ")}`
-            : legacyEmptyPlanning
-              ? "Template Umum tidak memiliki tahap Planning."
-              : "Belum ada tahap pada fase ini."}
-        </span>
-        <div className="flex gap-2">
-          {canEdit && templateStages.length > 0 ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                const ok = store.setPhaseStructure(
-                  project.id,
-                  phase,
-                  templateStages,
-                );
-                toast[ok ? "success" : "error"](
-                  ok ? "Fase disusun dari template." : "Fase tidak bisa disusun.",
-                );
-              }}
-            >
-              Susun dari template
-            </Button>
-          ) : null}
-          <Button
-            size="sm"
-            disabled={!readyToStart}
-            onClick={() => {
-              const ok = store.startPhase(project.id, phase);
-              if (!ok) {
-                toast.error(
-                  "Fase sebelumnya harus selesai dan minimal satu tahap harus disusun.",
-                );
-                return;
-              }
-              toast.success(`Fase ${PHASE_LABEL[phase]} dimulai.`);
-            }}
-          >
-            Mulai fase
-          </Button>
-        </div>
-      </div>
-    </SectionCard>
-  );
-}
-
 export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const store = usePrototypeStore();
   const project = store.projects.find((item) => item.id === projectId);
@@ -1941,9 +1841,11 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     projectSteps.find((step) => step.key === selectedStepKey) ?? fallbackStep;
   const selectedKey = selectedStep?.key;
   const readOnly = project.status !== "active" || selectedStep?.status !== "active";
-  const allStepsDone = projectSteps.every(
-    (step) => step.status === "completed" || step.status === "skipped",
-  );
+  const allStepsDone =
+    projectSteps.length > 0 &&
+    projectSteps.every(
+      (step) => step.status === "completed" || step.status === "skipped",
+    );
   const template = project.templateId
     ? store.templates.find((item) => item.id === project.templateId)
     : undefined;
@@ -1976,7 +1878,13 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
 
   const stepContent = (() => {
     if (!selectedStep) {
-      return <EmptyState icon={Clock3} title="Tidak ada tahap" />;
+      return (
+        <EmptyState
+          icon={Clock3}
+          title="Prospek belum punya tahap"
+          description="Buka Journey Management di bawah untuk menambah tahap manual atau mengisi dari template."
+        />
+      );
     }
     if (selectedStep.status === "pending") {
       return (
@@ -2167,11 +2075,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
-      {project.status === "active"
-        ? (["planning", "running"] as Phase[]).map((phaseName) => (
-            <PhaseComposer key={phaseName} project={project} phase={phaseName} />
-          ))
-        : null}
+      <JourneyManagement project={project} />
 
       {project.status === "completed" ? (
         <CompletedSummary project={project} />

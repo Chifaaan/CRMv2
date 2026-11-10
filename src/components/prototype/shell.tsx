@@ -78,7 +78,7 @@ function titleForPath(pathname: string): string {
   if (pathname.startsWith("/projects/")) return "Detail Proyek";
   if (pathname === "/projects") return "Projects";
   if (pathname === "/my-tasks") return "My tasks";
-  if (pathname === "/forms") return "Forms";
+  if (pathname === "/forms" || pathname.startsWith("/forms/")) return "Forms";
   return "Dashboard";
 }
 

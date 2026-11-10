@@ -74,8 +74,8 @@ Sumber: `AGENTS.md` repo. Hal yang tidak tertulis di sana harus diverifikasi age
 | Peran | Hak pada fitur ini |
 | --- | --- |
 | Admin | Mengelola semua template, membuat proyek, melihat semua proyek |
-| PM | Mengelola template (lihat P2), membuat proyek dan menyesuaikan tahap **saat pembuatan**, melihat proyek sendiri, me-review dan menyetujui gerbang sesuai aturan yang ada |
-| Manager | Seperti aturan yang ada (menugaskan task). Hak template belum ditetapkan |
+| PM | Mengelola template (lihat P2), membuat proyek, menyusun dan memulai journey lewat Journey Management, melihat proyek sendiri, me-review dan menyetujui gerbang sesuai aturan yang ada |
+| Manager | Menugaskan task dan form dari CRM atau form terbuka. Hak template belum ditetapkan |
 | Finance | Mengisi form keuangan sesuai aturan yang ada |
 | Assignee | Tidak berubah |
 
@@ -104,7 +104,7 @@ Prioritas: **M** = wajib, **S** = sebaiknya, **C** = bila waktu memungkinkan.
 - **FR-1 (M)** Template memiliki: nama, deskripsi, jenis proyek, versi, status, daftar tahap. Perubahan template membuat versi baru, dan hanya proyek baru yang memakai versi itu.
 - **FR-2 (M)** Tahap memiliki: nama, deskripsi, fase tujuan, urutan, jenis tahap, wajib atau opsional, flag berbiaya sebelum komitmen, durasi standar (opsional), **bobot progress** dan **grup paralel** (agar BAST dan Invoice pada Umum tetap membagi 0,5 dan 0,5), serta task default.
 - **FR-3 (M)** Task template memiliki: nama, peran penanggung jawab, wajib atau opsional, deliverable yang diharapkan (teks).
-- **FR-4 (M)** Saat proyek dibuat, tahap dan task **disalin** ke proyek. Mengedit atau mengarsipkan template tidak memengaruhi proyek yang sudah ada.
+- **FR-4 (M)** Template bersifat rekomendasi. Jika dipilih saat membuat proyek, tahap dan task Prospek **disalin** ke proyek; mengedit atau mengarsipkan template tidak memengaruhi proyek yang sudah ada. Proyek juga boleh dibuat tanpa template.
 - **FR-5 (M)** Template yang sedang dipakai proyek tidak bisa dihapus, hanya diarsipkan.
 - **FR-6 (M)** Template awal disimpan sebagai data seed (bagian 8), bukan hardcode di komponen.
 
@@ -118,12 +118,15 @@ Prioritas: **M** = wajib, **S** = sebaiknya, **C** = bila waktu memungkinkan.
 
 ### 7.3 Pembuatan proyek dan penguncian
 
-- **FR-12 (M)** Form buat proyek memilih template, lalu langkah "Sesuaikan tahapan" (di dalam halaman, bukan dialog) berisi salinan tahap dan task.
-- **FR-13 (M)** Pada langkah itu PM boleh menambah, menghapus, dan mengurutkan ulang tahap atau task, mengubah nama, dan memilih task opsional. Tahap gerbang dan tahap wajib tidak bisa dihapus. Urutan fase tetap. Validasi sama dengan FR-9.
-- **FR-14 (M)** Tombol "Kembalikan ke template", ringkasan akhir sebelum "Buat proyek", draft tersimpan selama form belum dikirim, dan peringatan perubahan belum tersimpan.
-- **FR-15 (M)** **Setelah proyek dibuat, struktur terkunci:** tidak ada tambah, hapus, urut ulang, atau lewati tahap. Task di dalam tahap tetap bisa dikerjakan dan ditandai selesai. Penegakan di `domain.ts`/store (aksi ditolak), bukan hanya di UI. Tampilkan keterangan "Tahapan terkunci setelah proyek dibuat".
+- **FR-12 (M)** Form buat proyek mulai dengan fase Prospek kosong. Template bersifat opsional: memilih template hanya mengisi tahap Prospek sebagai rekomendasi.
+- **FR-13 (M)** PM boleh menambah tahap manual (`+ Tahap`), menghapus, mengubah nama/jenis, dan mengurutkan ulang tahap. Tahap Prospek baru selalu `pending`; tidak ada tahap yang otomatis aktif saat proyek dibuat.
+- **FR-14 (M)** Ringkasan akhir sebelum "Buat proyek", draft tersimpan selama form belum dikirim, dan peringatan perubahan belum tersimpan. Proyek boleh dibuat tanpa tahap untuk dilengkapi lewat Journey Management.
+- **FR-15 (M)** **Prospek bisa diubah sampai journey dimulai.** PM/Admin memulai journey secara eksplisit dari Journey Management; saat dimulai, tahap pertama aktif dan fase Prospek terkunci. Penegakan di `domain.ts`/store, bukan hanya di UI.
 - **FR-16 (M)** Proyek dibuat saat Brief Received. Tidak ada entitas lead terpisah.
-- **FR-17 (M)** Satu proyek memakai tepat satu template.
+- **FR-17 (M)** Proyek boleh tanpa template. Jika template dipakai untuk mengisi tahap, proyek hanya menyimpan `templateId`/`templateVersion` sebagai jejak; template tidak membatasi perubahan tahap.
+- **FR-17a (M)** Journey Management di Detail Proyek memungkinkan PM/Admin memilih fase dan mengelola tahap pada fase yang belum dimulai, termasuk Planning/Running yang sudah dibuka. Closing bersifat rule-driven dan tidak bisa diedit manual.
+- **FR-17b (M)** Journey non-legacy wajib punya tepat satu Gerbang persetujuan klien sebagai tahap terakhir Prospek sebelum dimulai. Umum `legacy` dikecualikan.
+- **FR-17c (M)** Saat Running dimulai, sistem menambahkan Closing dan menjamin tepat satu BAST dan satu Invoice paralel; template boleh menambah tahap Closing lain, dan proyek tanpa template memakai default BAST, Invoice, dan Pembayaran.
 
 ### 7.4 Gerbang dan siklus hidup
 
@@ -149,7 +152,7 @@ Prioritas: **M** = wajib, **S** = sebaiknya, **C** = bila waktu memungkinkan.
 
 ### 7.7 Audit trail
 
-- **FR-31 (M)** Event baru lewat helper yang sudah ada: `project.created_from_template` (template dan versi), `project.structure_customized` (ringkas, saat pembuatan), `gate.approved`, `gate.rejected` (dengan alasan), `project.lifecycle_changed`, `template.created`, `template.version_published`, `template.archived`.
+- **FR-31 (M)** Event baru lewat helper yang sudah ada: `project.created_from_template` atau `project.created_manual`, `project.structure_customized`, `journey.started`, `phase.started`, `phase.composed`, `phase.opened`, `closing.appended`, `gate.approved`, `gate.rejected` (dengan alasan), `project.lifecycle_changed`, `template.created`, `template.version_published`, `template.archived`.
 - **FR-32 (M)** Penolakan aksi struktur setelah proyek terkunci tidak perlu dicatat sebagai event, tetapi UI menampilkan pesan jelas.
 
 ## 8. Template awal (seed)

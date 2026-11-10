@@ -62,6 +62,32 @@ describe("finance forms in SIMPRO Forms", () => {
     expect(simproFinanceFormRows(state, assignee)).toEqual([]);
   });
 
+  it("shows an assigned BAST to Media and hides other finance forms", () => {
+    const state = createSeedState();
+    const media = userById(state, "u-media")!;
+    state.forms = state.forms.map((item) =>
+      item.id === "form-p-epsilon-bast"
+        ? { ...item, assigneeId: "u-media", status: "assigned" as const }
+        : item,
+    );
+    expect(
+      canSeeFinanceFormInSimpro(
+        state,
+        media,
+        form(state, "form-p-epsilon-bast"),
+      ),
+    ).toBe(true);
+    expect(
+      canSeeFinanceFormInSimpro(state, media, form(state, "form-p-epsilon-rab")),
+    ).toBe(false);
+    expect(
+      simproFinanceFormRows(state, media).some(
+        (row) => row.form.type === "bast",
+      ),
+    ).toBe(true);
+    expect(simproFinanceFormsNeedingAction(state, "u-media")).toBe(1);
+  });
+
   it("lets Admin see all finance forms", () => {
     const state = createSeedState();
     const admin = userById(state, "u-admin")!;

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   canEditForm,
-  canViewProject,
+  canOpenFinanceForm,
   formatDate,
   formFor,
   userById,
@@ -47,9 +47,11 @@ const FINANCE_FORM_TYPES: Record<
 export function FinanceFormPage({
   projectId,
   formType,
+  origin = "crm",
 }: {
   projectId: string;
   formType: string;
+  origin?: "crm" | "simpro";
 }) {
   const store = usePrototypeStore();
   const router = useRouter();
@@ -74,19 +76,6 @@ export function FinanceFormPage({
     );
   }
 
-  if (
-    currentUser.role === "assignee" ||
-    !canViewProject(store, currentUser, project)
-  ) {
-    return (
-      <EmptyState
-        icon={FileText}
-        title="Akses ditolak"
-        description="Form keuangan hanya dapat dibuka oleh Finance, PM, Manager, atau Admin."
-      />
-    );
-  }
-
   const form = formFor(store, project.id, config.key);
   if (!form) {
     return (
@@ -98,11 +87,26 @@ export function FinanceFormPage({
     );
   }
 
+  if (!canOpenFinanceForm(store, currentUser, form)) {
+    return (
+      <EmptyState
+        icon={FileText}
+        title="Akses ditolak"
+        description="Form keuangan hanya dapat dibuka oleh Finance yang di-assign, Media untuk BAST, PM pemilik proyek, Manager, atau Admin."
+      />
+    );
+  }
+
   const editable =
     canEditForm(store, currentUser, form) &&
     form.status !== "submitted" &&
     form.status !== "approved";
-  const backHref = `/crm/projects/${project.id}?step=${config.key}`;
+  const backHref =
+    origin === "simpro"
+      ? "/forms"
+      : `/crm/projects/${project.id}?step=${config.key}`;
+  const backLabel =
+    origin === "simpro" ? "Kembali ke Forms" : "Kembali ke proyek";
 
   const goBack = () => {
     if (
@@ -132,7 +136,7 @@ export function FinanceFormPage({
         }}
         className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
       >
-        <ArrowLeft className="size-3.5" /> Kembali ke proyek
+        <ArrowLeft className="size-3.5" /> {backLabel}
       </Link>
 
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -157,7 +161,7 @@ export function FinanceFormPage({
         {config.description}{" "}
         {editable
           ? "Anda dapat mengisi form ini."
-          : "Mode baca-saja. Pengisian dilakukan oleh Finance yang di-assign atau Admin."}
+          : "Mode baca-saja. Pengisian dilakukan oleh assignee yang ditugaskan atau Admin."}
       </div>
 
       <StepFormPanel

@@ -7,7 +7,7 @@ Dokumen ini adalah addendum untuk `Docs/PRD-Alur-CRM-Baru.md`. Fokusnya empat ti
 | Tipe | Pelaksana | Tempat | Selesai bila |
 | --- | --- | --- | --- |
 | Form Keuangan | Finance | CRM | RAB/BAST/Invoice/Pembayaran memenuhi aturan form keuangan |
-| Form | Assignee yang di-assign Manager/Admin | Menu Forms | Semua entri non-batal disetujui, minimal satu entri atau konfirmasi tidak ada pekerjaan |
+| Form | Assignee/Media yang di-assign Manager/Admin | Menu Forms | Semua entri non-batal disetujui, minimal satu entri atau konfirmasi tidak ada pekerjaan |
 | Gerbang | PM/Admin | CRM | Keputusan Menang atau Kalah |
 | SIMPRO | Assignee lewat Kanban | Board SIMPRO | Tidak ada task tersisa, minimal satu task atau konfirmasi tidak ada pekerjaan |
 
@@ -41,9 +41,9 @@ Pembayaran adalah form keuangan baru (Closing) dengan tanggal bayar, nominal, me
 
 ## Halaman Form Keuangan
 
-RAB, BAST, Invoice, dan Pembayaran dibuka sebagai halaman penuh di `/crm/projects/[id]/forms/[type]`. Detail Proyek menampilkan ringkasan (status, assignee, terakhir diubah, total RAB, komentar review) dengan tombol Buka/Lihat form, Review, dan History. Review/History tetap inline. Finance yang di-assign dan Admin dapat mengisi; PM/Manager membuka read-only. Isian tiap jenis tetap spesifik (RAB item, BAST PIC/dokumen, Invoice nilai/PPN/import Excel, Pembayaran bukti/status).
+RAB, BAST, Invoice, dan Pembayaran dibuka sebagai halaman penuh di `/crm/projects/[id]/forms/[type]` untuk CRM dan `/forms/finance/[projectId]/[type]` untuk SIMPRO. Detail Proyek menampilkan ringkasan (status, assignee, terakhir diubah, total RAB, komentar review) dengan tombol Buka/Lihat form, Review, dan History. Review/History tetap inline. Finance yang di-assign dapat mengisi RAB/BAST/Invoice/Pembayaran; Media yang di-assign dapat mengisi BAST; Admin dapat mengisi; PM/Manager membuka read-only dan Manager/Admin tetap bisa assign dari form terbuka. Isian tiap jenis tetap spesifik (RAB item, BAST PIC/dokumen, Invoice nilai/PPN/import Excel, Pembayaran bukti/status).
 
-RAB, BAST, dan Invoice juga muncul di menu Forms SIMPRO sebagai jenis form masing-masing. Hanya Finance yang di-assign, PM pemilik proyek, dan Admin yang melihatnya; Manager dan Assignee tidak melihat form keuangan di menu tersebut.
+Semua form keuangan juga muncul di menu Forms SIMPRO sesuai assignee: Finance melihat RAB/BAST/Invoice/Pembayaran yang di-assign, Media melihat BAST yang di-assign, dan PM pemilik/Admin tetap melihat untuk oversight. Manager dan Assignee tidak melihat form keuangan di menu tersebut. Assignment dari CRM atau form terbuka mengirim notifikasi in-app ke assignee.
 
 ## Asumsi
 
@@ -54,8 +54,10 @@ RAB, BAST, dan Invoice juga muncul di menu Forms SIMPRO sebagai jenis form masin
 ## Struktur per fase
 
 - `Project.phaseStates` menyimpan `authoredAt`, `startedAt`, `lockedAt`, `closingMaterialized`, dan `sourceTemplateVersion` per fase.
-- `canEditPhaseStructure(project, phase)` adalah otoritas untuk menambah, menghapus, atau mengurutkan tahap. Fase hanya bisa disusun sebelum `startedAt`; proyek legacy dengan `structureLocked` tetap beku.
-- Proyek baru hanya menyalin tahap fase Prospek. Setelah gerbang menang, PM menyusun Planning dan Running; tahap Closing ditambahkan otomatis saat Running dimulai.
+- `canEditPhaseStructure(project, phase)` adalah otoritas untuk menambah, menghapus, atau mengurutkan tahap. Fase hanya bisa disusun sebelum `startedAt`; proyek legacy dengan `structureLocked` tetap beku. Closing selalu read-only.
+- Template bersifat rekomendasi. Proyek baru boleh dibuat dengan Prospek kosong; template hanya mengisi tahap Prospek. Semua tahap Prospek baru `pending`, dan PM/Admin memulai journey secara eksplisit lewat Journey Management. Setelah dimulai, Prospek terkunci.
+- Journey Management di Detail Proyek memilih fase dan mengelola tahap yang belum dimulai. Setelah gerbang menang, PM menyusun Planning dan Running. Journey non-legacy wajib punya tepat satu Gerbang persetujuan klien sebagai tahap terakhir Prospek; Umum `legacy` dikecualikan.
+- Saat Running dimulai, tahap Closing ditambahkan otomatis dan selalu berisi tepat satu BAST dan satu Invoice paralel (0,5/0,5). Template boleh menambah tahap Closing lain; tanpa template, default BAST/Invoice/Pembayaran dipakai.
 
 ## Role dan akses
 

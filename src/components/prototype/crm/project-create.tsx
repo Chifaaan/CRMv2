@@ -20,6 +20,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   canCreateProject,
+  createManualStage,
+  journeyPhaseErrors,
   userById,
 } from "@/lib/prototype/domain";
 import {
@@ -40,7 +42,7 @@ import {
 import { cn } from "@/lib/utils";
 import { EmptyState, Field, NativeSelect, PageHeader, SectionCard } from "../ui";
 
-const DRAFT_KEY = "crm-project-draft-v1";
+const DRAFT_KEY = "crm-project-draft-v2";
 
 const COVER_COLORS = [
   "#9f1239",
@@ -95,37 +97,6 @@ function prospekOnly(stages: TemplateStage[]): TemplateStage[] {
   return cloneStages(stages.filter((stage) => stage.phase === "prospek"));
 }
 
-function validateProspekStages(
-  stages: TemplateStage[],
-  legacy?: boolean,
-): { ok: boolean; errors: string[] } {
-  const errors: string[] = [];
-  if (stages.length === 0) {
-    errors.push("Fase Prospek harus punya minimal satu tahap.");
-  }
-  if (stages.some((stage) => stage.phase !== "prospek")) {
-    errors.push("Tahap awal hanya boleh berada di fase Prospek.");
-  }
-  const names = new Set<string>();
-  for (const stage of stages) {
-    const name = stage.name.trim().toLowerCase();
-    if (names.has(name)) {
-      errors.push(`Nama tahap "${stage.name}" dipakai lebih dari sekali.`);
-    }
-    names.add(name);
-    if (stage.weight <= 0) {
-      errors.push(`Bobot tahap "${stage.name}" harus lebih dari 0.`);
-    }
-  }
-  if (!legacy) {
-    const gates = stages.filter((stage) => stage.kind === "gate");
-    if (gates.length !== 1) {
-      errors.push("Fase Prospek harus punya tepat satu gerbang menang.");
-    }
-  }
-  return { ok: errors.length === 0, errors };
-}
-
 type Draft = {
   name: string;
   client: string;
@@ -153,8 +124,8 @@ export function CrmProjectCreate() {
     startDate: new Date().toISOString().slice(0, 10),
     targetEndDate: "",
     coverColor: COVER_COLORS[0],
-    templateId: activeTemplates[0]?.id ?? "",
-    stages: prospekOnly(activeTemplates[0]?.stages ?? []),
+    templateId: "",
+    stages: [],
   });
   const [dirty, setDirty] = useState(false);
   const [restored, setRestored] = useState(false);
@@ -164,10 +135,11 @@ export function CrmProjectCreate() {
       const raw = window.localStorage.getItem(DRAFT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Draft;
-        if (parsed?.stages?.length) {
+        if (parsed && Array.isArray(parsed.stages)) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
           setDraft({
             ...parsed,
+            templateId: parsed.templateId ?? "",
             stages: prospekOnly(parsed.stages),
           });
           setRestored(true);
@@ -200,7 +172,7 @@ export function CrmProjectCreate() {
   const template = store.templates.find(
     (item) => item.id === draft.templateId,
   );
-  const validation = validateProspekStages(draft.stages, template?.legacy);
+  const validation = journeyPhaseErrors(undefined, "prospek", draft.stages);
 
   const patch = (value: Partial<Draft>) => {
     setDraft((current) => ({ ...current, ...value }));
@@ -208,10 +180,18 @@ export function CrmProjectCreate() {
   };
 
   const chooseTemplate = (templateId: string) => {
+    if (
+      draft.stages.length > 0 &&
+      !window.confirm(
+        "Mengganti pilihan template akan mengganti tahap Prospek saat ini. Lanjutkan?",
+      )
+    ) {
+      return;
+    }
     const next = store.templates.find((item) => item.id === templateId);
     patch({
       templateId,
-      stages: prospekOnly(next?.stages ?? []),
+      stages: templateId ? prospekOnly(next?.stages ?? []) : [],
     });
   };
 
@@ -242,25 +222,12 @@ export function CrmProjectCreate() {
   const deleteStage = (id: string) => {
     const target = draft.stages.find((stage) => stage.id === id);
     if (!target) return;
-    if (target.required || target.kind === "gate") {
-      toast.error("Tahap wajib dan gerbang tidak bisa dihapus.");
-      return;
-    }
     patch({ stages: normalize(draft.stages.filter((stage) => stage.id !== id)) });
   };
 
   const addStage = (phase: Phase) => {
-    const stage: TemplateStage = {
-      id: uid("stage"),
-      name: `Tahap ${draft.stages.filter((item) => item.phase === phase).length + 1}`,
-      phase,
-      order: 0,
-      kind: "form",
-      formTemplate: formTemplateFor(`Tahap ${draft.stages.filter((item) => item.phase === phase).length + 1}`),
-      required: false,
-      weight: 1,
-      tasks: [],
-    };
+    const order = draft.stages.filter((item) => item.phase === phase).length + 1;
+    const stage = createManualStage(phase, order, uid("stage"));
     const index = draft.stages.map((item) => item.phase).lastIndexOf(phase);
     const next =
       index === -1
@@ -308,10 +275,6 @@ export function CrmProjectCreate() {
       toast.error("Nama proyek wajib diisi.");
       return;
     }
-    if (!template) {
-      toast.error("Pilih template terlebih dahulu.");
-      return;
-    }
     if (!validation.ok) {
       toast.error(validation.errors[0] ?? "Tahapan belum valid.");
       return;
@@ -328,7 +291,7 @@ export function CrmProjectCreate() {
         ? new Date(`${draft.targetEndDate}T00:00:00`).toISOString()
         : "",
       coverColor: draft.coverColor,
-      templateId: template.id,
+      templateId: template?.id || undefined,
       stages: draft.stages,
     });
     if (!id) {
@@ -341,7 +304,7 @@ export function CrmProjectCreate() {
       /* ignore */
     }
     setDirty(false);
-    toast.success("Proyek dibuat dari template.");
+    toast.success("Proyek dibuat.");
     router.push(`/crm/projects/${id}`);
   };
 
@@ -356,7 +319,7 @@ export function CrmProjectCreate() {
 
       <PageHeader
         title="Proyek baru"
-        description="Proyek dibuat saat Brief Received. Pilih template, sesuaikan tahapan, lalu buat proyek."
+        description="Mulai dari Prospek kosong. Isi tahap dari template sebagai rekomendasi, atau tambah tahap sendiri."
         actions={
           <Button onClick={submit} disabled={!validation.ok}>
             <CheckCircle2 className="size-4" /> Buat proyek
@@ -440,14 +403,15 @@ export function CrmProjectCreate() {
             </div>
           </Field>
           <Field
-            label="Template"
-            hint="Satu proyek memakai tepat satu template."
+            label="Template (opsional)"
+            hint="Template hanya mengisi Prospek sebagai rekomendasi. Tahap tetap bisa diubah, diurutkan, atau dihapus."
             className="sm:col-span-2"
           >
             <NativeSelect
               value={draft.templateId}
               onChange={chooseTemplate}
             >
+              <option value="">Tanpa template — susun manual</option>
               {activeTemplates.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name} (v{item.version})
@@ -460,17 +424,34 @@ export function CrmProjectCreate() {
 
       <SectionCard
         title="Sesuaikan tahapan"
-        description="Susun journey fase Prospek. Fase berikutnya disusun setelah gerbang menang."
+        description="Prospek dimulai kosong. Tambah tahap manual atau isi dari template, lalu atur urutannya."
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              patch({ stages: prospekOnly(template?.stages ?? []) })
-            }
-          >
-            <RotateCcw className="size-3.5" /> Kembalikan ke template
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {template ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => chooseTemplate(template.id)}
+              >
+                <RotateCcw className="size-3.5" /> Isi dari template
+              </Button>
+            ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (
+                  draft.stages.length > 0 &&
+                  !window.confirm("Kosongkan semua tahap Prospek?")
+                ) {
+                  return;
+                }
+                patch({ stages: [] });
+              }}
+            >
+              <Trash2 className="size-3.5" /> Kosongkan
+            </Button>
+          </div>
         }
       >
         <div className="space-y-4">
@@ -542,12 +523,7 @@ export function CrmProjectCreate() {
                             variant="ghost"
                             size="icon-sm"
                             aria-label="Hapus tahap"
-                            disabled={stage.required || stage.kind === "gate"}
-                            title={
-                              stage.required || stage.kind === "gate"
-                                ? "Tahap wajib dan gerbang tidak bisa dihapus"
-                                : "Hapus tahap"
-                            }
+                            title="Hapus tahap"
                             onClick={() => deleteStage(stage.id)}
                           >
                             <Trash2 className="size-3.5" />
@@ -743,7 +719,7 @@ export function CrmProjectCreate() {
 
       <SectionCard
         title="Ringkasan sebelum dibuat"
-        description="Fase Prospek terkunci setelah proyek dibuat; fase berikutnya disusun setelah gerbang menang."
+        description="Prospek tetap bisa diubah sampai Anda memulai journey di Detail Proyek. Fase berikutnya disusun setelah gerbang menang."
       >
         <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
           {summary.map((item) => (
@@ -756,8 +732,10 @@ export function CrmProjectCreate() {
           ))}
         </div>
         <p className="text-muted-foreground mt-3 text-xs">
-          Template {template?.name ?? "—"} v{template?.version ?? "—"} ·{" "}
-          {draft.stages.length} tahap total.
+          {template
+            ? `Template ${template.name} v${template.version}`
+            : "Tanpa template — journey manual"}{" "}
+          · {draft.stages.length} tahap Prospek.
         </p>
         {validation.errors.length > 0 ? (
           <ul className="mt-3 space-y-1 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] text-rose-800">

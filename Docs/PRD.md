@@ -9,13 +9,15 @@
 | Dokumen terkait | [`MVP.md`](./MVP.md), [`References/`](./References/) |
 | Menggantikan | `SIMPROv2/CRM-MVP.md` dan `SIMPROv2/BRIEF.md` untuk lingkup prototype ini |
 
+> **Catatan implementasi terbaru:** aturan journey 6 step tetap di dokumen ini sudah digantikan oleh empat fase di `Docs/PRD-Alur-CRM-Baru.md`. Template kini opsional dan hanya mengisi Prospek sebagai rekomendasi; Proyek boleh mulai dengan Prospek kosong, tahap Prospek baru `pending`, dan PM memulai journey lewat Journey Management. Detail tipe tahap dan distribusi form ada di `Docs/Stage-Types.md`.
+
 ---
 
 ## 1. Ringkasan
 
 CRM dan SIMPRO adalah dua modul dari satu aplikasi monolith:
 
-- **CRM** mengelola siklus proyek: membuat proyek, menjalankan journey 6 step, menjaga gate antar step, mengelola pitching, survey, RAB, BAST, invoice, group, dan workload.
+- **CRM** mengelola siklus proyek empat fase (Prospek, Planning, Running, Closing): membuat proyek, menyusun dan memulai journey, menjaga gate, mengelola pitching, survey, RAB, BAST, invoice, group, dan workload.
 - **SIMPRO** mengelola eksekusi pekerjaan: board kanban, task, assignment, review, checklist, komentar, dan lampiran.
 
 Prinsip pemisahnya:
@@ -69,8 +71,8 @@ CRM dibutuhkan untuk mengelola tahap sebelum dan sesudah Running, serta menghubu
 | Istilah | Definisi |
 |---|---|
 | **Proyek** | Satu pekerjaan klien yang memiliki journey, tim, dan output. |
-| **Fase** | Kelompok step: `Planning`, `Running`, `Finance`. |
-| **Step** | Tahapan berurutan dalam journey. Ada 6 step tetap. |
+| **Fase** | Empat fase tetap: `Prospek`, `Planning`, `Running`, `Closing`. |
+| **Step** | Tahapan dalam satu fase. Prospek dapat disusun manual, dari template, atau kosong sebelum journey dimulai. |
 | **Gate** | Syarat yang harus terpenuhi sebelum step bisa diselesaikan. |
 | **Pitching** | Penawaran/konsep yang diajukan kepada klien; bisa menang atau kalah. |
 | **Pitching Role** | Peran dalam pitching, misalnya Pembuat PPT atau Presenter. |

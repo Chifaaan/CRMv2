@@ -46,6 +46,10 @@ function defaultFormTemplate(
   };
 }
 
+export function formTemplateForTitle(title: string): FormTemplate {
+  return defaultFormTemplate(title);
+}
+
 function stage(
   id: string,
   name: string,
@@ -86,6 +90,95 @@ function simproStage(
   extra: Partial<TemplateStage> = {},
 ): TemplateStage {
   return stage(id, name, phase, "simpro", extra);
+}
+
+function defaultClosingStages(): TemplateStage[] {
+  return [
+    stage("sys-closing-bast", "BAST", "closing", "finance_form", {
+      financeKind: "bast",
+      weight: 0.5,
+      parallelGroup: "finance",
+    }),
+    stage("sys-closing-invoice", "Invoice", "closing", "finance_form", {
+      financeKind: "invoice",
+      weight: 0.5,
+      parallelGroup: "finance",
+    }),
+    stage("sys-closing-payment", "Pembayaran", "closing", "finance_form", {
+      financeKind: "payment",
+    }),
+  ];
+}
+
+function closingFinanceKind(stage: TemplateStage) {
+  if (stage.financeKind) return stage.financeKind;
+  if (stage.legacyKey === "bast" || stage.legacyKey === "invoice") {
+    return stage.legacyKey;
+  }
+  return undefined;
+}
+
+/**
+ * Closing is rule-driven: a template may add its own Closing stages, but the
+ * system always guarantees exactly one BAST and one Invoice. Projects without
+ * a template fall back to BAST, Invoice, and Pembayaran defaults.
+ */
+export function closingStagesFor(template?: ProjectTemplate): TemplateStage[] {
+  const templateStages =
+    template?.stages.filter((stage) => stage.phase === "closing") ?? [];
+  const source =
+    templateStages.length > 0
+      ? templateStages.map((stage) => {
+          const financeKind = closingFinanceKind(stage);
+          return {
+            ...stage,
+            ...(financeKind ? { financeKind } : {}),
+            tasks: stage.tasks.map((task) => ({ ...task })),
+          };
+        })
+      : defaultClosingStages();
+
+  let seenBast = false;
+  let seenInvoice = false;
+  const stages = source.filter((stage) => {
+    if (stage.financeKind === "bast") {
+      if (seenBast) return false;
+      seenBast = true;
+    }
+    if (stage.financeKind === "invoice") {
+      if (seenInvoice) return false;
+      seenInvoice = true;
+    }
+    return true;
+  });
+
+  if (!seenBast) {
+    stages.push(
+      stage("sys-closing-bast", "BAST", "closing", "finance_form", {
+        financeKind: "bast",
+        weight: 0.5,
+        parallelGroup: "finance",
+      }),
+    );
+  }
+  if (!seenInvoice) {
+    stages.push(
+      stage("sys-closing-invoice", "Invoice", "closing", "finance_form", {
+        financeKind: "invoice",
+        weight: 0.5,
+        parallelGroup: "finance",
+      }),
+    );
+  }
+
+  return stages.map((stage, index) => ({
+    ...stage,
+    phase: "closing",
+    order: index + 1,
+    ...(stage.financeKind === "bast" || stage.financeKind === "invoice"
+      ? { weight: 0.5, parallelGroup: "finance" }
+      : {}),
+  }));
 }
 
 /**

@@ -75,11 +75,11 @@ describe("template model", () => {
       .steps.filter((step) => step.projectId === projectId);
     expect(project.templateId).toBe(KOL_TEMPLATE_ID);
     expect(project.structureLocked).toBe(false);
-    expect(project.phaseStates?.prospek?.startedAt).toBeTruthy();
+    expect(project.phaseStates?.prospek?.startedAt).toBeUndefined();
     expect(steps).toHaveLength(4);
     expect(steps.every((step) => step.phase === "prospek")).toBe(true);
     expect(steps[0].formTemplate?.title).toBe("Brief Received");
-    expect(steps[0].status).toBe("active");
+    expect(steps.every((step) => step.status === "pending")).toBe(true);
   });
 
   it("keeps existing projects independent from later template versions", () => {
@@ -122,7 +122,7 @@ describe("template model", () => {
     expect(step.name).toBe("Brief Received");
   });
 
-  it("rejects structure changes after the project exists", () => {
+  it("allows Prospek edits until start and locks after start", () => {
     const store = usePrototypeStore.getState();
     const projectId = store.createProject({
       name: "KOL Test",
@@ -137,7 +137,29 @@ describe("template model", () => {
     const project = usePrototypeStore
       .getState()
       .projects.find((item) => item.id === projectId)!;
-    expect(canEditPhaseStructure(project, "prospek")).toBe(false);
+    expect(canEditPhaseStructure(project, "prospek")).toBe(true);
+    expect(
+      usePrototypeStore.getState().setPhaseStructure(
+        projectId,
+        "prospek",
+        kolStages().filter((stage) => stage.phase === "prospek"),
+      ),
+    ).toBe(true);
+
+    expect(usePrototypeStore.getState().startPhase(projectId, "prospek")).toBe(
+      true,
+    );
+    const started = usePrototypeStore
+      .getState()
+      .projects.find((item) => item.id === projectId)!;
+    expect(canEditPhaseStructure(started, "prospek")).toBe(false);
+    expect(
+      usePrototypeStore.getState().setPhaseStructure(
+        projectId,
+        "prospek",
+        kolStages().filter((stage) => stage.phase === "prospek"),
+      ),
+    ).toBe(false);
     expect(
       usePrototypeStore.getState().setProjectStructure(projectId, kolStages()),
     ).toBe(false);
@@ -184,7 +206,7 @@ describe("gate and lifecycle", () => {
   });
 
   function createKolProject() {
-    return usePrototypeStore.getState().createProject({
+    const projectId = usePrototypeStore.getState().createProject({
       name: "KOL Gate",
       client: "Klien",
       description: "",
@@ -194,6 +216,8 @@ describe("gate and lifecycle", () => {
       coverColor: "#000000",
       templateId: KOL_TEMPLATE_ID,
     });
+    usePrototypeStore.getState().startPhase(projectId, "prospek");
+    return projectId;
   }
 
   it("approving the winning gate moves the project to Planning and locks RAB", () => {
@@ -300,6 +324,7 @@ describe("progress and permissions", () => {
       coverColor: "#000000",
       templateId: KOL_TEMPLATE_ID,
     });
+    usePrototypeStore.getState().startPhase(projectId, "prospek");
     completeFirstThreeKolStages(projectId);
     // 3 completed Prospek stages of 4 materialized stages; later phases do
     // not dilute progress until they are composed.

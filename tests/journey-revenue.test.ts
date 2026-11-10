@@ -594,6 +594,7 @@ describe("event template and phase composition", () => {
       coverColor: "#000000",
       templateId: EVENT_TEMPLATE_ID,
     });
+    usePrototypeStore.getState().startPhase(projectId, "prospek");
     const brief = usePrototypeStore
       .getState()
       .steps.find(
@@ -652,6 +653,11 @@ describe("event template and phase composition", () => {
               ...project,
               phaseStates: {
                 ...project.phaseStates,
+                prospek: {
+                  ...project.phaseStates?.prospek,
+                  startedAt: "2026-11-01T00:00:00.000Z",
+                  lockedAt: "2026-11-01T00:00:00.000Z",
+                },
                 planning: {},
                 running: {},
               },

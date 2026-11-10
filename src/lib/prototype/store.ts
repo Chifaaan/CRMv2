@@ -4,7 +4,9 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   activeSteps,
+  canAssignForm,
   canAssignFormEntry,
+  canAssignFormTo,
   canAssignTask,
   canCancelFormEntry,
   canCreateFormEntry,
@@ -13,9 +15,12 @@ import {
   canEditPhaseStructure,
   canManageProject,
   canManageTemplates,
+  canReceiveFormEntry,
   canReviewFormEntry,
   evaluateGate,
   groupCompleted,
+  journeyPhaseErrors,
+  journeyStartErrors,
   taskTransition,
   userById,
   validateWorkingLink,
@@ -33,6 +38,7 @@ import {
 } from "./form-versions";
 import { createSeedState } from "./seed";
 import {
+  closingStagesFor,
   createSeedTemplates,
   stageTasksForProject,
   UMUM_TEMPLATE_ID,
@@ -392,17 +398,13 @@ function formSnapshot(form: StepForm): Record<string, unknown> {
   };
 }
 
-function stagesForProject(
+function stepsForPhase(
   projectId: string,
-  template: ProjectTemplate,
-  overrides?: TemplateStage[],
-  phase: Phase = "prospek",
-  activateFirst = true,
+  stages: TemplateStage[],
+  phase: Phase,
+  activateFirst = false,
 ): ProjectStep[] {
-  const source =
-    overrides && overrides.length > 0
-      ? overrides.filter((stage) => stage.phase === phase)
-      : template.stages.filter((stage) => stage.phase === phase);
+  const source = stages.filter((stage) => stage.phase === phase);
   const sorted = [...source].sort((a, b) => a.order - b.order);
   const first = sorted[0];
   const offset = PHASE_ORDER.indexOf(phase) * 100;
@@ -950,15 +952,14 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
       createProject: (input) => {
         const state = get();
-        const template =
-          state.templates.find((item) => item.id === input.templateId) ??
-          state.templates.find((item) => item.id === UMUM_TEMPLATE_ID) ??
-          state.templates[0];
-        if (!template) return "";
+        const template = input.templateId
+          ? state.templates.find((item) => item.id === input.templateId)
+          : undefined;
+        if (input.templateId && !template) return "";
         const projectId = uid("p");
-        const prospekSource = input.stages?.filter(
-          (stage) => stage.phase === "prospek",
-        );
+        const prospekSource = (
+          input.stages ?? template?.stages ?? []
+        ).filter((stage) => stage.phase === "prospek");
         const createdAtValue = now();
         const project: Project = {
           id: projectId,
@@ -974,30 +975,33 @@ export const usePrototypeStore = create<PrototypeStore>()(
           coverColor: input.coverColor,
           createdById: state.currentUserId,
           createdAt: createdAtValue,
-          templateId: template.id,
-          templateVersion: template.version,
+          ...(template
+            ? { templateId: template.id, templateVersion: template.version }
+            : {}),
           structureLocked: false,
           phaseStates: {
             prospek: {
               authoredAt: createdAtValue,
-              startedAt: createdAtValue,
-              lockedAt: createdAtValue,
-              sourceTemplateVersion: template.version,
+              ...(template ? { sourceTemplateVersion: template.version } : {}),
             },
           },
         };
-        const steps = stagesForProject(
+        const steps = stepsForPhase(
           projectId,
-          template,
           prospekSource,
           "prospek",
+          false,
         );
         const forms = FORM_STEP_KEYS.map((key) => defaultForm(projectId, key));
         let events = projectEvent(state, {
           projectId,
           step: null,
-          eventType: "project.created_from_template",
-          summary: `Proyek ${project.name} dibuat dari template ${template.name} v${template.version}.`,
+          eventType: template
+            ? "project.created_from_template"
+            : "project.created_manual",
+          summary: template
+            ? `Proyek ${project.name} dibuat dari template ${template.name} v${template.version}.`
+            : `Proyek ${project.name} dibuat dengan journey manual.`,
           metadata: {
             before: null,
             after: {
@@ -1005,13 +1009,14 @@ export const usePrototypeStore = create<PrototypeStore>()(
               client: project.client,
               priority: project.priority,
               status: project.status,
-              templateId: template.id,
-              templateName: template.name,
-              templateVersion: template.version,
+              templateId: template?.id ?? null,
+              templateName: template?.name ?? null,
+              templateVersion: template?.version ?? null,
+              stageCount: steps.length,
             },
           },
         });
-        if (stagesDiffer(prospekSource, template)) {
+        if (template && input.stages && stagesDiffer(prospekSource, template)) {
           events = recordProjectEvent(events, {
             projectId,
             step: null,
@@ -1023,20 +1028,6 @@ export const usePrototypeStore = create<PrototypeStore>()(
               templateVersion: template.version,
               stageCount: steps.length,
               stageNames: steps.map((step) => step.name),
-            },
-          });
-        }
-        const first = steps[0];
-        if (first) {
-          events = recordProjectEvent(events, {
-            projectId,
-            step: first.key,
-            eventType: "project.step_changed",
-            actorId: state.currentUserId,
-            summary: `Tahap ${first.name} aktif.`,
-            metadata: {
-              before: { status: "pending" },
-              after: { status: "active" },
             },
           });
         }
@@ -1151,15 +1142,51 @@ export const usePrototypeStore = create<PrototypeStore>()(
         if (!canManageProject(actor, project)) return false;
         if (!canEditPhaseStructure(project, phase)) return false;
         if (stages.some((stage) => stage.phase !== phase)) return false;
-        const template = state.templates.find((item) => item.id === project.templateId);
-        if (!template) return false;
-        const nextSteps = stagesForProject(
-          projectId,
-          template,
-          stages,
-          phase,
-          false,
+
+        const existingSteps = state.steps.filter(
+          (step) => step.projectId === projectId && step.phase === phase,
         );
+        const hasActivity = existingSteps.some(
+          (step) =>
+            step.status !== "pending" ||
+            Boolean(step.startedAt) ||
+            Boolean(step.completedAt),
+        );
+        if (hasActivity) return false;
+        const activeTask = state.tasks.some(
+          (task) =>
+            task.projectId === projectId &&
+            existingSteps.some(
+              (step) => step.id === task.stageId || step.key === task.stepKey,
+            ),
+        );
+        if (activeTask) return false;
+        const activeEntry = state.formEntries.some(
+          (entry) =>
+            entry.projectId === projectId &&
+            existingSteps.some(
+              (step) =>
+                step.id === entry.templateStageId ||
+                step.key === entry.stepKey,
+            ),
+        );
+        if (activeEntry) return false;
+
+        const allSteps = state.steps.filter(
+          (step) => step.projectId === projectId,
+        );
+        const validation = journeyPhaseErrors(
+          project,
+          phase,
+          stages,
+          allSteps,
+        );
+        if (!validation.ok) return false;
+
+        const template = state.templates.find(
+          (item) => item.id === project.templateId,
+        );
+        const nextSteps = stepsForPhase(projectId, stages, phase, false);
         const authoredAt = now();
         set({
           steps: [
@@ -1177,7 +1204,9 @@ export const usePrototypeStore = create<PrototypeStore>()(
                     [phase]: {
                       ...item.phaseStates?.[phase],
                       authoredAt,
-                      sourceTemplateVersion: template.version,
+                      sourceTemplateVersion:
+                        template?.version ??
+                        item.phaseStates?.[phase]?.sourceTemplateVersion,
                     },
                   },
                 }
@@ -1192,8 +1221,9 @@ export const usePrototypeStore = create<PrototypeStore>()(
               phase,
               stageCount: nextSteps.length,
               stageNames: nextSteps.map((step) => step.name),
-              templateId: template.id,
-              templateVersion: template.version,
+              before: existingSteps.map((step) => step.name),
+              templateId: template?.id ?? null,
+              templateVersion: template?.version ?? null,
             },
           }),
         });
@@ -1207,56 +1237,91 @@ export const usePrototypeStore = create<PrototypeStore>()(
         if (!actor || !project) return false;
         if (!canManageProject(actor, project)) return false;
         if (project.status !== "active") return false;
-        if (phase === "prospek") return false;
+        if (phase === "closing") return false;
         const phaseState = project.phaseStates?.[phase];
         if (!phaseState || phaseState.startedAt) return false;
-        const template = state.templates.find((item) => item.id === project.templateId);
-        if (!template) return false;
+        const template = state.templates.find(
+          (item) => item.id === project.templateId,
+        );
+        const legacy =
+          Boolean(template?.legacy) || project.templateId === UMUM_TEMPLATE_ID;
         const projectSteps = state.steps.filter(
           (step) => step.projectId === projectId,
         );
-        const phaseIndex = PHASE_ORDER.indexOf(phase);
-        const priorPhases = PHASE_ORDER.slice(0, phaseIndex);
-        for (const prior of priorPhases) {
-          const priorSteps = projectSteps.filter((step) => step.phase === prior);
-          if (
-            priorSteps.length > 0 &&
-            priorSteps.some(
-              (step) => step.status !== "completed" && step.status !== "skipped",
-            )
-          ) {
-            return false;
+
+        if (phase === "prospek") {
+          const startValidation = journeyStartErrors(
+            project,
+            projectSteps,
+            template,
+          );
+          if (!startValidation.ok) return false;
+        } else {
+          const phaseIndex = PHASE_ORDER.indexOf(phase);
+          const priorPhases = PHASE_ORDER.slice(0, phaseIndex);
+          for (const prior of priorPhases) {
+            const priorSteps = projectSteps.filter(
+              (step) => step.phase === prior,
+            );
+            if (
+              priorSteps.length > 0 &&
+              priorSteps.some(
+                (step) =>
+                  step.status !== "completed" && step.status !== "skipped",
+              )
+            ) {
+              return false;
+            }
+            const priorState = project.phaseStates?.[prior];
+            if (priorSteps.length === 0 && !(legacy && prior === "planning")) {
+              return false;
+            }
+            if (priorSteps.length > 0 && !priorState?.startedAt) return false;
           }
-          const priorState = project.phaseStates?.[prior];
-          if (priorSteps.length === 0 && !(template.legacy && prior === "planning")) {
-            return false;
-          }
-          if (priorSteps.length > 0 && !priorState?.startedAt) return false;
         }
 
         let phaseSteps = projectSteps.filter((step) => step.phase === phase);
-        if (phaseSteps.length === 0 && !(template.legacy && phase === "planning")) {
+        if (phaseSteps.length === 0 && !(legacy && phase === "planning")) {
           return false;
         }
 
         const startedAt = now();
         let nextSteps = [...state.steps];
         let closingAppended = false;
-        if (phase === "running" && !project.phaseStates?.closing?.authoredAt) {
-          const closingStages = template.stages.filter(
-            (stage) => stage.phase === "closing",
-          );
+        const openClosing =
+          phase === "running" && !project.phaseStates?.closing?.authoredAt;
+        if (openClosing) {
           const existingClosing = projectSteps.filter(
             (step) => step.phase === "closing",
           );
-          if (closingStages.length > 0 && existingClosing.length === 0) {
-            const closingSteps = stagesForProject(
+          const closingStages = closingStagesFor(template);
+          const existingFinance = new Set(
+            existingClosing.map((step) => step.financeKind),
+          );
+          const stagesToAppend =
+            existingClosing.length === 0
+              ? closingStages
+              : closingStages.filter(
+                  (stage) =>
+                    (stage.financeKind === "bast" ||
+                      stage.financeKind === "invoice") &&
+                    !existingFinance.has(stage.financeKind),
+                );
+          if (stagesToAppend.length > 0) {
+            const maxOrder = existingClosing.reduce(
+              (max, step) => Math.max(max, step.order),
+              0,
+            );
+            const closingSteps = stepsForPhase(
               projectId,
-              template,
-              closingStages,
+              stagesToAppend,
               "closing",
               false,
-            );
+            ).map((step, index) => ({
+              ...step,
+              order:
+                existingClosing.length === 0 ? step.order : maxOrder + index + 1,
+            }));
             nextSteps = [...nextSteps, ...closingSteps];
             closingAppended = true;
           }
@@ -1297,18 +1362,29 @@ export const usePrototypeStore = create<PrototypeStore>()(
             startedAt,
           },
         });
+        if (phase === "prospek") {
+          events = recordProjectEvent(events, {
+            projectId,
+            step: null,
+            eventType: "journey.started",
+            actorId: actor.id,
+            summary: "Journey Prospek dimulai.",
+            metadata: { startedAt, stageCount: phaseSteps.length },
+          });
+        }
         if (closingAppended) {
           events = recordProjectEvent(events, {
             projectId,
             step: null,
             eventType: "closing.appended",
             actorId: actor.id,
-            summary: "Tahap Closing ditambahkan dari template.",
+            summary: "Tahap Closing ditambahkan oleh aturan sistem.",
             metadata: {
               phase: "closing",
               stageNames: nextSteps
                 .filter(
-                  (step) => step.projectId === projectId && step.phase === "closing",
+                  (step) =>
+                    step.projectId === projectId && step.phase === "closing",
                 )
                 .map((step) => step.name),
             },
@@ -1328,11 +1404,12 @@ export const usePrototypeStore = create<PrototypeStore>()(
                       startedAt,
                       lockedAt: startedAt,
                     },
-                    ...(closingAppended
+                    ...(openClosing
                       ? {
                           closing: {
+                            ...item.phaseStates?.closing,
                             authoredAt: startedAt,
-                            sourceTemplateVersion: template.version,
+                            sourceTemplateVersion: template?.version,
                           },
                         }
                       : {}),
@@ -1345,7 +1422,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             activity(state, {
               projectId,
               actorId: actor.id,
-              action: "phase_started",
+              action: phase === "prospek" ? "journey_started" : "phase_started",
               message: `Fase ${PHASE_LABEL[phase]} dimulai.`,
             }),
           ],
@@ -1652,9 +1729,23 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
       assignForm: (formId, userId) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
         const form = state.forms.find((item) => item.id === formId);
-        if (!form) return;
+        if (!actor || !form || !canAssignForm(actor)) return;
+        const project = state.projects.find(
+          (item) => item.id === form.projectId,
+        );
+        if (!project || project.status !== "active") return;
+        if (project.lifecycle === "lost" || project.lifecycle === "cancelled") {
+          return;
+        }
         const user = userById(state, userId);
+        if (!user || !canAssignFormTo(form, user)) return;
+        const updatedAt = now();
+        const href =
+          form.type === "survey"
+            ? "/forms"
+            : `/forms/finance/${form.projectId}/${form.type}`;
         set({
           forms: state.forms.map((item) =>
             item.id === formId
@@ -1662,40 +1753,38 @@ export const usePrototypeStore = create<PrototypeStore>()(
                   ...item,
                   assigneeId: userId,
                   status: "assigned",
-                  updatedAt: now(),
-                  updatedById: state.currentUserId,
+                  updatedAt,
+                  updatedById: actor.id,
                 }
               : item,
           ),
-          notifications: user
-            ? [
-                ...state.notifications,
-                notify(state, {
-                  userId,
-                  type: "form_assigned",
-                  title: "Form baru di-assign",
-                  body: `${form.type.toUpperCase()} untuk proyek.`,
-                  href: form.type === "survey" ? "/forms" : `/crm/projects/${form.projectId}`,
-                }),
-              ]
-            : state.notifications,
+          notifications: [
+            ...state.notifications,
+            notify(state, {
+              userId,
+              type: "form_assigned",
+              title: "Form baru di-assign",
+              body: `${form.type.toUpperCase()} · ${project.name}`,
+              href,
+            }),
+          ],
           activityLogs: [
             ...state.activityLogs,
             activity(state, {
               projectId: form.projectId,
-              actorId: state.currentUserId,
+              actorId: actor.id,
               action: "form_assigned",
-              message: `${form.type.toUpperCase()} di-assign ke ${user?.name ?? "user"}.`,
+              message: `${form.type.toUpperCase()} di-assign ke ${user.name}.`,
             }),
           ],
           projectEvents: projectEvent(state, {
             projectId: form.projectId,
             step: form.stepKey,
             eventType: `${form.type}.assigned`,
-            summary: `${form.type.toUpperCase()} di-assign ke ${user?.name ?? "user"}.`,
+            summary: `${form.type.toUpperCase()} di-assign ke ${user.name}.`,
             metadata: {
               before: { assigneeId: form.assigneeId ?? null, status: form.status },
-              after: { assigneeId: userId, status: "assigned" },
+              after: { assigneeId: userId, status: "assigned", updatedAt },
             },
           }),
         });
@@ -2422,6 +2511,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
         );
         let activatedKeys: string[] = [];
         let autoStartClosing = false;
+        let openLegacyNextPhases = false;
         if (!stillActive) {
           let nextPending = completedSteps
             .filter(
@@ -2452,6 +2542,22 @@ export const usePrototypeStore = create<PrototypeStore>()(
                   Boolean(group && step.parallelGroup === group),
               )
               .map((step) => step.key);
+          } else if (current.phase === "prospek") {
+            const template = state.templates.find(
+              (item) => item.id === project.templateId,
+            );
+            const legacy =
+              Boolean(template?.legacy) ||
+              project.templateId === UMUM_TEMPLATE_ID;
+            const prospekComplete = completedSteps
+              .filter(
+                (step) => step.projectId === projectId && step.phase === "prospek",
+              )
+              .every(
+                (step) =>
+                  step.status === "completed" || step.status === "skipped",
+              );
+            openLegacyNextPhases = legacy && prospekComplete;
           }
         }
 
@@ -2494,25 +2600,53 @@ export const usePrototypeStore = create<PrototypeStore>()(
             },
           });
         }
+        if (openLegacyNextPhases) {
+          events = recordProjectEvent(events, {
+            projectId,
+            step: null,
+            eventType: "phase.opened",
+            actorId: state.currentUserId,
+            summary: "Fase Planning dan Running dibuka untuk disusun.",
+            metadata: { phases: ["planning", "running"] },
+          });
+        }
 
+        const updatePhaseStates = autoStartClosing || openLegacyNextPhases;
         set({
           steps,
-          projects: autoStartClosing
+          projects: updatePhaseStates
             ? state.projects.map((item) =>
                 item.id === projectId
                   ? {
                       ...item,
                       phaseStates: {
                         ...item.phaseStates,
-                        closing: {
-                          ...item.phaseStates?.closing,
-                          authoredAt:
-                            item.phaseStates?.closing?.authoredAt ?? completedAt,
-                          startedAt:
-                            item.phaseStates?.closing?.startedAt ?? completedAt,
-                          lockedAt:
-                            item.phaseStates?.closing?.lockedAt ?? completedAt,
-                        },
+                        ...(autoStartClosing
+                          ? {
+                              closing: {
+                                ...item.phaseStates?.closing,
+                                authoredAt:
+                                  item.phaseStates?.closing?.authoredAt ??
+                                  completedAt,
+                                startedAt:
+                                  item.phaseStates?.closing?.startedAt ??
+                                  completedAt,
+                                lockedAt:
+                                  item.phaseStates?.closing?.lockedAt ??
+                                  completedAt,
+                              },
+                            }
+                          : {}),
+                        ...(openLegacyNextPhases
+                          ? {
+                              planning: item.phaseStates?.planning ?? {
+                                authoredAt: completedAt,
+                              },
+                              running: item.phaseStates?.running ?? {
+                                authoredAt: completedAt,
+                              },
+                            }
+                          : {}),
                       },
                     }
                   : item,
@@ -2623,8 +2757,16 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const actor = userById(state, state.currentUserId);
         const entry = state.formEntries.find((item) => item.id === entryId);
         if (!actor || !entry || !canAssignFormEntry(actor)) return;
+        if (entry.status === "approved" || entry.status === "cancelled") return;
+        const project = state.projects.find(
+          (item) => item.id === entry.projectId,
+        );
+        if (!project || project.status !== "active") return;
+        if (project.lifecycle === "lost" || project.lifecycle === "cancelled") {
+          return;
+        }
         const assignee = userById(state, userId);
-        if (!assignee) return;
+        if (!assignee || !canReceiveFormEntry(assignee)) return;
         set({
           formEntries: state.formEntries.map((item) =>
             item.id === entryId
@@ -3264,6 +3406,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const projectSteps = state.steps.filter(
           (step) => step.projectId === projectId,
         );
+        if (projectSteps.length === 0) return;
         const allDone = projectSteps.every(
           (step) => step.status === "completed" || step.status === "skipped",
         );

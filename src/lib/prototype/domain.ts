@@ -1,3 +1,4 @@
+import { formTemplateForTitle, UMUM_TEMPLATE_ID } from "./templates";
 import {
   ACTIVE_TASK_STATUSES,
   FORM_STEP_KEYS,
@@ -17,6 +18,7 @@ import {
   type Priority,
   type Project,
   type ProjectStep,
+  type ProjectTemplate,
   type Role,
   type StepForm,
   type Task,
@@ -577,6 +579,7 @@ export function canEditPhaseStructure(
   project: Project,
   phase: Phase,
 ): boolean {
+  if (phase === "closing") return false;
   if (project.status !== "active") return false;
   if (
     project.lifecycle === "lost" ||
@@ -675,6 +678,169 @@ export function validateTemplateStages(
     }
     if (stage.weight <= 0) {
       errors.push(`Bobot tahap "${stage.name}" harus lebih dari 0.`);
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+export type JourneyValidation = { ok: boolean; errors: string[] };
+
+export function createManualStage(
+  phase: Phase,
+  order: number,
+  id: string,
+  name?: string,
+): TemplateStage {
+  const label = name?.trim() || `Tahap ${order}`;
+  return {
+    id,
+    name: label,
+    phase,
+    order,
+    kind: "form",
+    required: false,
+    weight: 1,
+    formTemplate: formTemplateForTitle(label),
+    tasks: [],
+  };
+}
+
+export function journeyPhaseErrors(
+  project: Project | undefined,
+  phase: Phase,
+  proposedStages: TemplateStage[],
+  allSteps: ProjectStep[] = [],
+): JourneyValidation {
+  const errors: string[] = [];
+  if (phase === "closing") {
+    errors.push("Fase Closing ditambahkan otomatis dan tidak bisa diubah manual.");
+  }
+  if (project && (project.status !== "active" || project.lifecycle === "lost" || project.lifecycle === "cancelled" || project.lifecycle === "done")) {
+    errors.push("Proyek sudah tidak bisa diubah.");
+  }
+  if (proposedStages.some((stage) => stage.phase !== phase)) {
+    errors.push("Semua tahap harus berada di fase yang dipilih.");
+  }
+
+  const names = new Set<string>();
+  const financeKinds = new Set<string>();
+  const otherFinanceKinds = new Set(
+    allSteps
+      .filter((step) => step.phase !== phase && step.financeKind)
+      .map((step) => step.financeKind as string),
+  );
+  let clientGates = 0;
+
+  for (const stage of proposedStages) {
+    const name = stage.name.trim();
+    if (!name) {
+      errors.push("Nama tahap wajib diisi.");
+    } else if (names.has(name.toLowerCase())) {
+      errors.push(`Nama tahap "${name}" duplikat di fase ini.`);
+    }
+    names.add(name.toLowerCase());
+
+    if (stage.weight <= 0) {
+      errors.push(`Bobot tahap "${stage.name}" harus lebih dari 0.`);
+    }
+    if (stage.kind === "finance_form") {
+      if (!stage.financeKind) {
+        errors.push(`Tahap "${stage.name}" harus memilih jenis form keuangan.`);
+      } else if (
+        phase !== "closing" &&
+        (stage.financeKind === "bast" ||
+          stage.financeKind === "invoice" ||
+          stage.financeKind === "payment")
+      ) {
+        errors.push(
+          `Form ${stage.financeKind.toUpperCase()} ditambahkan otomatis di Closing.`,
+        );
+      } else if (financeKinds.has(stage.financeKind)) {
+        errors.push(
+          `Form keuangan ${stage.financeKind.toUpperCase()} hanya boleh ada satu.`,
+        );
+      } else if (otherFinanceKinds.has(stage.financeKind)) {
+        errors.push(
+          `Form keuangan ${stage.financeKind.toUpperCase()} sudah dipakai di fase lain.`,
+        );
+      }
+      if (stage.financeKind) financeKinds.add(stage.financeKind);
+    }
+    if (stage.kind === "gate") {
+      if (!stage.gateKind) {
+        errors.push(`Tahap "${stage.name}" harus memilih jenis gerbang.`);
+      }
+      if (stage.gateKind === "client_approval") {
+        clientGates += 1;
+        if (phase !== "prospek") {
+          errors.push("Gerbang persetujuan klien hanya boleh berada di Prospek.");
+        }
+      }
+    }
+    if (
+      stage.kind === "form" &&
+      stage.legacyKey !== "survey" &&
+      (!stage.formTemplate || !stage.formTemplate.title.trim())
+    ) {
+      errors.push(`Tahap "${stage.name}" harus punya judul form.`);
+    }
+  }
+
+  if (phase === "prospek" && clientGates > 1) {
+    errors.push("Prospek hanya boleh punya satu gerbang persetujuan klien.");
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+export function journeyStartErrors(
+  project: Project,
+  steps: ProjectStep[],
+  template?: ProjectTemplate,
+): JourneyValidation {
+  const errors: string[] = [];
+  if (project.status !== "active") {
+    errors.push("Proyek tidak aktif.");
+  }
+  if (
+    project.lifecycle === "lost" ||
+    project.lifecycle === "cancelled" ||
+    project.lifecycle === "done"
+  ) {
+    errors.push("Proyek sudah ditutup.");
+  }
+
+  const prospek = [...steps]
+    .filter((step) => step.phase === "prospek")
+    .sort((a, b) => a.order - b.order);
+  if (prospek.length === 0) {
+    errors.push("Fase Prospek harus punya minimal satu tahap.");
+    return { ok: false, errors };
+  }
+  if (prospek.some((step) => step.status !== "pending")) {
+    errors.push("Prospek sudah dimulai.");
+  }
+  if (steps.some((step) => step.phase !== "prospek")) {
+    errors.push("Hanya tahap Prospek yang bisa memulai journey.");
+  }
+
+  const legacy =
+    Boolean(template?.legacy) || project.templateId === UMUM_TEMPLATE_ID;
+  if (!legacy) {
+    const gates = prospek.filter(
+      (step) => step.kind === "gate" && step.gateKind === "client_approval",
+    );
+    if (gates.length === 0) {
+      errors.push(
+        "Tambahkan satu Gerbang persetujuan klien sebagai tahap terakhir Prospek.",
+      );
+    } else if (gates.length > 1) {
+      errors.push("Prospek hanya boleh punya satu gerbang persetujuan klien.");
+    } else if (prospek[prospek.length - 1]?.id !== gates[0].id) {
+      errors.push(
+        "Gerbang persetujuan klien harus menjadi tahap terakhir Prospek.",
+      );
     }
   }
 
@@ -802,6 +968,42 @@ export function taskTransition(
 
 export function canAssignForm(user: User): boolean {
   return user.role === "admin" || user.role === "manager";
+}
+
+export function assignableRolesForForm(formType: FormStepKey): Role[] {
+  if (formType === "survey") return ["assignee"];
+  if (formType === "bast") return ["finance", "media"];
+  return ["finance"];
+}
+
+export function assignableUsersForForm(
+  state: AppState,
+  form: StepForm,
+): User[] {
+  const roles = assignableRolesForForm(form.type);
+  return state.users.filter((user) => roles.includes(user.role));
+}
+
+export function canAssignFormTo(form: StepForm, user: User): boolean {
+  return assignableRolesForForm(form.type).includes(user.role);
+}
+
+export function canReceiveFormEntry(user: User): boolean {
+  return user.role === "assignee" || user.role === "media";
+}
+
+export function canOpenFinanceForm(
+  state: AppState,
+  user: User,
+  form: StepForm,
+): boolean {
+  if (form.type === "survey") return false;
+  const project = projectById(state, form.projectId);
+  if (!project) return false;
+  if (user.role === "admin" || user.role === "manager") return true;
+  if (user.role === "pm") return project.createdById === user.id;
+  if (form.assigneeId !== user.id) return false;
+  return assignableRolesForForm(form.type).includes(user.role);
 }
 
 export function canEditForm(

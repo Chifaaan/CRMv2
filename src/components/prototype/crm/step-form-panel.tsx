@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
+  assignableUsersForForm,
   canAssignForm,
   canEditForm,
   canReviewForm,
@@ -1405,8 +1406,9 @@ function PanelInner({
     toast.success("Versi terbaru dimuat.");
   };
 
-  const candidates = store.users.filter((user) => user.role === "finance");
-  const canAssign = canAssignForm(currentUser) && !readOnly;
+  const candidates = assignableUsersForForm(store, form);
+  const canAssign =
+    canAssignForm(currentUser) && project.status === "active";
 
   const selectedVersion =
     versions.find((version) => version.id === selectedVersionId) ?? latestVersion;
@@ -1490,7 +1492,7 @@ function PanelInner({
                       onChange={setAssignUserId}
                       className="h-8 w-[200px] text-xs"
                     >
-                      <option value="">Pilih Finance</option>
+                      <option value="">Pilih assignee</option>
                       {candidates.map((user) => (
                         <option key={user.id} value={user.id}>
                           {user.name}
