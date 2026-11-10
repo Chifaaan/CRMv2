@@ -39,7 +39,8 @@ export function SimproDashboard() {
     (task) =>
       !task.archivedAt &&
       projectIds.has(task.projectId) &&
-      (currentUser?.role !== "assignee" || task.assigneeId === currentUser.id),
+      (!["assignee", "media"].includes(currentUser?.role ?? "") ||
+        task.assigneeId === currentUser?.id),
   );
   const counts = taskCountsByStatus(tasks);
   const completed = counts.completed;

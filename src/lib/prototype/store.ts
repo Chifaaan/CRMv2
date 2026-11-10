@@ -5,15 +5,20 @@ import { persist } from "zustand/middleware";
 import {
   activeSteps,
   canAssignFormEntry,
+  canAssignTask,
   canCancelFormEntry,
   canCreateFormEntry,
+  canCreateTask,
   canEditFormEntry,
+  canEditPhaseStructure,
   canManageProject,
   canManageTemplates,
   canReviewFormEntry,
   evaluateGate,
   groupCompleted,
+  taskTransition,
   userById,
+  validateWorkingLink,
 } from "./domain";
 import {
   backfillProjectEvents,
@@ -34,6 +39,8 @@ import {
 } from "./templates";
 import {
   FORM_STEP_KEYS,
+  PHASE_LABEL,
+  PHASE_ORDER,
   type AppState,
   type Attachment,
   type FormEntry,
@@ -41,6 +48,10 @@ import {
   type FormField,
   type FormStepKey,
   type FormTemplate,
+  type MediaOrder,
+  type MediaOrderItem,
+  type MediaOrderStatus,
+  type Phase,
   type Pitching,
   type Priority,
   type Project,
@@ -52,6 +63,7 @@ import {
   type Task,
   type TaskStatus,
   type TemplateStage,
+  type User,
 } from "./types";
 
 type PitchingInput = {
@@ -102,6 +114,12 @@ type PrototypeActions = {
   updateProject: (projectId: string, input: Partial<ProjectInput>) => void;
   cancelProject: (projectId: string, reason: string) => void;
   setProjectStructure: (projectId: string, stages: TemplateStage[]) => boolean;
+  setPhaseStructure: (
+    projectId: string,
+    phase: Phase,
+    stages: TemplateStage[],
+  ) => boolean;
+  startPhase: (projectId: string, phase: Phase) => boolean;
 
   saveTemplate: (input: TemplateInput) => string;
   archiveTemplate: (templateId: string) => void;
@@ -143,7 +161,12 @@ type PrototypeActions = {
     },
   ) => string;
   assignTask: (taskId: string, userId: string) => void;
-  transitionTask: (taskId: string, to: TaskStatus) => void;
+  transitionTask: (
+    taskId: string,
+    to: TaskStatus,
+    workingLink?: string,
+  ) => void;
+  setWorkingLink: (taskId: string, url: string) => boolean;
   deleteTask: (taskId: string, reason: string) => void;
   addComment: (taskId: string, body: string) => void;
   addChecklistItem: (taskId: string, text: string) => void;
@@ -156,7 +179,7 @@ type PrototypeActions = {
   createFormEntry: (
     projectId: string,
     stepKey: string,
-    input: { title: string; dueDate?: string },
+    input: { title: string; dueDate?: string; entryType?: string },
   ) => string;
   assignFormEntry: (entryId: string, userId: string) => void;
   saveFormEntry: (entryId: string, payload: FormEntryPayload) => void;
@@ -172,6 +195,25 @@ type PrototypeActions = {
     stepKey: string,
     taskIds: string[],
   ) => number;
+  createMediaOrder: (
+    projectId: string,
+    input: { title: string; notes?: string },
+  ) => string;
+  updateMediaOrder: (
+    orderId: string,
+    input: Partial<{ title: string; notes: string; status: MediaOrderStatus }>,
+  ) => void;
+  deleteMediaOrder: (orderId: string) => void;
+  addMediaOrderItem: (
+    orderId: string,
+    item: Omit<MediaOrderItem, "id">,
+  ) => void;
+  updateMediaOrderItem: (
+    orderId: string,
+    itemId: string,
+    patch: Partial<MediaOrderItem>,
+  ) => void;
+  removeMediaOrderItem: (orderId: string, itemId: string) => void;
   decideGate: (
     projectId: string,
     stepKey: string,
@@ -354,15 +396,23 @@ function stagesForProject(
   projectId: string,
   template: ProjectTemplate,
   overrides?: TemplateStage[],
+  phase: Phase = "prospek",
+  activateFirst = true,
 ): ProjectStep[] {
-  const stages =
-    overrides && overrides.length > 0 ? overrides : template.stages;
-  const sorted = [...stages].sort((a, b) => a.order - b.order);
+  const source =
+    overrides && overrides.length > 0
+      ? overrides.filter((stage) => stage.phase === phase)
+      : template.stages.filter((stage) => stage.phase === phase);
+  const sorted = [...source].sort((a, b) => a.order - b.order);
   const first = sorted[0];
+  const offset = PHASE_ORDER.indexOf(phase) * 100;
   return sorted.map((stage, index) => {
     const active =
-      index === 0 ||
-      Boolean(first?.parallelGroup && stage.parallelGroup === first.parallelGroup);
+      activateFirst &&
+      (index === 0 ||
+        Boolean(
+          first?.parallelGroup && stage.parallelGroup === first.parallelGroup,
+        ));
     return {
       id: `step-${projectId}-${stage.id}`,
       projectId,
@@ -370,7 +420,7 @@ function stagesForProject(
       name: stage.name,
       description: stage.description,
       phase: stage.phase,
-      order: index + 1,
+      order: offset + index + 1,
       status: active ? ("active" as const) : ("pending" as const),
       kind: stage.kind,
       required: stage.required,
@@ -381,10 +431,44 @@ function stagesForProject(
       costBeforeCommitment: stage.costBeforeCommitment,
       legacyKey: stage.legacyKey,
       formTemplate: stage.formTemplate,
+      entryTypes: stage.entryTypes,
       tasks: stageTasksForProject(stage.tasks),
       startedAt: active ? now() : undefined,
     };
   });
+}
+
+function canManageMediaOrders(
+  state: AppState,
+  user: User,
+  project: Project,
+): boolean {
+  if (project.status !== "active") return false;
+  if (project.lifecycle === "lost" || project.lifecycle === "cancelled") {
+    return false;
+  }
+  if (user.role === "admin" || user.role === "manager" || user.role === "finance") {
+    return true;
+  }
+  return canManageProject(user, project);
+}
+
+function mediaOrderSnapshot(order: MediaOrder) {
+  return {
+    title: order.title,
+    status: order.status,
+    notes: order.notes,
+  };
+}
+
+function mediaOrderItemSnapshot(item: MediaOrderItem) {
+  return {
+    description: item.description,
+    qty: item.qty,
+    clientUnitPrice: item.clientUnitPrice,
+    vendorUnitCost: item.vendorUnitCost,
+    businessUnitId: item.businessUnitId ?? null,
+  };
 }
 
 function normalizeStageOrders(stages: TemplateStage[]): TemplateStage[] {
@@ -419,7 +503,10 @@ function stagesDiffer(
         })),
       })),
     );
-  return shape(stages) !== shape(template.stages);
+  return (
+    shape(stages) !==
+    shape(template.stages.filter((stage) => stages.some((s) => s.phase === stage.phase)))
+  );
 }
 
 function templateEvent(
@@ -602,15 +689,99 @@ export function migratePersistedState(persisted: unknown): PersistedState {
       })
     : [];
 
+  const projectsWithPhases = projects.map((project) => {
+    const projectSteps = steps.filter((step) => step.projectId === project.id);
+    const phaseStates = { ...(project.phaseStates ?? {}) };
+    const hadProspekState = Boolean(project.phaseStates?.prospek);
+    for (const phase of PHASE_ORDER) {
+      const phaseSteps = projectSteps.filter((step) => step.phase === phase);
+      if (phaseSteps.length === 0) continue;
+      if (phaseStates[phase]) continue;
+      const started = phaseSteps
+        .map((step) => step.startedAt ?? step.completedAt)
+        .filter((value): value is string => Boolean(value))
+        .sort()[0];
+      phaseStates[phase] = {
+        authoredAt: project.createdAt,
+        startedAt: started ?? project.createdAt,
+        lockedAt: started ?? project.createdAt,
+      };
+    }
+    if (!phaseStates.prospek) {
+      phaseStates.prospek = {
+        authoredAt: project.createdAt,
+        startedAt: project.createdAt,
+        lockedAt: project.createdAt,
+      };
+    }
+    return { ...project, phaseStates, __hadProspekState: hadProspekState };
+  });
+
+  const requiredUsers = createSeedState().users.filter(
+    (seedUser) => seedUser.id === "u-media" || seedUser.id === "u-bod",
+  );
+  const existingUsers = Array.isArray(state.users) ? (state.users as User[]) : [];
+  const users = [
+    ...existingUsers,
+    ...requiredUsers.filter(
+      (seedUser) => !existingUsers.some((user) => user.id === seedUser.id),
+    ),
+  ];
+
+  const formEntries = Array.isArray(state.formEntries)
+    ? (state.formEntries as FormEntry[]).map((entry) => {
+        if (entry.entryType) return entry;
+        const step = steps.find(
+          (item) =>
+            item.projectId === entry.projectId && item.key === entry.stepKey,
+        );
+        const type = step?.entryTypes?.find(
+          (item) => item.label.toLowerCase() === entry.title.trim().toLowerCase(),
+        );
+        return type ? { ...entry, entryType: type.id } : entry;
+      })
+    : [];
+
+  const existingEvents = Array.isArray(state.projectEvents)
+    ? (state.projectEvents as ProjectEvent[])
+    : [];
+  const eventIds = new Set(existingEvents.map((event) => event.id));
+  const migrationEvents: ProjectEvent[] = [];
+  for (const project of projectsWithPhases) {
+    if (project.__hadProspekState) continue;
+    const id = `phase-migration-${project.id}`;
+    if (eventIds.has(id)) continue;
+    migrationEvents.push({
+      id,
+      projectId: project.id,
+      step: null,
+      eventType: "project.phase_migrated",
+      actorId: project.createdById,
+      occurredAt: project.createdAt,
+      summary: "Struktur proyek dipetakan ke fase-fase baru.",
+      metadata: {
+        phases: Object.keys(project.phaseStates ?? {}),
+        structureLocked: project.structureLocked ?? true,
+      },
+    });
+  }
+
   return {
     ...state,
     templates,
-    projects,
+    projects: projectsWithPhases.map((entry) => {
+      const project = { ...entry };
+      delete (project as { __hadProspekState?: boolean }).__hadProspekState;
+      return project;
+    }),
+    users,
     steps,
     tasks,
-    formEntries: Array.isArray(state.formEntries)
-      ? (state.formEntries as FormEntry[])
+    formEntries,
+    mediaOrders: Array.isArray(state.mediaOrders)
+      ? (state.mediaOrders as MediaOrder[])
       : [],
+    projectEvents: [...existingEvents, ...migrationEvents],
   };
 }
 
@@ -785,6 +956,10 @@ export const usePrototypeStore = create<PrototypeStore>()(
           state.templates[0];
         if (!template) return "";
         const projectId = uid("p");
+        const prospekSource = input.stages?.filter(
+          (stage) => stage.phase === "prospek",
+        );
+        const createdAtValue = now();
         const project: Project = {
           id: projectId,
           code: makeProjectCode(input.name, state.projects),
@@ -798,12 +973,25 @@ export const usePrototypeStore = create<PrototypeStore>()(
           targetEndDate: input.targetEndDate,
           coverColor: input.coverColor,
           createdById: state.currentUserId,
-          createdAt: now(),
+          createdAt: createdAtValue,
           templateId: template.id,
           templateVersion: template.version,
-          structureLocked: true,
+          structureLocked: false,
+          phaseStates: {
+            prospek: {
+              authoredAt: createdAtValue,
+              startedAt: createdAtValue,
+              lockedAt: createdAtValue,
+              sourceTemplateVersion: template.version,
+            },
+          },
         };
-        const steps = stagesForProject(projectId, template, input.stages);
+        const steps = stagesForProject(
+          projectId,
+          template,
+          prospekSource,
+          "prospek",
+        );
         const forms = FORM_STEP_KEYS.map((key) => defaultForm(projectId, key));
         let events = projectEvent(state, {
           projectId,
@@ -823,7 +1011,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             },
           },
         });
-        if (stagesDiffer(input.stages, template)) {
+        if (stagesDiffer(prospekSource, template)) {
           events = recordProjectEvent(events, {
             projectId,
             step: null,
@@ -953,26 +1141,215 @@ export const usePrototypeStore = create<PrototypeStore>()(
         });
       },
 
-      setProjectStructure: (projectId, stages) => {
+      setProjectStructure: () => false,
+
+      setPhaseStructure: (projectId, phase, stages) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
         const project = state.projects.find((item) => item.id === projectId);
-        if (!project) return false;
-        // FR-15: structure is locked after the project exists.
-        if (project.structureLocked) return false;
-        const current = state.steps.filter((step) => step.projectId === projectId);
+        if (!actor || !project) return false;
+        if (!canManageProject(actor, project)) return false;
+        if (!canEditPhaseStructure(project, phase)) return false;
+        if (stages.some((stage) => stage.phase !== phase)) return false;
         const template = state.templates.find((item) => item.id === project.templateId);
         if (!template) return false;
-        const nextSteps = stagesForProject(projectId, template, stages).map(
-          (step, index) => ({
-            ...step,
-            status: current[index]?.status ?? step.status,
-          }),
+        const nextSteps = stagesForProject(
+          projectId,
+          template,
+          stages,
+          phase,
+          false,
         );
+        const authoredAt = now();
         set({
           steps: [
-            ...state.steps.filter((step) => step.projectId !== projectId),
+            ...state.steps.filter(
+              (step) => !(step.projectId === projectId && step.phase === phase),
+            ),
             ...nextSteps,
           ],
+          projects: state.projects.map((item) =>
+            item.id === projectId
+              ? {
+                  ...item,
+                  phaseStates: {
+                    ...item.phaseStates,
+                    [phase]: {
+                      ...item.phaseStates?.[phase],
+                      authoredAt,
+                      sourceTemplateVersion: template.version,
+                    },
+                  },
+                }
+              : item,
+          ),
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: null,
+            eventType: "phase.composed",
+            summary: `Fase ${PHASE_LABEL[phase]} disusun (${nextSteps.length} tahap).`,
+            metadata: {
+              phase,
+              stageCount: nextSteps.length,
+              stageNames: nextSteps.map((step) => step.name),
+              templateId: template.id,
+              templateVersion: template.version,
+            },
+          }),
+        });
+        return true;
+      },
+
+      startPhase: (projectId, phase) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!actor || !project) return false;
+        if (!canManageProject(actor, project)) return false;
+        if (project.status !== "active") return false;
+        if (phase === "prospek") return false;
+        const phaseState = project.phaseStates?.[phase];
+        if (!phaseState || phaseState.startedAt) return false;
+        const template = state.templates.find((item) => item.id === project.templateId);
+        if (!template) return false;
+        const projectSteps = state.steps.filter(
+          (step) => step.projectId === projectId,
+        );
+        const phaseIndex = PHASE_ORDER.indexOf(phase);
+        const priorPhases = PHASE_ORDER.slice(0, phaseIndex);
+        for (const prior of priorPhases) {
+          const priorSteps = projectSteps.filter((step) => step.phase === prior);
+          if (
+            priorSteps.length > 0 &&
+            priorSteps.some(
+              (step) => step.status !== "completed" && step.status !== "skipped",
+            )
+          ) {
+            return false;
+          }
+          const priorState = project.phaseStates?.[prior];
+          if (priorSteps.length === 0 && !(template.legacy && prior === "planning")) {
+            return false;
+          }
+          if (priorSteps.length > 0 && !priorState?.startedAt) return false;
+        }
+
+        let phaseSteps = projectSteps.filter((step) => step.phase === phase);
+        if (phaseSteps.length === 0 && !(template.legacy && phase === "planning")) {
+          return false;
+        }
+
+        const startedAt = now();
+        let nextSteps = [...state.steps];
+        let closingAppended = false;
+        if (phase === "running" && !project.phaseStates?.closing?.authoredAt) {
+          const closingStages = template.stages.filter(
+            (stage) => stage.phase === "closing",
+          );
+          const existingClosing = projectSteps.filter(
+            (step) => step.phase === "closing",
+          );
+          if (closingStages.length > 0 && existingClosing.length === 0) {
+            const closingSteps = stagesForProject(
+              projectId,
+              template,
+              closingStages,
+              "closing",
+              false,
+            );
+            nextSteps = [...nextSteps, ...closingSteps];
+            closingAppended = true;
+          }
+        }
+
+        const firstPending = phaseSteps
+          .slice()
+          .sort((a, b) => a.order - b.order)[0];
+        const activeIds = phaseSteps
+          .filter(
+            (step) =>
+              step.id === firstPending?.id ||
+              (firstPending?.parallelGroup &&
+                step.parallelGroup === firstPending.parallelGroup),
+          )
+          .map((step) => step.id);
+        nextSteps = nextSteps.map((step) =>
+          step.projectId === projectId && activeIds.includes(step.id)
+            ? {
+                ...step,
+                status: "active" as const,
+                startedAt: step.startedAt ?? startedAt,
+              }
+            : step,
+        );
+        phaseSteps = nextSteps.filter(
+          (step) => step.projectId === projectId && step.phase === phase,
+        );
+
+        let events = projectEvent(state, {
+          projectId,
+          step: null,
+          eventType: "phase.started",
+          summary: `Fase ${PHASE_LABEL[phase]} dimulai.`,
+          metadata: {
+            phase,
+            stageCount: phaseSteps.length,
+            startedAt,
+          },
+        });
+        if (closingAppended) {
+          events = recordProjectEvent(events, {
+            projectId,
+            step: null,
+            eventType: "closing.appended",
+            actorId: actor.id,
+            summary: "Tahap Closing ditambahkan dari template.",
+            metadata: {
+              phase: "closing",
+              stageNames: nextSteps
+                .filter(
+                  (step) => step.projectId === projectId && step.phase === "closing",
+                )
+                .map((step) => step.name),
+            },
+          });
+        }
+
+        set({
+          steps: nextSteps,
+          projects: state.projects.map((item) =>
+            item.id === projectId
+              ? {
+                  ...item,
+                  phaseStates: {
+                    ...item.phaseStates,
+                    [phase]: {
+                      ...item.phaseStates?.[phase],
+                      startedAt,
+                      lockedAt: startedAt,
+                    },
+                    ...(closingAppended
+                      ? {
+                          closing: {
+                            authoredAt: startedAt,
+                            sourceTemplateVersion: template.version,
+                          },
+                        }
+                      : {}),
+                  },
+                }
+              : item,
+          ),
+          activityLogs: [
+            ...state.activityLogs,
+            activity(state, {
+              projectId,
+              actorId: actor.id,
+              action: "phase_started",
+              message: `Fase ${PHASE_LABEL[phase]} dimulai.`,
+            }),
+          ],
+          projectEvents: events,
         });
         return true;
       },
@@ -1592,8 +1969,10 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
       createTask: (projectId, input) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
         const project = state.projects.find((item) => item.id === projectId);
-        if (!project || project.status !== "active") return "";
+        if (!actor || !project || project.status !== "active") return "";
+        if (!canCreateTask(state, actor, project)) return "";
         const step =
           (input.stepKey
             ? state.steps.find(
@@ -1658,8 +2037,13 @@ export const usePrototypeStore = create<PrototypeStore>()(
       assignTask: (taskId, userId) => {
         const state = get();
         const task = state.tasks.find((item) => item.id === taskId);
-        if (!task) return;
+        const actor = userById(state, state.currentUserId);
+        if (!task || !actor || !canAssignTask(actor)) return;
+        const project = state.projects.find((item) => item.id === task.projectId);
+        if (!project || project.status !== "active") return;
+        if (task.status !== "backlog") return;
         const user = userById(state, userId);
+        if (!user) return;
         set({
           tasks: state.tasks.map((item) =>
             item.id === taskId
@@ -1702,13 +2086,40 @@ export const usePrototypeStore = create<PrototypeStore>()(
         });
       },
 
-      transitionTask: (taskId, to) => {
+      transitionTask: (taskId, to, workingLink) => {
         const state = get();
         const task = state.tasks.find((item) => item.id === taskId);
-        if (!task) return;
+        const actor = userById(state, state.currentUserId);
+        if (!task || !actor) return;
+        const guard = taskTransition(state, actor, task, to, workingLink);
+        if (!guard.ok) return;
+        const link =
+          to === "in_progress"
+            ? validateWorkingLink(workingLink ?? task.workingLink?.url)
+            : undefined;
+        const nextWorkingLink =
+          link?.ok && link.url
+            ? {
+                url: link.url,
+                setById: actor.id,
+                setAt: now(),
+              }
+            : task.workingLink;
         set({
           tasks: state.tasks.map((item) =>
-            item.id === taskId ? { ...item, status: to } : item,
+            item.id === taskId
+              ? {
+                  ...item,
+                  status: to,
+                  workingLink: nextWorkingLink,
+                  workingLinkHistory:
+                    nextWorkingLink && link?.ok && link.url
+                      ? item.workingLink
+                        ? [...(item.workingLinkHistory ?? []), item.workingLink]
+                        : item.workingLinkHistory
+                      : item.workingLinkHistory,
+                }
+              : item,
           ),
           notifications:
             to === "awaiting_approval"
@@ -1756,9 +2167,60 @@ export const usePrototypeStore = create<PrototypeStore>()(
               taskId,
               before: { status: task.status },
               after: { status: to },
+              workingLink: nextWorkingLink?.url ?? null,
             },
           }),
         });
+      },
+
+      setWorkingLink: (taskId, url) => {
+        const state = get();
+        const task = state.tasks.find((item) => item.id === taskId);
+        const actor = userById(state, state.currentUserId);
+        if (!task || !actor) return false;
+        if (task.assigneeId !== actor.id && actor.role !== "admin") return false;
+        const validation = validateWorkingLink(url);
+        if (!validation.ok || !validation.url) return false;
+        const nextLink = {
+          url: validation.url,
+          setById: actor.id,
+          setAt: now(),
+        };
+        set({
+          tasks: state.tasks.map((item) =>
+            item.id === taskId
+              ? {
+                  ...item,
+                  workingLink: nextLink,
+                  workingLinkHistory: item.workingLink
+                    ? [...(item.workingLinkHistory ?? []), item.workingLink]
+                    : item.workingLinkHistory,
+                }
+              : item,
+          ),
+          activityLogs: [
+            ...state.activityLogs,
+            activity(state, {
+              projectId: task.projectId,
+              taskId,
+              actorId: actor.id,
+              action: "task_working_link",
+              message: "Link kerja diperbarui.",
+            }),
+          ],
+          projectEvents: projectEvent(state, {
+            projectId: task.projectId,
+            step: task.stepKey,
+            eventType: "task.working_link_set",
+            summary: `Link kerja task ${task.code} diperbarui.`,
+            metadata: {
+              taskId,
+              before: task.workingLink?.url ?? null,
+              after: validation.url,
+            },
+          }),
+        });
+        return true;
       },
 
       deleteTask: (taskId, reason) => {
@@ -1953,18 +2415,34 @@ export const usePrototypeStore = create<PrototypeStore>()(
         );
 
         const stillActive = completedSteps.some(
-          (step) => step.projectId === projectId && step.status === "active",
+          (step) =>
+            step.projectId === projectId &&
+            step.phase === current.phase &&
+            step.status === "active",
         );
         let activatedKeys: string[] = [];
+        let autoStartClosing = false;
         if (!stillActive) {
-          const nextPending = completedSteps
+          let nextPending = completedSteps
             .filter(
               (step) =>
                 step.projectId === projectId &&
+                step.phase === current.phase &&
                 step.status === "pending" &&
                 step.order > current.order,
             )
             .sort((a, b) => a.order - b.order);
+          if (nextPending.length === 0 && current.phase === "running") {
+            nextPending = completedSteps
+              .filter(
+                (step) =>
+                  step.projectId === projectId &&
+                  step.phase === "closing" &&
+                  step.status === "pending",
+              )
+              .sort((a, b) => a.order - b.order);
+            autoStartClosing = nextPending.length > 0;
+          }
           if (nextPending[0]) {
             const group = nextPending[0].parallelGroup;
             activatedKeys = nextPending
@@ -2019,6 +2497,27 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
         set({
           steps,
+          projects: autoStartClosing
+            ? state.projects.map((item) =>
+                item.id === projectId
+                  ? {
+                      ...item,
+                      phaseStates: {
+                        ...item.phaseStates,
+                        closing: {
+                          ...item.phaseStates?.closing,
+                          authoredAt:
+                            item.phaseStates?.closing?.authoredAt ?? completedAt,
+                          startedAt:
+                            item.phaseStates?.closing?.startedAt ?? completedAt,
+                          lockedAt:
+                            item.phaseStates?.closing?.lockedAt ?? completedAt,
+                        },
+                      },
+                    }
+                  : item,
+              )
+            : state.projects,
           activityLogs: [
             ...state.activityLogs,
             activity(state, {
@@ -2088,6 +2587,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           projectId,
           stepKey,
           templateStageId: step.id,
+          entryType: input.entryType,
           title: input.title.trim(),
           dueDate: input.dueDate,
           status: "unassigned",
@@ -2381,6 +2881,203 @@ export const usePrototypeStore = create<PrototypeStore>()(
         return created;
       },
 
+      createMediaOrder: (projectId, input) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!actor || !project || !canManageMediaOrders(state, actor, project)) {
+          return "";
+        }
+        if (!input.title.trim()) return "";
+        const orderId = uid("mo");
+        const sequence =
+          state.mediaOrders.filter((item) => item.projectId === projectId).length +
+          1;
+        const order: MediaOrder = {
+          id: orderId,
+          projectId,
+          number: `MO-${project.code}-${sequence}`,
+          title: input.title.trim(),
+          status: "draft",
+          items: [],
+          notes: input.notes?.trim() ?? "",
+          createdById: actor.id,
+          createdAt: now(),
+        };
+        set({
+          mediaOrders: [...state.mediaOrders, order],
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: null,
+            eventType: "media_order.created",
+            summary: `Media Order ${order.number} dibuat.`,
+            metadata: {
+              orderId,
+              after: mediaOrderSnapshot(order),
+            },
+          }),
+        });
+        return orderId;
+      },
+
+      updateMediaOrder: (orderId, input) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const order = state.mediaOrders.find((item) => item.id === orderId);
+        if (!actor || !order) return;
+        const project = state.projects.find((item) => item.id === order.projectId);
+        if (!project || !canManageMediaOrders(state, actor, project)) return;
+        const next: MediaOrder = {
+          ...order,
+          ...input,
+          updatedAt: now(),
+          updatedById: actor.id,
+        };
+        set({
+          mediaOrders: state.mediaOrders.map((item) =>
+            item.id === orderId ? next : item,
+          ),
+          projectEvents: projectEvent(state, {
+            projectId: order.projectId,
+            step: null,
+            eventType: "media_order.updated",
+            summary: `Media Order ${order.number} diperbarui.`,
+            metadata: {
+              orderId,
+              before: mediaOrderSnapshot(order),
+              after: mediaOrderSnapshot(next),
+            },
+          }),
+        });
+      },
+
+      deleteMediaOrder: (orderId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const order = state.mediaOrders.find((item) => item.id === orderId);
+        if (!actor || !order) return;
+        const project = state.projects.find((item) => item.id === order.projectId);
+        if (!project || !canManageMediaOrders(state, actor, project)) return;
+        set({
+          mediaOrders: state.mediaOrders.filter((item) => item.id !== orderId),
+          projectEvents: projectEvent(state, {
+            projectId: order.projectId,
+            step: null,
+            eventType: "media_order.deleted",
+            summary: `Media Order ${order.number} dihapus.`,
+            metadata: {
+              orderId,
+              before: mediaOrderSnapshot(order),
+              itemCount: order.items.length,
+            },
+          }),
+        });
+      },
+
+      addMediaOrderItem: (orderId, item) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const order = state.mediaOrders.find((entry) => entry.id === orderId);
+        if (!actor || !order) return;
+        const project = state.projects.find((entry) => entry.id === order.projectId);
+        if (!project || !canManageMediaOrders(state, actor, project)) return;
+        const nextItem: MediaOrderItem = { ...item, id: uid("moitem") };
+        const next: MediaOrder = {
+          ...order,
+          items: [...order.items, nextItem],
+          updatedAt: now(),
+          updatedById: actor.id,
+        };
+        set({
+          mediaOrders: state.mediaOrders.map((entry) =>
+            entry.id === orderId ? next : entry,
+          ),
+          projectEvents: projectEvent(state, {
+            projectId: order.projectId,
+            step: null,
+            eventType: "media_order.item_changed",
+            summary: `Item Media Order ${order.number} ditambahkan.`,
+            metadata: {
+              orderId,
+              itemId: nextItem.id,
+              before: null,
+              after: mediaOrderItemSnapshot(nextItem),
+            },
+          }),
+        });
+      },
+
+      updateMediaOrderItem: (orderId, itemId, patch) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const order = state.mediaOrders.find((entry) => entry.id === orderId);
+        if (!actor || !order) return;
+        const project = state.projects.find((entry) => entry.id === order.projectId);
+        if (!project || !canManageMediaOrders(state, actor, project)) return;
+        const current = order.items.find((entry) => entry.id === itemId);
+        if (!current) return;
+        const updatedItem: MediaOrderItem = { ...current, ...patch, id: itemId };
+        const next: MediaOrder = {
+          ...order,
+          items: order.items.map((entry) =>
+            entry.id === itemId ? updatedItem : entry,
+          ),
+          updatedAt: now(),
+          updatedById: actor.id,
+        };
+        set({
+          mediaOrders: state.mediaOrders.map((entry) =>
+            entry.id === orderId ? next : entry,
+          ),
+          projectEvents: projectEvent(state, {
+            projectId: order.projectId,
+            step: null,
+            eventType: "media_order.item_changed",
+            summary: `Item Media Order ${order.number} diperbarui.`,
+            metadata: {
+              orderId,
+              itemId,
+              before: mediaOrderItemSnapshot(current),
+              after: mediaOrderItemSnapshot(updatedItem),
+            },
+          }),
+        });
+      },
+
+      removeMediaOrderItem: (orderId, itemId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const order = state.mediaOrders.find((entry) => entry.id === orderId);
+        if (!actor || !order) return;
+        const project = state.projects.find((entry) => entry.id === order.projectId);
+        if (!project || !canManageMediaOrders(state, actor, project)) return;
+        const removed = order.items.find((entry) => entry.id === itemId);
+        if (!removed) return;
+        const next: MediaOrder = {
+          ...order,
+          items: order.items.filter((entry) => entry.id !== itemId),
+          updatedAt: now(),
+          updatedById: actor.id,
+        };
+        set({
+          mediaOrders: state.mediaOrders.map((entry) =>
+            entry.id === orderId ? next : entry,
+          ),
+          projectEvents: projectEvent(state, {
+            projectId: order.projectId,
+            step: null,
+            eventType: "media_order.item_changed",
+            summary: `Item "${removed.description}" dihapus dari Media Order ${order.number}.`,
+            metadata: {
+              orderId,
+              itemId,
+              before: mediaOrderItemSnapshot(removed),
+              after: null,
+            },
+          }),
+        });
+      },
+
       decideGate: (projectId, stepKey, decision, reason) => {
         const state = get();
         const actor = userById(state, state.currentUserId);
@@ -2416,6 +3113,21 @@ export const usePrototypeStore = create<PrototypeStore>()(
               ...item,
               lifecycle: "won" as const,
               rabBaselineLockedAt: item.rabBaselineLockedAt ?? decidedAt,
+              phaseStates: {
+                ...item.phaseStates,
+                planning: {
+                  ...item.phaseStates?.planning,
+                  sourceTemplateVersion:
+                    item.phaseStates?.planning?.sourceTemplateVersion ??
+                    item.templateVersion,
+                },
+                running: {
+                  ...item.phaseStates?.running,
+                  sourceTemplateVersion:
+                    item.phaseStates?.running?.sourceTemplateVersion ??
+                    item.templateVersion,
+                },
+              },
             };
           }
           if (decision === "rejected") {
@@ -2442,11 +3154,12 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
         let steps = completedSteps;
         let activatedKeys: string[] = [];
-        if (decision === "approved") {
+        if (decision === "approved" && !isWin) {
           const nextPending = completedSteps
             .filter(
               (step) =>
                 step.projectId === projectId &&
+                step.phase === current.phase &&
                 step.status === "pending" &&
                 step.order > current.order,
             )
@@ -2790,7 +3503,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
     }),
     {
       name: "crm-simpro:v1",
-      version: 3,
+      version: 4,
       migrate: (persisted) =>
         migratePersistedState(persisted) as unknown as PrototypeStore,
       partialize: (state) => ({
@@ -2805,6 +3518,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
         tasks: state.tasks,
         forms: state.forms,
         formEntries: state.formEntries,
+        mediaOrders: state.mediaOrders,
         groups: state.groups,
         notifications: state.notifications,
         activityLogs: state.activityLogs,

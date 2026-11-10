@@ -135,14 +135,33 @@ function kolStages(): TemplateStage[] {
       "tpl-kol-listing",
       "KOL Listing",
       "prospek",
-      {},
+      {
+        entryTypes: [
+          {
+            id: "kol_listing",
+            label: "KOL Listing",
+            defaultRole: "media",
+            kind: "form",
+          },
+        ],
+      },
       ["Susun daftar KOL kandidat"],
     ),
     formStage(
       "tpl-kol-rate",
       "Rate Inquiry",
       "prospek",
-      { description: "RAB draf dibentuk di tahap ini." },
+      {
+        description: "RAB draf dibentuk di tahap ini.",
+        entryTypes: [
+          {
+            id: "kol_rate",
+            label: "Rate Inquiry",
+            defaultRole: "media",
+            kind: "rab",
+          },
+        ],
+      },
       ["Minta rate card KOL"],
     ),
     stage("tpl-kol-approval", "KOL Approval", "prospek", "gate", {
@@ -186,71 +205,88 @@ function kolStages(): TemplateStage[] {
 }
 
 function eventStages(): TemplateStage[] {
+  const briefEntries = [
+    {
+      id: "strategy_concept",
+      label: "Create Strategy & Concept",
+      defaultRole: "pm" as const,
+      kind: "form" as const,
+    },
+    {
+      id: "kv_assets",
+      label: "Create KV & Key Visual Assets",
+      defaultRole: "media" as const,
+      kind: "form" as const,
+    },
+    {
+      id: "vendor_contact",
+      label: "Contact Vendor",
+      defaultRole: "media" as const,
+      kind: "form" as const,
+    },
+    {
+      id: "site_survey",
+      label: "Site Survey",
+      defaultRole: "media" as const,
+      kind: "form" as const,
+    },
+    {
+      id: "budget_quotation",
+      label: "Budget & Quotation Review",
+      defaultRole: "finance" as const,
+      kind: "rab" as const,
+    },
+    {
+      id: "vendor_selection",
+      label: "Vendor Selection",
+      defaultRole: "media" as const,
+      kind: "form" as const,
+    },
+  ];
   return [
     formStage(
       "tpl-event-brief",
       "Brief Received",
       "prospek",
-      {},
+      {
+        description:
+          "Brief klien dan seluruh pekerjaan persiapan: strategi, KV, vendor, survei, anggaran, dan pemilihan vendor.",
+        entryTypes: briefEntries,
+      },
       ["Catat brief dan tujuan event"],
-    ),
-    formStage(
-      "tpl-event-strategy",
-      "Create Strategy & Concept",
-      "prospek",
-      {},
-      ["Susun konsep acara"],
-    ),
-    simproStage("tpl-event-kv", "Create KV & Key Visual Assets", "prospek", {
-      costBeforeCommitment: true,
-      description: "Produksi aset sebelum komitmen kontrak.",
-      tasks: [task("evt-t3", "Produksi key visual", "Assignee", "Aset KV")],
-    }),
-    formStage(
-      "tpl-event-vendor",
-      "Contact Vendor",
-      "prospek",
-      {},
-      ["Hubungi vendor kandidat"],
-    ),
-    formStage(
-      "tpl-event-survey",
-      "Site Survey",
-      "prospek",
-      {},
-      ["Survei lokasi acara"],
-    ),
-    stage("tpl-event-budget", "Budget & Quotation Review", "prospek", "finance_form", {
-      financeKind: "rab",
-    }),
-    formStage(
-      "tpl-event-selection",
-      "Vendor Selection",
-      "prospek",
-      {},
-      ["Pilih vendor dan venue"],
     ),
     stage("tpl-event-approval", "Client Approval", "prospek", "gate", {
       gateKind: "client_approval",
       description: "Persetujuan klien atas anggaran dan vendor.",
     }),
     simproStage("tpl-event-confirm", "Confirm Vendor & Venue", "planning", {
-      tasks: [task("evt-t8", "Konfirmasi booking vendor dan venue", "PM", "PO booking")],
+      tasks: [
+        task("evt-t8", "Konfirmasi booking vendor dan venue", "Media", "PO booking"),
+      ],
     }),
     simproStage("tpl-event-production", "Production Preparation", "planning", {
-      tasks: [task("evt-t9", "Siapkan produksi acara", "Assignee", "Checklist produksi")],
+      tasks: [task("evt-t9", "Siapkan produksi acara", "Media", "Checklist produksi")],
     }),
     simproStage("tpl-event-setup", "Event Setup", "planning", {
-      tasks: [task("evt-t10", "Lakukan setup lokasi", "Assignee", "Foto setup")],
+      tasks: [task("evt-t10", "Lakukan setup lokasi", "Media", "Foto setup")],
     }),
     simproStage("tpl-event-execution", "Event Execution", "running", {
-      tasks: [task("evt-t11", "Jalankan acara", "PM", "Laporan harian")],
+      tasks: [task("evt-t11", "Jalankan acara", "Media", "Laporan harian")],
     }),
     formStage(
       "tpl-event-documentation",
       "Documentation",
       "running",
-      {},
+      {
+        entryTypes: [
+          {
+            id: "documentation",
+            label: "Dokumentasi acara",
+            defaultRole: "media",
+            kind: "form",
+          },
+        ],
+      },
       ["Dokumentasikan acara"],
     ),
     formStage(
@@ -309,7 +345,7 @@ export function createSeedTemplates(): ProjectTemplate[] {
       name: "KOL Campaign",
       description: "Tahap KOL dengan Form, SIMPRO, gerbang menang, dan form keuangan.",
       projectType: "KOL Campaign",
-      version: 2,
+      version: 3,
       status: "active",
       stages: withOrder(kolStages()),
       changelog: [
@@ -317,6 +353,11 @@ export function createSeedTemplates(): ProjectTemplate[] {
         {
           version: 2,
           note: "Checklist dipecah menjadi Form dan SIMPRO.",
+          createdAt,
+        },
+        {
+          version: 3,
+          note: "Listing dan Rate Inquiry punya entri default Media.",
           createdAt,
         },
       ],
@@ -328,7 +369,7 @@ export function createSeedTemplates(): ProjectTemplate[] {
       name: "Event Program",
       description: "Tahap event dengan Form, SIMPRO, gerbang menang, dan form keuangan.",
       projectType: "Event Program",
-      version: 2,
+      version: 3,
       status: "active",
       stages: withOrder(eventStages()),
       changelog: [
@@ -336,6 +377,11 @@ export function createSeedTemplates(): ProjectTemplate[] {
         {
           version: 2,
           note: "Checklist dipecah menjadi Form dan SIMPRO.",
+          createdAt,
+        },
+        {
+          version: 3,
+          note: "Strategi sampai pemilihan vendor menjadi entri Brief Received; Media ditambahkan.",
           createdAt,
         },
       ],

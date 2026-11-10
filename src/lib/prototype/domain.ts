@@ -6,10 +6,13 @@ import {
   STEP_META,
   TASK_STATUS_LABEL,
   type AppState,
+  type BusinessUnitId,
   type FormEntry,
   type FormStepKey,
   type GateResult,
   type Lifecycle,
+  type MediaOrder,
+  type MediaOrderItem,
   type Phase,
   type Priority,
   type Project,
@@ -500,7 +503,7 @@ export function canViewProject(
     return true;
   }
   if (user.role === "pm") return project.createdById === user.id;
-  if (user.role === "assignee") {
+  if (user.role === "assignee" || user.role === "media") {
     const hasTask = state.tasks.some(
       (task) =>
         task.projectId === project.id &&
@@ -510,7 +513,10 @@ export function canViewProject(
     const hasForm = state.forms.some(
       (form) => form.projectId === project.id && form.assigneeId === user.id,
     );
-    return hasTask || hasForm;
+    const hasEntry = state.formEntries.some(
+      (entry) => entry.projectId === project.id && entry.assigneeId === user.id,
+    );
+    return hasTask || hasForm || hasEntry;
   }
   return false;
 }
@@ -561,6 +567,28 @@ export function isProjectReadOnly(project: Project): boolean {
 /** Structure is frozen once the project exists (FR-15). */
 export function canEditProjectStructure(project: Project): boolean {
   return !project.structureLocked;
+}
+
+/**
+ * A phase may be composed only before it starts. Legacy projects keep the
+ * global structure lock, so they stay frozen.
+ */
+export function canEditPhaseStructure(
+  project: Project,
+  phase: Phase,
+): boolean {
+  if (project.status !== "active") return false;
+  if (
+    project.lifecycle === "lost" ||
+    project.lifecycle === "cancelled" ||
+    project.lifecycle === "done"
+  ) {
+    return false;
+  }
+  const state = project.phaseStates?.[phase];
+  if (!state) return false;
+  if (project.structureLocked) return false;
+  return !state.startedAt && !state.lockedAt;
 }
 
 export type TemplateValidation = { ok: boolean; errors: string[] };
@@ -678,17 +706,43 @@ export function canCreateTask(
   return activeSteps(state, project.id).some((step) => step.kind === "simpro");
 }
 
+export type WorkingLinkValidation = {
+  ok: boolean;
+  url?: string;
+  reason?: string;
+};
+
+/** Working links must be absolute http(s) URLs. */
+export function validateWorkingLink(
+  input?: string | null,
+): WorkingLinkValidation {
+  const trimmed = input?.trim() ?? "";
+  if (!trimmed) {
+    return { ok: false, reason: "Link kerja wajib diisi sebelum memulai." };
+  }
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return { ok: false, reason: "Link kerja harus memakai http atau https." };
+    }
+    return { ok: true, url: url.toString() };
+  } catch {
+    return { ok: false, reason: "Link kerja tidak valid." };
+  }
+}
+
 export function taskTransition(
   state: AppState,
   user: User,
   task: Task,
   to: TaskStatus,
+  workingLink?: string,
 ): { ok: boolean; reason?: string } {
   if (task.status === "completed") {
     return { ok: false, reason: "Task Completed terkunci." };
   }
 
-  if (user.role === "admin") return { ok: true };
+  if (user.role === "admin" && !(to === "in_progress")) return { ok: true };
 
   if (to === "todo") {
     if (task.status !== "backlog") {
@@ -709,8 +763,16 @@ export function taskTransition(
     if (!fromTodo && !fromRevision) {
       return { ok: false, reason: "Task harus To Do atau Need Revision." };
     }
-    if (user.role !== "assignee" || task.assigneeId !== user.id) {
+    if (task.assigneeId !== user.id && user.role !== "admin") {
       return { ok: false, reason: "Hanya assignee task ini yang bisa mulai." };
+    }
+    const link = validateWorkingLink(workingLink ?? task.workingLink?.url);
+    if (!link.ok) {
+      return {
+        ok: false,
+        reason:
+          link.reason ?? "Lampirkan link kerja aktif sebelum memulai task.",
+      };
     }
     return { ok: true };
   }
@@ -719,7 +781,7 @@ export function taskTransition(
     if (task.status !== "in_progress") {
       return { ok: false, reason: "Task harus In Progress." };
     }
-    if (user.role !== "assignee" || task.assigneeId !== user.id) {
+    if (task.assigneeId !== user.id && user.role !== "admin") {
       return { ok: false, reason: "Hanya assignee task ini yang bisa submit." };
     }
     return { ok: true };
@@ -756,6 +818,9 @@ export function canEditForm(
   if (user.role === "admin") return true;
   if (form.assigneeId !== user.id) return false;
   if (form.type === "survey" && user.role !== "assignee") return false;
+  if (form.type === "bast") {
+    return user.role === "finance" || user.role === "media";
+  }
   if (form.type !== "survey" && user.role !== "finance") return false;
   return true;
 }
@@ -807,7 +872,10 @@ export function canEditFormEntry(
   const step = stepFor(state, entry.projectId, entry.stepKey);
   if (step?.status !== "active") return false;
   if (user.role === "admin") return true;
-  return user.role === "assignee" && entry.assigneeId === user.id;
+  return (
+    (user.role === "assignee" || user.role === "media") &&
+    entry.assigneeId === user.id
+  );
 }
 
 export function canReviewFormEntry(
@@ -873,7 +941,9 @@ export function formEntriesNeedingReview(
 }
 
 export function workloadRows(state: AppState): WorkloadRow[] {
-  const assignees = state.users.filter((user) => user.role === "assignee");
+  const assignees = state.users.filter(
+    (user) => user.role === "assignee" || user.role === "media",
+  );
   return assignees
     .map((user) => {
       const tasks = state.tasks.filter(
@@ -1038,13 +1108,181 @@ export function allFormKeys(): FormStepKey[] {
 }
 
 export function roleCanAccessCrm(role: Role): boolean {
-  return role !== "assignee";
+  return role !== "assignee" && role !== "media" && role !== "bod";
 }
 
 export function roleCanAccessSimpro(role: Role): boolean {
-  return role !== "finance";
+  return role !== "finance" && role !== "bod";
+}
+
+export function roleCanAccessBusiness(role: Role): boolean {
+  return role === "admin" || role === "bod";
 }
 
 export function landingForRole(role: Role): string {
-  return role === "assignee" ? "/my-tasks" : "/crm";
+  if (role === "assignee" || role === "media") return "/my-tasks";
+  if (role === "bod") return "/business";
+  return "/crm";
+}
+
+export type MediaOrderLineTotals = {
+  revenue: number;
+  cost: number;
+  margin: number;
+  marginPercent: number;
+};
+
+export function mediaOrderLine(
+  item: MediaOrderItem,
+): MediaOrderLineTotals {
+  const revenue = (item.qty || 0) * (item.clientUnitPrice || 0);
+  const cost = (item.qty || 0) * (item.vendorUnitCost || 0);
+  const margin = revenue - cost;
+  return {
+    revenue,
+    cost,
+    margin,
+    marginPercent: revenue > 0 ? (margin / revenue) * 100 : 0,
+  };
+}
+
+export function mediaOrderTotals(
+  order: MediaOrder,
+): MediaOrderLineTotals & { itemCount: number } {
+  const totals = (order.items ?? []).reduce(
+    (sum, item) => {
+      const line = mediaOrderLine(item);
+      return {
+        revenue: sum.revenue + line.revenue,
+        cost: sum.cost + line.cost,
+        margin: sum.margin + line.margin,
+        itemCount: sum.itemCount + 1,
+      };
+    },
+    { revenue: 0, cost: 0, margin: 0, itemCount: 0 },
+  );
+  return {
+    ...totals,
+    marginPercent: totals.revenue > 0 ? (totals.margin / totals.revenue) * 100 : 0,
+  };
+}
+
+export function rabCostByBusinessUnit(
+  state: AppState,
+  projectId: string,
+): Partial<Record<BusinessUnitId, number>> {
+  const form = formFor(state, projectId, "rab");
+  if (!form || form.status !== "approved") return {};
+  const items = (form.payload as { items?: { qty: number; unitPrice: number; businessUnitId?: BusinessUnitId }[] }).items ?? [];
+  const totals: Partial<Record<BusinessUnitId, number>> = {};
+  for (const item of items) {
+    if (!item.businessUnitId) continue;
+    totals[item.businessUnitId] =
+      (totals[item.businessUnitId] ?? 0) + item.qty * item.unitPrice;
+  }
+  return totals;
+}
+
+export type BusinessDashboardRow = {
+  businessUnitId: BusinessUnitId;
+  revenue: number;
+  cost: number;
+  margin: number;
+  marginPercent: number;
+  itemCount: number;
+  plannedRabCost: number;
+  variance: number;
+  hasRevenue: boolean;
+};
+
+export type BusinessDashboardFilters = {
+  groupId?: string;
+  standalone?: boolean;
+  from?: string;
+  to?: string;
+};
+
+export function businessDashboardRows(
+  state: AppState,
+  filters: BusinessDashboardFilters = {},
+): BusinessDashboardRow[] {
+  const active = state.projects.filter(
+    (project) => project.lifecycle !== "lost" && project.lifecycle !== "cancelled",
+  );
+  const projects = active.filter((project) => {
+    if (filters.standalone) return !project.groupId;
+    if (filters.groupId) return project.groupId === filters.groupId;
+    return true;
+  });
+  const projectIds = new Set(projects.map((project) => project.id));
+  const from = filters.from ? new Date(filters.from).getTime() : undefined;
+  const to = filters.to ? new Date(filters.to).getTime() : undefined;
+  const rows = new Map<
+    BusinessUnitId,
+    BusinessDashboardRow
+  >();
+
+  for (const order of state.mediaOrders) {
+    if (order.status === "cancelled") continue;
+    if (!projectIds.has(order.projectId)) continue;
+    const created = new Date(order.createdAt).getTime();
+    if (from !== undefined && created < from) continue;
+    if (to !== undefined && created > to) continue;
+    for (const item of order.items) {
+      if (!item.businessUnitId) continue;
+      const line = mediaOrderLine(item);
+      const row =
+        rows.get(item.businessUnitId) ??
+        {
+          businessUnitId: item.businessUnitId,
+          revenue: 0,
+          cost: 0,
+          margin: 0,
+          marginPercent: 0,
+          itemCount: 0,
+          plannedRabCost: 0,
+          variance: 0,
+          hasRevenue: false,
+        };
+      row.revenue += line.revenue;
+      row.cost += line.cost;
+      row.margin += line.margin;
+      row.itemCount += 1;
+      rows.set(item.businessUnitId, row);
+    }
+  }
+
+  for (const project of projects) {
+    const planned = rabCostByBusinessUnit(state, project.id);
+    for (const [unit, cost] of Object.entries(planned) as [
+      BusinessUnitId,
+      number,
+    ][]) {
+      const row =
+        rows.get(unit) ??
+        {
+          businessUnitId: unit,
+          revenue: 0,
+          cost: 0,
+          margin: 0,
+          marginPercent: 0,
+          itemCount: 0,
+          plannedRabCost: 0,
+          variance: 0,
+          hasRevenue: false,
+        };
+      row.plannedRabCost += cost;
+      rows.set(unit, row);
+    }
+  }
+
+  return [...rows.values()]
+    .map((row) => ({
+      ...row,
+      marginPercent:
+        row.revenue > 0 ? (row.margin / row.revenue) * 100 : 0,
+      variance: row.itemCount > 0 ? row.cost - row.plannedRabCost : 0,
+      hasRevenue: row.revenue > 0,
+    }))
+    .sort((a, b) => b.revenue - a.revenue);
 }

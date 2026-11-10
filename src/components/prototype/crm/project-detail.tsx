@@ -45,6 +45,7 @@ import {
   canCancelProject,
   canCreateFormEntry,
   canEditForm,
+  canEditPhaseStructure,
   canManageProject,
   evaluateGate,
   formatCurrency,
@@ -68,6 +69,8 @@ import {
   LIFECYCLE_LABEL,
   PHASE_HINT,
   PHASE_LABEL,
+  PHASE_ORDER,
+  ROLE_LABEL,
   type FormEntry,
   type Phase,
   type Project,
@@ -94,6 +97,7 @@ import {
 } from "../ui";
 import { PitchingDialog, ProjectDialog } from "../dialogs";
 import { ProjectStepHistory } from "./project-history";
+import { ProjectMediaOrders } from "./media-order";
 import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
 
 type StepTone = "done" | "active" | "attention" | "empty";
@@ -1146,7 +1150,9 @@ function EntryAssignControl({
 }) {
   const store = usePrototypeStore();
   const [userId, setUserId] = useState(entry.assigneeId ?? "");
-  const candidates = store.users.filter((user) => user.role === "assignee");
+  const candidates = store.users.filter(
+    (user) => user.role === "assignee" || user.role === "media",
+  );
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <NativeSelect
@@ -1192,6 +1198,10 @@ function FormStagePanel({
   const currentUser = userById(store, store.currentUserId);
   const entries = formEntriesForStep(store, project.id, step.key);
   const progress = formEntryProgress(store, project.id, step.key);
+  const entryTypes = step.entryTypes ?? [];
+  const missingTypes = entryTypes.filter(
+    (type) => !entries.some((entry) => entry.entryType === type.id),
+  );
   const canCreate = Boolean(
     currentUser &&
       !readOnly &&
@@ -1201,7 +1211,17 @@ function FormStagePanel({
   const canManage = Boolean(currentUser && canManageProject(currentUser, project));
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState("");
+  const [entryType, setEntryType] = useState("");
   const [dueDate, setDueDate] = useState("");
+
+  const createEntry = (payload: {
+    title: string;
+    entryType?: string;
+    dueDate?: string;
+  }) => {
+    store.createFormEntry(project.id, step.key, payload);
+    toast.success("Entri form dibuat.");
+  };
 
   return (
     <div className="space-y-4">
@@ -1236,6 +1256,26 @@ function FormStagePanel({
           />
         </div>
 
+        {canCreate && missingTypes.length > 0 ? (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {missingTypes.map((type) => (
+              <Button
+                key={type.id}
+                size="xs"
+                variant="outline"
+                onClick={() =>
+                  createEntry({ title: type.label, entryType: type.id })
+                }
+              >
+                <Plus className="size-3" /> {type.label}
+                <span className="text-muted-foreground">
+                  {ROLE_LABEL[type.defaultRole]}
+                </span>
+              </Button>
+            ))}
+          </div>
+        ) : null}
+
         {entries.length === 0 ? (
           <EmptyState
             icon={Clock3}
@@ -1244,7 +1284,11 @@ function FormStagePanel({
           />
         ) : (
           <div className="space-y-2">
-            {entries.map((entry) => (
+            {entries.map((entry) => {
+              const type = entryTypes.find(
+                (item) => item.id === entry.entryType,
+              );
+              return (
               <div
                 key={entry.id}
                 className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2"
@@ -1253,6 +1297,7 @@ function FormStagePanel({
                   <p className="truncate text-xs font-medium">{entry.title}</p>
                   <p className="text-muted-foreground text-[10px]">
                     {FORM_ENTRY_STATUS_LABEL[entry.status]}
+                    {type ? ` · ${type.label} (${ROLE_LABEL[type.defaultRole]})` : ""}
                     {entry.dueDate ? ` · Tenggat ${formatDate(entry.dueDate)}` : ""}
                   </p>
                 </div>
@@ -1266,12 +1311,19 @@ function FormStagePanel({
                 <Button
                   size="xs"
                   variant="outline"
-                  onClick={() => router.push(`/forms?entry=${entry.id}`)}
+                  onClick={() =>
+                    router.push(
+                      type?.kind === "rab"
+                        ? `/crm/projects/${project.id}/forms/rab`
+                        : `/forms?entry=${entry.id}`,
+                    )
+                  }
                 >
-                  Buka
+                  {type?.kind === "rab" ? "Buka RAB" : "Buka"}
                 </Button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -1311,6 +1363,29 @@ function FormStagePanel({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {entryTypes.length > 0 ? (
+              <div>
+                <label className="text-xs font-medium" htmlFor="entry-type">
+                  Jenis entri
+                </label>
+                <NativeSelect
+                  value={entryType}
+                  onChange={(value) => {
+                    setEntryType(value);
+                    const type = entryTypes.find((item) => item.id === value);
+                    if (type) setTitle(type.label);
+                  }}
+                  className="h-8 text-xs"
+                >
+                  <option value="">Entri umum</option>
+                  {entryTypes.map((type) => (
+                    <option key={type.id} value={type.id}>
+                      {type.label} · {ROLE_LABEL[type.defaultRole]}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+            ) : null}
             <div>
               <label className="text-xs font-medium" htmlFor="entry-title">
                 Nama entri
@@ -1341,16 +1416,17 @@ function FormStagePanel({
             <Button
               disabled={!title.trim()}
               onClick={() => {
-                store.createFormEntry(project.id, step.key, {
+                createEntry({
                   title,
+                  entryType: entryType || undefined,
                   dueDate: dueDate
                     ? new Date(`${dueDate}T00:00:00`).toISOString()
                     : undefined,
                 });
                 setTitle("");
+                setEntryType("");
                 setDueDate("");
                 setCreateOpen(false);
-                toast.success("Entri form dibuat.");
               }}
             >
               Buat entri
@@ -1698,6 +1774,105 @@ function CompletedSummary({ project }: { project: Project }) {
   );
 }
 
+function PhaseComposer({
+  project,
+  phase,
+}: {
+  project: Project;
+  phase: Phase;
+}) {
+  const store = usePrototypeStore();
+  const currentUser = userById(store, store.currentUserId);
+  const phaseState = project.phaseStates?.[phase];
+  const template = store.templates.find((item) => item.id === project.templateId);
+  const phaseSteps = store.steps
+    .filter((step) => step.projectId === project.id && step.phase === phase)
+    .sort((a, b) => a.order - b.order);
+  const canManage = Boolean(currentUser && canManageProject(currentUser, project));
+  const canEdit = canEditPhaseStructure(project, phase);
+  if (!phaseState || phaseState.startedAt) return null;
+  if (!canManage) {
+    return (
+      <SectionCard
+        title={`Fase ${PHASE_LABEL[phase]} belum dimulai`}
+        description="PM pemilik proyek menyusun fase ini setelah gerbang menang."
+      >
+        <p className="text-muted-foreground text-xs">
+          {phaseSteps.length} tahap sudah disusun.
+        </p>
+      </SectionCard>
+    );
+  }
+  const templateStages = (template?.stages ?? []).filter(
+    (stage) => stage.phase === phase,
+  );
+  const legacyEmptyPlanning =
+    template?.legacy && phase === "planning" && phaseSteps.length === 0;
+  const priorPhases = PHASE_ORDER.slice(0, PHASE_ORDER.indexOf(phase));
+  const priorDone = priorPhases.every((prior) => {
+    const steps = store.steps.filter(
+      (step) => step.projectId === project.id && step.phase === prior,
+    );
+    if (steps.length === 0) return Boolean(template?.legacy && prior === "planning");
+    return steps.every(
+      (step) => step.status === "completed" || step.status === "skipped",
+    );
+  });
+  const readyToStart = priorDone && (phaseSteps.length > 0 || legacyEmptyPlanning);
+  return (
+    <SectionCard
+      title={`Susun fase ${PHASE_LABEL[phase]}`}
+      description="Fase terkunci setelah dimulai. Susun tahap dari template sebelum mulai."
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span className="text-muted-foreground">
+          {phaseSteps.length > 0
+            ? `${phaseSteps.length} tahap: ${phaseSteps.map((step) => step.name).join(", ")}`
+            : legacyEmptyPlanning
+              ? "Template Umum tidak memiliki tahap Planning."
+              : "Belum ada tahap pada fase ini."}
+        </span>
+        <div className="flex gap-2">
+          {canEdit && templateStages.length > 0 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const ok = store.setPhaseStructure(
+                  project.id,
+                  phase,
+                  templateStages,
+                );
+                toast[ok ? "success" : "error"](
+                  ok ? "Fase disusun dari template." : "Fase tidak bisa disusun.",
+                );
+              }}
+            >
+              Susun dari template
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            disabled={!readyToStart}
+            onClick={() => {
+              const ok = store.startPhase(project.id, phase);
+              if (!ok) {
+                toast.error(
+                  "Fase sebelumnya harus selesai dan minimal satu tahap harus disusun.",
+                );
+                return;
+              }
+              toast.success(`Fase ${PHASE_LABEL[phase]} dimulai.`);
+            }}
+          >
+            Mulai fase
+          </Button>
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const store = usePrototypeStore();
   const project = store.projects.find((item) => item.id === projectId);
@@ -1959,7 +2134,8 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
               panelId="project-step-panel"
             />
             <p className="mt-2 text-[10px] text-white/60">
-              Tahapan terkunci setelah proyek dibuat. Klik fase untuk melihat tahap di dalamnya.
+              Setiap fase terkunci setelah dimulai. Fase berikutnya disusun
+              setelah gerbang menang.
             </p>
           </div>
         </div>
@@ -1990,6 +2166,12 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           </button>
         </div>
       ) : null}
+
+      {project.status === "active"
+        ? (["planning", "running"] as Phase[]).map((phaseName) => (
+            <PhaseComposer key={phaseName} project={project} phase={phaseName} />
+          ))
+        : null}
 
       {project.status === "completed" ? (
         <CompletedSummary project={project} />
@@ -2052,6 +2234,8 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           <ProjectStepHistory projectId={project.id} stepKey={selectedKey} />
         ) : null}
       </div>
+
+      <ProjectMediaOrders project={project} />
 
       <ProjectDialog open={editOpen} onOpenChange={setEditOpen} project={project} />
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>

@@ -92,6 +92,11 @@ describe("task transitions", () => {
   it("assignee moves todo to in progress and awaiting approval", () => {
     const state = createSeedState();
     const task = state.tasks.find((item) => item.id === "task-alpha-005")!;
+    task.workingLink = {
+      url: "https://docs.google.com/document/d/abc",
+      setById: "u-assignee3",
+      setAt: "2026-11-01T00:00:00.000Z",
+    };
     const assignee = userById(state, "u-assignee3")!;
     expect(taskTransition(state, assignee, task, "in_progress").ok).toBe(true);
     task.status = "in_progress";

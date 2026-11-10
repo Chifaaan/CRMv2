@@ -6,7 +6,7 @@
     "dev": "node scripts/run-next.mjs dev",
     "build": "node scripts/run-next.mjs build",
     "start": "node scripts/run-next.mjs start",
-    "lint": "eslint src/components/prototype src/lib/prototype \"src/app/(main)/crm\" \"src/app/(main)/dashboard/page.tsx\" \"src/app/(main)/projects/page.tsx\" \"src/app/(main)/projects/[id]/page.tsx\" \"src/app/(main)/projects/[id]/layout.tsx\" \"src/app/(main)/projects/[id]/board/page.tsx\" \"src/app/(main)/projects/[id]/backlog/page.tsx\" \"src/app/(main)/projects/[id]/rab/page.tsx\" \"src/app/(main)/projects/[id]/forms/page.tsx\" \"src/app/(main)/my-tasks/page.tsx\" \"src/app/(main)/my-tasks/layout.tsx\" \"src/app/(main)/forms/page.tsx\" \"src/app/(main)/layout.tsx\" src/app/page.tsx tests",
+    "lint": "eslint src/components/prototype src/lib/prototype \"src/app/(main)/crm\" \"src/app/(main)/business\" \"src/app/(main)/dashboard/page.tsx\" \"src/app/(main)/projects/page.tsx\" \"src/app/(main)/projects/[id]/page.tsx\" \"src/app/(main)/projects/[id]/layout.tsx\" \"src/app/(main)/projects/[id]/board/page.tsx\" \"src/app/(main)/projects/[id]/backlog/page.tsx\" \"src/app/(main)/projects/[id]/rab/page.tsx\" \"src/app/(main)/projects/[id]/forms/page.tsx\" \"src/app/(main)/my-tasks/page.tsx\" \"src/app/(main)/my-tasks/layout.tsx\" \"src/app/(main)/forms/page.tsx\" \"src/app/(main)/layout.tsx\" src/app/page.tsx tests",
     "lint:all": "eslint",
     "test": "vitest run"
   },

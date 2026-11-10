@@ -21,7 +21,6 @@ import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   canCreateProject,
   userById,
-  validateTemplateStages,
 } from "@/lib/prototype/domain";
 import {
   GATE_KIND_LABEL,
@@ -92,6 +91,41 @@ function normalize(stages: TemplateStage[]): TemplateStage[] {
   return stages.map((stage, index) => ({ ...stage, order: index + 1 }));
 }
 
+function prospekOnly(stages: TemplateStage[]): TemplateStage[] {
+  return cloneStages(stages.filter((stage) => stage.phase === "prospek"));
+}
+
+function validateProspekStages(
+  stages: TemplateStage[],
+  legacy?: boolean,
+): { ok: boolean; errors: string[] } {
+  const errors: string[] = [];
+  if (stages.length === 0) {
+    errors.push("Fase Prospek harus punya minimal satu tahap.");
+  }
+  if (stages.some((stage) => stage.phase !== "prospek")) {
+    errors.push("Tahap awal hanya boleh berada di fase Prospek.");
+  }
+  const names = new Set<string>();
+  for (const stage of stages) {
+    const name = stage.name.trim().toLowerCase();
+    if (names.has(name)) {
+      errors.push(`Nama tahap "${stage.name}" dipakai lebih dari sekali.`);
+    }
+    names.add(name);
+    if (stage.weight <= 0) {
+      errors.push(`Bobot tahap "${stage.name}" harus lebih dari 0.`);
+    }
+  }
+  if (!legacy) {
+    const gates = stages.filter((stage) => stage.kind === "gate");
+    if (gates.length !== 1) {
+      errors.push("Fase Prospek harus punya tepat satu gerbang menang.");
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+
 type Draft = {
   name: string;
   client: string;
@@ -120,7 +154,7 @@ export function CrmProjectCreate() {
     targetEndDate: "",
     coverColor: COVER_COLORS[0],
     templateId: activeTemplates[0]?.id ?? "",
-    stages: cloneStages(activeTemplates[0]?.stages ?? []),
+    stages: prospekOnly(activeTemplates[0]?.stages ?? []),
   });
   const [dirty, setDirty] = useState(false);
   const [restored, setRestored] = useState(false);
@@ -132,7 +166,10 @@ export function CrmProjectCreate() {
         const parsed = JSON.parse(raw) as Draft;
         if (parsed?.stages?.length) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
-          setDraft(parsed);
+          setDraft({
+            ...parsed,
+            stages: prospekOnly(parsed.stages),
+          });
           setRestored(true);
         }
       }
@@ -163,9 +200,7 @@ export function CrmProjectCreate() {
   const template = store.templates.find(
     (item) => item.id === draft.templateId,
   );
-  const validation = validateTemplateStages(draft.stages, {
-    legacy: template?.legacy,
-  });
+  const validation = validateProspekStages(draft.stages, template?.legacy);
 
   const patch = (value: Partial<Draft>) => {
     setDraft((current) => ({ ...current, ...value }));
@@ -176,7 +211,7 @@ export function CrmProjectCreate() {
     const next = store.templates.find((item) => item.id === templateId);
     patch({
       templateId,
-      stages: cloneStages(next?.stages ?? []),
+      stages: prospekOnly(next?.stages ?? []),
     });
   };
 
@@ -251,7 +286,7 @@ export function CrmProjectCreate() {
 
   const summary = useMemo(
     () =>
-      PHASE_ORDER.map((phase) => ({
+      PHASE_ORDER.filter((phase) => phase === "prospek").map((phase) => ({
         phase,
         count: draft.stages.filter((stage) => stage.phase === phase).length,
       })),
@@ -425,13 +460,13 @@ export function CrmProjectCreate() {
 
       <SectionCard
         title="Sesuaikan tahapan"
-        description="Tahap dan task disalin dari template. Perubahan hanya berlaku untuk proyek ini."
+        description="Susun journey fase Prospek. Fase berikutnya disusun setelah gerbang menang."
         actions={
           <Button
             variant="outline"
             size="sm"
             onClick={() =>
-              patch({ stages: cloneStages(template?.stages ?? []) })
+              patch({ stages: prospekOnly(template?.stages ?? []) })
             }
           >
             <RotateCcw className="size-3.5" /> Kembalikan ke template
@@ -439,7 +474,7 @@ export function CrmProjectCreate() {
         }
       >
         <div className="space-y-4">
-          {PHASE_ORDER.map((phase) => {
+          {PHASE_ORDER.filter((phase) => phase === "prospek").map((phase) => {
             const phaseStages = draft.stages.filter(
               (stage) => stage.phase === phase,
             );
@@ -708,7 +743,7 @@ export function CrmProjectCreate() {
 
       <SectionCard
         title="Ringkasan sebelum dibuat"
-        description="Struktur terkunci setelah proyek dibuat."
+        description="Fase Prospek terkunci setelah proyek dibuat; fase berikutnya disusun setelah gerbang menang."
       >
         <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
           {summary.map((item) => (

@@ -50,3 +50,35 @@ RAB, BAST, dan Invoice juga muncul di menu Forms SIMPRO sebagai jenis form masin
 - Tahap Form/SIMPRO boleh ditutup tanpa entri/task hanya lewat konfirmasi eksplisit yang tercatat di audit trail.
 - Badge Forms hanya untuk antrian isi, bukan antrian review.
 - Kelengkapan Pembayaran mengikuti validasi tanggal, nominal, metode, dan bukti wajib saat status lunas.
+
+## Struktur per fase
+
+- `Project.phaseStates` menyimpan `authoredAt`, `startedAt`, `lockedAt`, `closingMaterialized`, dan `sourceTemplateVersion` per fase.
+- `canEditPhaseStructure(project, phase)` adalah otoritas untuk menambah, menghapus, atau mengurutkan tahap. Fase hanya bisa disusun sebelum `startedAt`; proyek legacy dengan `structureLocked` tetap beku.
+- Proyek baru hanya menyalin tahap fase Prospek. Setelah gerbang menang, PM menyusun Planning dan Running; tahap Closing ditambahkan otomatis saat Running dimulai.
+
+## Role dan akses
+
+| Role | CRM | SIMPRO | Business Dashboard | Landing |
+| --- | --- | --- | --- | --- |
+| Admin | Ya | Ya | Ya | `/crm` |
+| Manager | Ya | Ya | Tidak | `/crm` |
+| PM | Ya (proyek sendiri) | Ya | Tidak | `/crm` |
+| Finance | Ya | Tidak | Tidak | `/crm` |
+| Assignee | Tidak | Ya (yang di-assign) | Tidak | `/my-tasks` |
+| Media | Tidak | Ya (yang di-assign) | Tidak | `/my-tasks` |
+| BOD | Tidak | Tidak | Ya (read-only) | `/business` |
+
+Fungsi otoritas: `roleCanAccessCrm`, `roleCanAccessSimpro`, `roleCanAccessBusiness`, dan `landingForRole`.
+
+## Link kerja wajib
+
+- `validateWorkingLink(input)` menerima hanya URL absolut `http`/`https`.
+- `taskTransition(..., workingLink?)` menolak `To Do → In Progress` dan `Need Revision → In Progress` tanpa link valid.
+- Link disimpan pada task (`workingLink`) dan riwayatnya (`workingLinkHistory`), serta tercatat sebagai event `task.working_link_set`.
+
+## Media Order
+
+- `mediaOrderLine(item)` menghitung revenue (qty × harga klien), cost (qty × biaya vendor), margin, dan margin %.
+- `mediaOrderTotals(order)` menjumlahkan seluruh item dan menghitung margin % pesanan; margin % bernilai 0 bila revenue 0.
+- Setiap item RAB/MO memakai `businessUnitId` dari katalog `BUSINESS_UNITS` (Makerspace, Makerspace Video, Spektrum).

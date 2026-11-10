@@ -159,7 +159,8 @@ function Overview({ project }: { project: Project }) {
     (task) =>
       task.projectId === project.id &&
       !task.archivedAt &&
-      (currentUser?.role !== "assignee" || task.assigneeId === currentUser.id),
+      (!["assignee", "media"].includes(currentUser?.role ?? "") ||
+        task.assigneeId === currentUser?.id),
   );
   const done = tasks.filter((task) => task.status === "completed").length;
   const open = tasks.length - done;
@@ -493,7 +494,10 @@ export function SimproProjectPage({
     );
   }
 
-  if (currentUser.role === "assignee" && (tab === "backlog" || tab === "rab")) {
+  if (
+    (currentUser.role === "assignee" || currentUser.role === "media") &&
+    (tab === "backlog" || tab === "rab")
+  ) {
     return (
       <EmptyState
         icon={FolderKanban}
@@ -515,14 +519,15 @@ export function SimproProjectPage({
     ? tasksForStep(store, project.id, selectedStage.key)
     : [];
   const tasks =
-    currentUser.role === "assignee"
+    currentUser.role === "assignee" || currentUser.role === "media"
       ? stageTasks.filter((task) => task.assigneeId === currentUser.id)
       : stageTasks;
   const projectTasks = store.tasks.filter(
     (task) =>
       task.projectId === project.id &&
       !task.archivedAt &&
-      (currentUser.role !== "assignee" || task.assigneeId === currentUser.id),
+      (!["assignee", "media"].includes(currentUser.role) ||
+        task.assigneeId === currentUser.id),
   );
   const canCreate = canCreateTask(store, currentUser, project);
 

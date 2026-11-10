@@ -327,6 +327,19 @@ Aturan lint repo dibatasi ke path tertentu, sehingga file baru harus berada di p
 
 Task dan deliverable lanjutan, estimasi vs rencana vs aktual (anggaran, margin, manpower, deviasi), database vendor atau KOL dengan perbandingan penawaran, profil klien dan evaluasi pasca-proyek, serta pemisahan Prospek menjadi sub-fase Kualifikasi dan Penawaran bila beban operasionalnya terbukti berat.
 
+## 18. Revisi November 2026: journey per fase, Media, dan revenue
+
+Revisi ini menggantikan aturan struktur yang terkunci penuh saat proyek dibuat.
+
+- **Journey per fase.** Hanya fase Prospek yang disalin saat proyek dibuat. Setelah gerbang menang, PM menyusun Planning dan Running; tahap Closing ditambahkan otomatis saat Running dimulai. Fase terkunci setelah dimulai dan fase selesai menjadi history read-only. Rujukan: `openspec/changes/evolve-workflow-roles-revenue/specs/project-journey/spec.md`.
+- **Brief Received Event.** Create Strategy & Concept sampai Vendor Selection menjadi entri di bawah tahap Brief Received, bukan tahap terpisah. Client Approval tetap menjadi gerbang menang. Rujukan: spec `project-journey`.
+- **Role Media dan BOD.** Media bekerja di SIMPRO untuk task/entri yang di-assign dan boleh mengisi BAST yang di-assign; tidak punya akses CRM umum dan tidak boleh mengedit RAB/Invoice/Pembayaran. BOD hanya membuka Business Dashboard read-only. Rujukan: `openspec/changes/evolve-workflow-roles-revenue/specs/work-assignment/spec.md`.
+- **Alokasi backlog-first.** PM membuat proyek dan kartu di Backlog; Manager/Admin mengalokasikan ke assignee dan boleh memilih dirinya sendiri. PM tidak boleh meng-assign.
+- **Link kerja wajib.** `To Do → In Progress` dan `Need Revision → In Progress` membutuhkan URL `http(s)` yang tersimpan di kartu dan tercatat di audit trail.
+- **RAB/MO dan Business Dashboard.** Setiap item RAB/MO dipetakan ke unit bisnis (Makerspace, Makerspace Video, Spektrum). MO adalah dokumen proyek yang ter-roll up ke group/umbrella. Dashboard `/business` menampilkan revenue, cost, margin, margin %, planned RAB, dan variance. Rujukan: `openspec/changes/evolve-workflow-roles-revenue/specs/revenue-tracking/spec.md` dan `Docs/Revenue-Tracking.md`.
+
+Aturan lama yang tetap berlaku: empat fase tetap, template Umum legacy dengan enam tahap dan progress identik, hanya Manager/Admin yang meng-assign, PM hanya melihat proyek sendiri, BAST/Invoice paralel, dan proyek kalah/batal read-only.
+
 ## Lampiran: peta fase lama ke baru
 
 | Fase atau step lama | Fase baru (template Umum) |

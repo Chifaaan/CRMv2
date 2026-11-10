@@ -38,6 +38,7 @@ import {
   isGroupableProject,
   taskTransition,
   userById,
+  validateWorkingLink,
 } from "@/lib/prototype/domain";
 import { putPrototypeFile } from "@/lib/prototype/files";
 import {
@@ -211,7 +212,10 @@ export function PitchingDialog({
   const [roles, setRoles] = useState<{ label: string; requestedUserId: string }[]>([]);
 
   const assignees = useMemo(
-    () => store.users.filter((user) => user.role === "assignee"),
+    () =>
+      store.users.filter((user) =>
+        ["assignee", "media", "manager"].includes(user.role),
+      ),
     [store.users],
   );
 
@@ -500,7 +504,9 @@ export function TaskDialog({
   const task = taskId ? store.tasks.find((item) => item.id === taskId) : undefined;
   const project = store.projects.find((item) => item.id === projectId);
   const currentUser = userById(store, store.currentUserId);
-  const assignees = store.users.filter((user) => user.role === "assignee");
+  const assignees = store.users.filter((user) =>
+    ["assignee", "media", "manager"].includes(user.role),
+  );
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -510,6 +516,8 @@ export function TaskDialog({
   const [comment, setComment] = useState("");
   const [reviewComment, setReviewComment] = useState("");
   const [checklistText, setChecklistText] = useState("");
+  const [workingLinkInput, setWorkingLinkInput] = useState("");
+  const [workingLinkError, setWorkingLinkError] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -521,6 +529,8 @@ export function TaskDialog({
     setComment("");
     setReviewComment("");
     setChecklistText("");
+    setWorkingLinkInput(task?.workingLink?.url ?? "");
+    setWorkingLinkError("");
   }, [open, task]);
 
   if (!project) return null;
@@ -533,8 +543,7 @@ export function TaskDialog({
     task.status !== "awaiting_approval" &&
     task.status !== "completed";
   const canReview = task && currentUser ? canReviewTask(store, currentUser, task) : false;
-  const canWork =
-    task && currentUser?.role === "assignee" && task.assigneeId === currentUser.id;
+  const canWork = task && currentUser && task.assigneeId === currentUser.id;
   const canDelete =
     task && currentUser && (currentUser.role === "admin" || (currentUser.role === "pm" && project.createdById === currentUser.id));
 
@@ -556,7 +565,19 @@ export function TaskDialog({
 
   const move = (to: TaskStatus) => {
     if (!task || !currentUser) return;
-    const result = taskTransition(store, currentUser, task, to);
+    const link = workingLinkInput.trim() || task.workingLink?.url;
+    if (to === "in_progress") {
+      const validation = validateWorkingLink(link);
+      if (!validation.ok) {
+        setWorkingLinkError(
+          validation.reason ?? "Link kerja wajib diisi sebelum memulai.",
+        );
+        toast.error(validation.reason ?? "Link kerja wajib diisi.");
+        return;
+      }
+      setWorkingLinkError("");
+    }
+    const result = taskTransition(store, currentUser, task, to, link);
     if (!result.ok) {
       toast.error(result.reason ?? "Transisi tidak diizinkan.");
       return;
@@ -568,7 +589,7 @@ export function TaskDialog({
     if (to === "need_revision") {
       store.addComment(task.id, `Revisi: ${reviewComment.trim()}`);
     }
-    store.transitionTask(task.id, to);
+    store.transitionTask(task.id, to, to === "in_progress" ? link : undefined);
     toast.success(`Task dipindahkan ke ${TASK_STATUS_LABEL[to]}.`);
   };
 
@@ -665,6 +686,60 @@ export function TaskDialog({
               <Field label="Prioritas">
                 <PriorityBadge priority={task.priority} />
               </Field>
+            </div>
+
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <p className="mb-1 text-xs font-medium">Link kerja</p>
+              {task.workingLink ? (
+                <a
+                  href={task.workingLink.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary break-all text-xs underline"
+                >
+                  {task.workingLink.url}
+                </a>
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  Belum ada link. Link wajib diisi sebelum task masuk In Progress.
+                </p>
+              )}
+              {canWork ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Input
+                    value={workingLinkInput}
+                    onChange={(event) => {
+                      setWorkingLinkInput(event.target.value);
+                      setWorkingLinkError("");
+                    }}
+                    placeholder="https://docs.google.com/..."
+                    className="h-8 flex-1 text-xs"
+                    aria-label="Link kerja"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const validation = validateWorkingLink(workingLinkInput);
+                      if (!validation.ok) {
+                        setWorkingLinkError(validation.reason ?? "Link tidak valid.");
+                        return;
+                      }
+                      const ok = store.setWorkingLink(task.id, workingLinkInput);
+                      if (ok) {
+                        setWorkingLinkInput(validation.url ?? workingLinkInput);
+                        setWorkingLinkError("");
+                        toast.success("Link kerja disimpan.");
+                      }
+                    }}
+                  >
+                    Simpan link
+                  </Button>
+                </div>
+              ) : null}
+              {workingLinkError ? (
+                <p className="mt-1 text-xs text-rose-600">{workingLinkError}</p>
+              ) : null}
             </div>
 
             <div className="flex flex-wrap gap-2">

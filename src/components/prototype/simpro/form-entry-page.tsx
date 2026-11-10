@@ -444,7 +444,9 @@ export function FormEntryPage({
             >
               <option value="">Pilih assignee</option>
               {store.users
-                .filter((user) => user.role === "assignee")
+                .filter((user) =>
+                  user.role === "assignee" || user.role === "media",
+                )
                 .map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.name}

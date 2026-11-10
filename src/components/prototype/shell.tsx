@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Bell,
   Boxes,
+  ChartNoAxesCombined,
   CheckCheck,
   ChevronDown,
   FolderKanban,
@@ -32,6 +33,7 @@ import {
   formatDateTime,
   formsNeedingAction,
   landingForRole,
+  roleCanAccessBusiness,
   roleCanAccessCrm,
   roleCanAccessSimpro,
   userById,
@@ -55,6 +57,10 @@ const NAV_CRM = [
   { href: "/crm/workload", label: "Workload", icon: Gauge },
 ];
 
+const NAV_BUSINESS = [
+  { href: "/business", label: "Business", icon: ChartNoAxesCombined },
+];
+
 function isActive(pathname: string, href: string): boolean {
   if (href === "/crm") return pathname === "/crm";
   if (href === "/dashboard") return pathname === "/dashboard";
@@ -67,6 +73,7 @@ function titleForPath(pathname: string): string {
   if (pathname === "/crm/groups") return "Groups";
   if (pathname === "/crm/templates") return "Templates";
   if (pathname === "/crm/workload") return "Workload";
+  if (pathname.startsWith("/business")) return "Business";
   if (pathname.startsWith("/crm")) return "CRM";
   if (pathname.startsWith("/projects/")) return "Detail Proyek";
   if (pathname === "/projects") return "Projects";
@@ -189,16 +196,21 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!currentUser) return;
     const isCrm = pathname.startsWith("/crm");
+    const isBusiness = pathname.startsWith("/business");
     const isFormsPath = pathname === "/forms" || pathname.startsWith("/forms/");
     if (isCrm && !roleCanAccessCrm(currentUser.role)) {
       router.replace(landingForRole(currentUser.role));
     }
+    if (isBusiness && !roleCanAccessBusiness(currentUser.role)) {
+      router.replace(landingForRole(currentUser.role));
+    }
     if (
       !isCrm &&
+      !isBusiness &&
       !roleCanAccessSimpro(currentUser.role) &&
       !(currentUser.role === "finance" && isFormsPath)
     ) {
-      router.replace("/crm");
+      router.replace(landingForRole(currentUser.role));
     }
   }, [currentUser, pathname, router]);
 
@@ -227,6 +239,7 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
 
   const showCrm = roleCanAccessCrm(currentUser.role);
   const showSimpro = roleCanAccessSimpro(currentUser.role);
+  const showBusiness = roleCanAccessBusiness(currentUser.role);
   const showSimproForms = currentUser.role === "finance";
   const simproNav = showSimpro
     ? NAV_SIMPRO
@@ -234,6 +247,7 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
       ? NAV_SIMPRO.filter((item) => item.href === "/forms")
       : [];
   const isCrm = pathname.startsWith("/crm");
+  const isBusinessPath = pathname.startsWith("/business");
 
   return (
     <div className="bg-background text-foreground flex h-full min-h-0 flex-1 overflow-hidden">
@@ -291,6 +305,16 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
               ))}
             </div>
           ) : null}
+          {showBusiness ? (
+            <div className="flex flex-col gap-0.5">
+              <div className="text-muted-foreground px-3 pb-1 text-[0.6875rem] font-semibold uppercase tracking-[0.08em]">
+                Business
+              </div>
+              {NAV_BUSINESS.map((item) => (
+                <NavItem key={item.href} {...item} pathname={pathname} />
+              ))}
+            </div>
+          ) : null}
         </nav>
 
         <div className="border-sidebar-border mt-auto shrink-0 border-t p-2">
@@ -341,7 +365,7 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
               >
                 <Boxes className="text-primary size-4" />
                 <span className="text-xs font-semibold">
-                  {isCrm ? "CRM" : "SIMPRO"}
+                  {isBusinessPath ? "BUSINESS" : isCrm ? "CRM" : "SIMPRO"}
                 </span>
                 <ChevronDown
                   className={cn(
@@ -387,6 +411,18 @@ export function PrototypeShell({ children }: { children: React.ReactNode }) {
                           setModuleOpen(false);
                           if (isCrm) return;
                           router.push("/crm");
+                        }}
+                      />
+                      <ModuleMenuItem
+                        icon={ChartNoAxesCombined}
+                        title="Business"
+                        subtitle="Revenue, cost, dan margin per unit bisnis"
+                        active={isBusinessPath}
+                        disabled={!showBusiness}
+                        onClick={() => {
+                          setModuleOpen(false);
+                          if (isBusinessPath) return;
+                          router.push("/business");
                         }}
                       />
                     </div>

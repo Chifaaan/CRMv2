@@ -186,6 +186,13 @@ export function getValidationErrors(
           itemId: item.id,
         });
       }
+      if (!item.businessUnitId) {
+        issues.push({
+          key: `item-${item.id}-businessUnit`,
+          label: `Item ${index + 1}: unit bisnis wajib dipilih.`,
+          itemId: item.id,
+        });
+      }
     });
     return issues;
   }

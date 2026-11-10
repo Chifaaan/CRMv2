@@ -109,6 +109,7 @@ describe("form validation", () => {
       "item-row-x-description",
       "item-row-x-qty",
       "item-row-x-price",
+      "item-row-x-businessUnit",
     ]);
     expect(errors[0].itemId).toBe("row-x");
   });

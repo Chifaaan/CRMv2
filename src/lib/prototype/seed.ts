@@ -5,7 +5,7 @@ import {
   stageTasksForProject,
   UMUM_TEMPLATE_ID,
 } from "./templates";
-import { STEP_META, type AppState, type FormStepKey, type StepForm, type StepKey } from "./types";
+import { STEP_META, type AppState, type FormStepKey, type MediaOrder, type StepForm, type StepKey } from "./types";
 
 function iso(date: string): string {
   return new Date(`${date}T09:00:00.000Z`).toISOString();
@@ -184,6 +184,20 @@ export function createSeedState(): AppState {
       email: "finance.demo@example.com",
       role: "finance" as const,
       color: "bg-fuchsia-500",
+    },
+    {
+      id: "u-media",
+      name: "Media Demo",
+      email: "media.demo@example.com",
+      role: "media" as const,
+      color: "bg-orange-500",
+    },
+    {
+      id: "u-bod",
+      name: "BOD Demo",
+      email: "bod.demo@example.com",
+      role: "bod" as const,
+      color: "bg-slate-700",
     },
   ];
 
@@ -366,6 +380,7 @@ export function createSeedState(): AppState {
               qty: 1,
               unit: "paket",
               unitPrice: 75000000,
+              businessUnitId: "spektrum",
             },
             {
               id: "rab-gamma-2",
@@ -373,6 +388,7 @@ export function createSeedState(): AppState {
               qty: 1,
               unit: "paket",
               unitPrice: 50000000,
+              businessUnitId: "makerspace-video",
             },
           ],
         },
@@ -408,6 +424,7 @@ export function createSeedState(): AppState {
               qty: 1,
               unit: "paket",
               unitPrice: 42000000,
+              businessUnitId: "spektrum",
             },
           ],
         },
@@ -443,6 +460,7 @@ export function createSeedState(): AppState {
               qty: 1,
               unit: "paket",
               unitPrice: 88000000,
+              businessUnitId: "makerspace",
             },
           ],
         },
@@ -504,6 +522,7 @@ export function createSeedState(): AppState {
               qty: 1,
               unit: "paket",
               unitPrice: 55000000,
+              businessUnitId: "makerspace",
             },
           ],
         },
@@ -1096,6 +1115,81 @@ export function createSeedState(): AppState {
     )?.id,
   }));
 
+  const mediaOrders: MediaOrder[] = [
+    {
+      id: "mo-delta-1",
+      projectId: "p-delta",
+      number: "MO-ALERT-1",
+      title: "Media Order Alert Prototype",
+      status: "final",
+      notes: "Contoh MO untuk umbrella Q4 Enterprise.",
+      createdById: "u-finance",
+      createdAt: iso("2026-10-22"),
+      items: [
+        {
+          id: "mo-delta-item-1",
+          description: "Konten statis kampanye",
+          qty: 2,
+          unit: "paket",
+          clientUnitPrice: 12000000,
+          vendorUnitCost: 8000000,
+          businessUnitId: "makerspace",
+        },
+        {
+          id: "mo-delta-item-2",
+          description: "Video hero campaign",
+          qty: 1,
+          unit: "video",
+          clientUnitPrice: 30000000,
+          vendorUnitCost: 20000000,
+          businessUnitId: "spektrum",
+        },
+      ],
+    },
+    {
+      id: "mo-alpha-1",
+      projectId: "p-alpha",
+      number: "MO-PRJ-1",
+      title: "Media Order Proyek Alpha",
+      status: "draft",
+      notes: "Contoh MO proyek standalone.",
+      createdById: "u-pm1",
+      createdAt: iso("2026-10-25"),
+      items: [
+        {
+          id: "mo-alpha-item-1",
+          description: "Produksi video profil",
+          qty: 1,
+          unit: "video",
+          clientUnitPrice: 50000000,
+          vendorUnitCost: 35000000,
+          businessUnitId: "makerspace-video",
+        },
+      ],
+    },
+    {
+      id: "mo-epsilon-1",
+      projectId: "p-epsilon",
+      number: "MO-POS-1",
+      title: "Media Order POS Revamp",
+      status: "final",
+      notes: "",
+      createdById: "u-finance",
+      createdAt: iso("2026-09-20"),
+      items: [
+        {
+          id: "mo-epsilon-item-1",
+          description: "Materi pendukung POS",
+          qty: 1,
+          unit: "paket",
+          clientUnitPrice: 10000000,
+          vendorUnitCost: 7000000,
+          businessUnitId: "makerspace",
+        },
+      ],
+    },
+  ];
+
   const baseState: AppState = {
     seedVersion: 3,    currentUserId: "u-pm1",
     users,
@@ -1121,6 +1215,7 @@ export function createSeedState(): AppState {
     tasks: tasksWithStages,
     forms,
     formEntries: [],
+    mediaOrders,
     groups: [group],
     notifications,
     activityLogs,

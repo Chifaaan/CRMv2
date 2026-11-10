@@ -1,4 +1,11 @@
-export type Role = "admin" | "manager" | "pm" | "finance" | "assignee";
+export type Role =
+  | "admin"
+  | "manager"
+  | "pm"
+  | "finance"
+  | "assignee"
+  | "media"
+  | "bod";
 
 export type Priority = "low" | "medium" | "high" | "critical";
 
@@ -11,6 +18,16 @@ export type StageKind = "form" | "finance_form" | "gate" | "simpro";
 export type GateKind = "go_no_go" | "client_approval";
 
 export type Lifecycle = "active" | "won" | "lost" | "cancelled" | "done";
+
+export type PhaseState = {
+  authoredAt?: string;
+  startedAt?: string;
+  lockedAt?: string;
+  closingMaterialized?: boolean;
+  sourceTemplateVersion?: number;
+};
+
+export type BusinessUnitId = "makerspace" | "makerspace-video" | "spektrum";
 
 export type StepKey =
   | "pitching"
@@ -94,6 +111,7 @@ export type FormEntry = {
   projectId: string;
   stepKey: string;
   templateStageId?: string;
+  entryType?: string;
   title: string;
   assigneeId?: string;
   dueDate?: string;
@@ -164,6 +182,7 @@ export type Project = {
   lostReason?: string;
   structureLocked?: boolean;
   rabBaselineLockedAt?: string;
+  phaseStates?: Partial<Record<Phase, PhaseState>>;
 };
 
 export type TemplateTask = {
@@ -176,6 +195,13 @@ export type TemplateTask = {
 
 export type StageTask = TemplateTask & {
   done: boolean;
+};
+
+export type StageEntryType = {
+  id: string;
+  label: string;
+  defaultRole: Role;
+  kind: "form" | "rab";
 };
 
 export type GateDecision = {
@@ -200,6 +226,7 @@ export type TemplateStage = {
   gateKind?: GateKind;
   legacyKey?: StepKey;
   formTemplate?: FormTemplate;
+  entryTypes?: StageEntryType[];
   tasks: TemplateTask[];
 };
 
@@ -236,6 +263,7 @@ export type ProjectStep = {
   costBeforeCommitment?: boolean;
   legacyKey?: StepKey;
   formTemplate?: FormTemplate;
+  entryTypes?: StageEntryType[];
   tasks: StageTask[];
   gateDecision?: GateDecision;
   noWorkConfirmedAt?: string;
@@ -284,6 +312,12 @@ export type Attachment = {
   storageKey?: string;
 };
 
+export type TaskWorkingLink = {
+  url: string;
+  setById: string;
+  setAt: string;
+};
+
 export type Task = {
   id: string;
   code: string;
@@ -299,6 +333,8 @@ export type Task = {
   assigneeId?: string;
   reporterId: string;
   dueDate?: string;
+  workingLink?: TaskWorkingLink;
+  workingLinkHistory?: TaskWorkingLink[];
   createdAt: string;
   archivedAt?: string;
   archiveReason?: string;
@@ -322,11 +358,38 @@ export type RabItem = {
   qty: number;
   unit: string;
   unitPrice: number;
+  businessUnitId?: BusinessUnitId;
 };
 
 export type RabPayload = {
   items: RabItem[];
   notes: string;
+};
+
+export type MediaOrderItem = {
+  id: string;
+  description: string;
+  qty: number;
+  unit: string;
+  clientUnitPrice: number;
+  vendorUnitCost: number;
+  businessUnitId?: BusinessUnitId;
+};
+
+export type MediaOrderStatus = "draft" | "final" | "cancelled";
+
+export type MediaOrder = {
+  id: string;
+  projectId: string;
+  number: string;
+  title: string;
+  status: MediaOrderStatus;
+  items: MediaOrderItem[];
+  notes: string;
+  createdById: string;
+  createdAt: string;
+  updatedAt?: string;
+  updatedById?: string;
 };
 
 export type BastPayload = {
@@ -464,6 +527,7 @@ export type AppState = {
   tasks: Task[];
   forms: StepForm[];
   formEntries: FormEntry[];
+  mediaOrders: MediaOrder[];
   groups: ProjectGroup[];
   notifications: Notification[];
   activityLogs: ActivityLog[];
@@ -617,6 +681,20 @@ export const ROLE_LABEL: Record<Role, string> = {
   pm: "PM",
   finance: "Finance",
   assignee: "Assignee",
+  media: "Media",
+  bod: "BOD",
+};
+
+export const BUSINESS_UNITS: { id: BusinessUnitId; label: string }[] = [
+  { id: "makerspace", label: "Makerspace" },
+  { id: "makerspace-video", label: "Makerspace Video" },
+  { id: "spektrum", label: "Spektrum" },
+];
+
+export const BUSINESS_UNIT_LABEL: Record<BusinessUnitId, string> = {
+  makerspace: "Makerspace",
+  "makerspace-video": "Makerspace Video",
+  spektrum: "Spektrum",
 };
 
 export const FORM_STATUS_LABEL: Record<FormStatus, string> = {

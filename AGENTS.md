@@ -37,6 +37,7 @@ npm test
 - Prototype UI: `src/components/prototype/`
 - Routes:
   - CRM: `/crm`, `/crm/projects`, `/crm/projects/new`, `/crm/projects/[id]`, `/crm/groups`, `/crm/templates`, `/crm/workload`
+  - Business: `/business` (BOD/Admin read-only)
   - SIMPRO: `/dashboard`, `/projects`, `/projects/[id]/*`, `/my-tasks`, `/forms`
 
 ## Frontend baseline
@@ -54,9 +55,10 @@ Prototype adaptations already made:
 ## Product rules that are easy to get wrong
 
 - Four fixed phases: Prospek → Planning → Running → Closing. Phase order cannot be changed by users. The meaning of "Planning" changed: it now starts at contract commitment.
-- Stages come from a project template. They may be customized only while creating a project, then `structureLocked` freezes them. There is no add/remove/reorder/skip after creation.
+- Stages come from a project template. Only the Prospek phase is materialized at creation; Planning and Running are composed by the PM after the winning gate, and Closing is appended by rule. Each phase locks when it starts; completed phases are read-only history. `structureLocked` remains for legacy projects.
 - Template "Umum" is `legacy` and must keep the old six stages: Pitching → Survey → RAB → Running → BAST ∥ Invoice. New templates require one stage per phase and exactly one winning gate.
-- Journey % is weighted: sum of completed stage weights / sum of non-skipped stage weights. Umum weights (1,1,1,1,0.5,0.5) must produce the exact legacy numbers; a submitted BAST/Invoice still counts before the stage is formally completed.
+- Event Program keeps detailed briefing work (strategy through vendor selection) as entry types under Brief Received, not as separate stages; Client Approval remains the gate.
+- Journey % is weighted over materialized stages: sum of completed stage weights / sum of non-skipped materialized stage weights. Umum weights (1,1,1,1,0.5,0.5) must produce the exact legacy numbers; a submitted BAST/Invoice still counts before the stage is formally completed.
 - Four stage kinds only: **Form Keuangan, Form, Gerbang, SIMPRO**. Checklist is removed; migrated checklist tasks become a checklist field in a Form template.
 - Form stages have one form template and many entries. Entries are created by PM, assigned by Manager/Admin, filled by the assignee, and reviewed by PM. All non-cancelled entries must be approved; at least one entry is required unless "no work" is explicitly confirmed and audited.
 - SIMPRO stages use Kanban cards. Tasks carry `stageId`; the board filters by stage (default active), shows the stage on cards, and completed stages are read-only. A stage closes when no task remains, with at least one task unless "no work" is confirmed.
@@ -64,16 +66,20 @@ Prototype adaptations already made:
 - Task cards exist only on SIMPRO stages (including legacy Pitching and Running). Form entries never appear in My Tasks.
 - BAST and Invoice are parallel finance stages (`parallelGroup: "finance"`); each is 0.5 weight.
 - Survey form lives in SIMPRO and keeps the legacy Survey screen (wrapped as a Form stage); RAB and finance forms live in CRM.
-- A winning gate (client approval) sets lifecycle `won`, locks RAB as baseline, and moves the project to Planning. Rejection sets `lost` with a required reason. Batal can be set in any phase.
+- A winning gate (client approval) sets lifecycle `won`, locks RAB as baseline, and opens Planning for composition. Rejection sets `lost` with a required reason. Batal can be set in any phase.
 - Lost and cancelled projects stay complete with history, are read-only, and are excluded from workload and group completion denominators.
-- Only Manager/Admin assign tasks and form entries. PM creates/reviews; PM only sees own projects.
+- Only Manager/Admin allocate backlog cards and form entries; Manager may also assign to themselves. PM creates/reviews; PM only sees own projects. PM cannot assign.
+- Moving a card to In Progress (from To Do or Need Revision) requires a valid `http(s)` working link stored on the card and recorded in the audit trail.
+- Media works in SIMPRO for assigned cards and briefing entries, and may fill assigned BAST forms; Media cannot edit RAB, Invoice, or Pembayaran and has no CRM browsing.
+- BOD only sees `/business`, the read-only revenue/margin dashboard. Admin also has access.
 - Only Admin and PM manage templates; that right is separate from project access.
 - Pitching is unlimited, allows multiple winners, and losing pitchings/tasks are archived into read-only history.
-- Workload counts active cards and active forms separately; forms are never merged into the card count.
+- Workload counts active cards and active forms separately; forms are never merged into the card count, and Media assignees are included.
 - The Forms badge counts forms this user still has to fill (Assigned, Draft, Need Revision); the PM review queue is not part of the badge.
-- PM does not reject BAST/Invoice; Finance edits until PM closes the project.
-- Task board access for an Assignee is filtered to tasks assigned to them.
+- PM does not reject BAST/Invoice; Finance edits until PM closes the project. Media may handle assigned BAST documents.
+- Task board access for an Assignee or Media user is filtered to tasks assigned to them.
+- Every RAB and MO item must map to a business unit (Makerspace, Makerspace Video, Spektrum). MO revenue and margin roll up to the project's group (umbrella).
 
 ## Verification
 
-`npm run build`, `npm run lint`, and `npm test` pass. The domain tests cover gates, progress, visibility, task transitions, workload, and Excel validation. `tests/templates.test.ts` covers template copying/independence, validation, structure lock, gate transitions, weighted progress, template permissions, and idempotent persistence migration. `tests/stage-types.test.ts` covers stage type validation, Form/SIMPRO completion rules, form permissions/badge/workload separation, checklist migration, and Pembayaran validation. See `Docs/Stage-Types.md`.
+`npm run build`, `npm run lint`, and `npm test` pass. The domain tests cover gates, progress, visibility, task transitions, workload, and Excel validation. `tests/templates.test.ts` covers template copying/independence, validation, phase locking, gate transitions, weighted progress, template permissions, and idempotent persistence migration. `tests/stage-types.test.ts` covers stage type validation, Form/SIMPRO completion rules, form permissions/badge/workload separation, checklist migration, and Pembayaran validation. `tests/journey-revenue.test.ts` covers Media/BOD access, working links, per-phase composition, MO/business-unit math, dashboard aggregation, and migration idempotency. See `Docs/Stage-Types.md` and `Docs/Revenue-Tracking.md`.

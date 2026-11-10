@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   calculateJourneyProgress,
-  canEditProjectStructure,
+  canEditPhaseStructure,
   canManageTemplates,
   canViewProject,
   phaseOfProject,
@@ -74,8 +74,10 @@ describe("template model", () => {
       .getState()
       .steps.filter((step) => step.projectId === projectId);
     expect(project.templateId).toBe(KOL_TEMPLATE_ID);
-    expect(project.structureLocked).toBe(true);
-    expect(steps).toHaveLength(12);
+    expect(project.structureLocked).toBe(false);
+    expect(project.phaseStates?.prospek?.startedAt).toBeTruthy();
+    expect(steps).toHaveLength(4);
+    expect(steps.every((step) => step.phase === "prospek")).toBe(true);
     expect(steps[0].formTemplate?.title).toBe("Brief Received");
     expect(steps[0].status).toBe("active");
   });
@@ -135,7 +137,7 @@ describe("template model", () => {
     const project = usePrototypeStore
       .getState()
       .projects.find((item) => item.id === projectId)!;
-    expect(canEditProjectStructure(project)).toBe(false);
+    expect(canEditPhaseStructure(project, "prospek")).toBe(false);
     expect(
       usePrototypeStore.getState().setProjectStructure(projectId, kolStages()),
     ).toBe(false);
@@ -210,6 +212,36 @@ describe("gate and lifecycle", () => {
       .projects.find((item) => item.id === projectId)!;
     expect(project.lifecycle).toBe("won");
     expect(project.rabBaselineLockedAt).toBeTruthy();
+    expect(project.phaseStates?.planning).toBeTruthy();
+    expect(project.phaseStates?.planning?.startedAt).toBeUndefined();
+    expect(
+      usePrototypeStore
+        .getState()
+        .steps.filter(
+          (step) => step.projectId === projectId && step.phase === "planning",
+        ),
+    ).toHaveLength(0);
+
+    const template = usePrototypeStore
+      .getState()
+      .templates.find((item) => item.id === KOL_TEMPLATE_ID)!;
+    expect(
+      usePrototypeStore.getState().setPhaseStructure(
+        projectId,
+        "planning",
+        template.stages.filter((stage) => stage.phase === "planning"),
+      ),
+    ).toBe(true);
+    expect(
+      usePrototypeStore.getState().setPhaseStructure(
+        projectId,
+        "running",
+        template.stages.filter((stage) => stage.phase === "running"),
+      ),
+    ).toBe(true);
+    expect(usePrototypeStore.getState().startPhase(projectId, "planning")).toBe(
+      true,
+    );
     expect(phaseOfProject(usePrototypeStore.getState(), projectId)).toBe(
       "planning",
     );
@@ -269,10 +301,11 @@ describe("progress and permissions", () => {
       templateId: KOL_TEMPLATE_ID,
     });
     completeFirstThreeKolStages(projectId);
-    // 3 completed form stages of 11 total weight (4 form + 1 gate + 4 simpro + 1 form + 0.5 + 0.5 + 1 payment).
+    // 3 completed Prospek stages of 4 materialized stages; later phases do
+    // not dilute progress until they are composed.
     expect(
       calculateJourneyProgress(usePrototypeStore.getState(), projectId),
-    ).toBe(27);
+    ).toBe(75);
   });
 
   it("allows only Admin and PM to manage templates", () => {

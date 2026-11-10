@@ -193,7 +193,10 @@ export function SimproFormsPage() {
     for (const entry of store.formEntries) {
       if (currentUser.role === "finance") continue;
       if (!visibleIds.has(entry.projectId)) continue;
-      if (currentUser.role === "assignee" && entry.assigneeId !== currentUser.id) {
+      if (
+        (currentUser.role === "assignee" || currentUser.role === "media") &&
+        entry.assigneeId !== currentUser.id
+      ) {
         continue;
       }
       const project = projects.find((item) => item.id === entry.projectId);
@@ -217,7 +220,10 @@ export function SimproFormsPage() {
       if (form.type !== "survey") continue;
       if (currentUser.role === "finance") continue;
       if (!visibleIds.has(form.projectId)) continue;
-      if (currentUser.role === "assignee" && form.assigneeId !== currentUser.id) {
+      if (
+        (currentUser.role === "assignee" || currentUser.role === "media") &&
+        form.assigneeId !== currentUser.id
+      ) {
         continue;
       }
       const project = projects.find((item) => item.id === form.projectId);

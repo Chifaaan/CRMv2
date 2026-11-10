@@ -56,7 +56,7 @@ import type {
   StepForm,
   User,
 } from "@/lib/prototype/types";
-import { PAYMENT_STATUS_LABEL } from "@/lib/prototype/types";
+import { PAYMENT_STATUS_LABEL, BUSINESS_UNITS, BUSINESS_UNIT_LABEL } from "@/lib/prototype/types";
 import { putPrototypeFile } from "@/lib/prototype/files";
 import { cn } from "@/lib/utils";
 import {
@@ -243,6 +243,7 @@ function RabEditor({
           <thead className="bg-muted/40 text-muted-foreground text-[10px] uppercase tracking-wide">
             <tr>
               <th className="px-2 py-2">Kategori</th>
+              <th className="px-2 py-2">Unit bisnis</th>
               <th className="px-2 py-2">Item</th>
               <th className="px-2 py-2">Qty</th>
               <th className="px-2 py-2">Satuan</th>
@@ -330,7 +331,7 @@ function FragmentRows({
   return (
     <>
       <tr className="bg-muted/20">
-        <td colSpan={7} className="px-2 py-1.5">
+        <td colSpan={8} className="px-2 py-1.5">
           <button
             type="button"
             className="flex items-center gap-1 text-[11px] font-semibold"
@@ -358,6 +359,37 @@ function FragmentRows({
                       className="h-8 w-24"
                       aria-label="Kategori item"
                     />
+                  )}
+                </td>
+                <td className="px-2 py-1.5">
+                  {readOnly ? (
+                    item.businessUnitId ? (
+                      <span>{BUSINESS_UNIT_LABEL[item.businessUnitId]}</span>
+                    ) : (
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-800">
+                        Belum dipetakan
+                      </span>
+                    )
+                  ) : (
+                    <NativeSelect
+                      id={`rab-item-${item.id}-businessUnit`}
+                      value={item.businessUnitId ?? ""}
+                      onChange={(value) =>
+                        onUpdate(item.id, {
+                          businessUnitId: value
+                            ? (value as RabItem["businessUnitId"])
+                            : undefined,
+                        })
+                      }
+                      className="h-8 w-36 text-[11px]"
+                    >
+                      <option value="">Pilih unit</option>
+                      {BUSINESS_UNITS.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.label}
+                        </option>
+                      ))}
+                    </NativeSelect>
                   )}
                 </td>
                 <td className="px-2 py-1.5">
