@@ -11,6 +11,11 @@ export function phasesPresent(steps: ProjectStep[]): Phase[] {
   );
 }
 
+/** The journey header always lists every fixed phase, even with zero steps. */
+export function headerPhases(): Phase[] {
+  return [...PHASE_ORDER];
+}
+
 export function phaseStageCounts(
   steps: ProjectStep[],
 ): Partial<Record<Phase, number>> {

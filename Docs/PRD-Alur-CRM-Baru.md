@@ -351,3 +351,16 @@ Aturan lama yang tetap berlaku: empat fase tetap, template Umum legacy dengan en
 | Running | Running |
 | Finishing: BAST, Invoice | Closing |
 | (belum ada) | Planning (kosong di Umum, terisi di KOL dan Event) |
+
+## 12. Pembaruan November 2026: workspace proyek dan kartu SIMPRO
+
+- **Detail Proyek bertab.** `Overview` khusus proyek yang dibuka: penyelesaian tahap (selesai/dilewati/belum), distribusi task enam status, progress completed/open/overdue, riwayat aktivitas, dan `Selesaikan Tahap`. `Journey Management` menampilkan keempat fase termasuk `0 Tahap`, pemilihan fase/step, pengelolaan tahap, task ringkas, dan `Selesaikan fase`.
+- **Tahap baru lewat dialog.** `+ Tambah step` membuka dialog `Nama Tahap`, `Format` (Form, Form Keuangan, Gerbang, SIMPRO), dan preview baris tabel (urutan, nama, format, status). Format keuangan/gerbang menampilkan pilihan tambahan; properti lain tetap diedit di baris tahap.
+- **Fase aktif lebih fleksibel.** Fase yang sudah dimulai boleh menerima tahap baru atau menghapus tahap selama tahap itu belum punya pekerjaan: tidak ada entri draft/submitted/review, tidak ada form keuangan berjalan, dan tidak ada task keluar dari Backlog. Reorder/edit tetap ditolak. Closing tetap otomatis.
+- **Persiapan fase nonaktif.** PM boleh membuat tahap dan task default pada fase yang sudah dibuka tetapi belum dimulai; task tetap Backlog tanpa assignee dan tidak bisa di-assign sampai tahap aktif.
+- **Board per tahap untuk pekerja.** Assignee/Media yang terikat proyek hanya melihat tahap `active` dan `completed`; tahap `pending` disembunyikan dan URL langsungnya ditolak. Tahap selesai bisa dibuka kembali read-only.
+- **Link Pekerjaan tanpa validasi URL.** Kartu menampilkan input `Link Pekerjaan` dan `Simpan Link`. Nilai non-kosong apa pun diterima; teks non-URL ditampilkan sebagai teks biasa. Link tersimpan langsung membolehkan `In Progress`.
+- **Manager pada kartu.** Kartu punya Manager opsional di samping Assignee. Manager terpasang bisa memulai/mengajukan dengan aturan link dan assign/reassign, mendapat notifikasi, tetapi tidak bisa review.
+- **PM memindahkan status.** PM pemilik proyek boleh memindahkan kartu yang punya Assignee atau Manager ke status mana pun. Kartu tanpa owner ditolak; PM tetap tidak bisa assign.
+
+Rujukan implementasi: `openspec/changes/project-detail-tabs-and-manager/` dan `Docs/Stage-Types.md`.

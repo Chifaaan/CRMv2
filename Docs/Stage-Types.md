@@ -28,6 +28,9 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 - Task punya `stageId` dan terhubung ke tahap SIMPRO.
 - Board punya filter tahap (default tahap aktif), label tahap pada kartu, dan tahap selesai read-only.
 - Task default template SIMPRO adalah usulan; PM memilih lewat "Buat dari template".
+- Assignee/Media yang terikat proyek hanya melihat tahap board yang `active` atau `completed`; tahap `pending` disembunyikan dan tidak bisa dibuka lewat URL. Tahap selesai tetap bisa dibuka read-only.
+- Kartu punya Manager opsional di samping Assignee. Manager yang terpasang bisa memulai/mengajukan kartu dengan aturan link, bisa assign/reassign, dan mendapat notifikasi; Manager tetap tidak bisa review.
+- PM pemilik proyek bisa memindahkan kartu yang punya Assignee atau Manager ke status mana pun. PM tetap tidak bisa meng-assign.
 
 ## Badge, My Tasks, Workload
 
@@ -54,9 +57,13 @@ Semua form keuangan juga muncul di menu Forms SIMPRO sesuai assignee: Finance me
 ## Struktur per fase
 
 - `Project.phaseStates` menyimpan `authoredAt`, `startedAt`, `lockedAt`, `closingMaterialized`, dan `sourceTemplateVersion` per fase.
-- `canEditPhaseStructure(project, phase)` adalah otoritas untuk menambah, menghapus, atau mengurutkan tahap. Fase hanya bisa disusun sebelum `startedAt`; proyek legacy dengan `structureLocked` tetap beku. Closing selalu read-only.
+- `canEditPhaseStructure(project, phase)` adalah otoritas untuk mengubah urutan/nama tahap sebelum fase dimulai. Fase hanya bisa disusun sebelum `startedAt`; proyek legacy dengan `structureLocked` tetap beku. Closing selalu read-only.
+- Fase yang sudah dimulai boleh menerima tahap baru atau menghapus tahap selama tahap itu belum punya pekerjaan: tidak ada entri form draft/submitted/review, tidak ada form keuangan yang berjalan, dan tidak ada task yang keluar dari Backlog. Tahap baru masuk `pending`; reorder/edit tetap ditolak setelah fase dimulai.
+- PM boleh menyiapkan tahap dan task default pada fase yang sudah dibuka tetapi belum dimulai. Task tetap `Backlog` tanpa assignee dan tidak bisa di-assign sampai tahapnya `active`.
 - Template bersifat rekomendasi. Proyek baru boleh dibuat dengan Prospek kosong; template hanya mengisi tahap Prospek. Semua tahap Prospek baru `pending`, dan PM/Admin memulai journey secara eksplisit lewat Journey Management. Setelah dimulai, Prospek terkunci.
-- Journey Management di Detail Proyek memilih fase dan mengelola tahap yang belum dimulai. Setelah gerbang menang, PM menyusun Planning dan Running. Journey non-legacy wajib punya tepat satu Gerbang persetujuan klien sebagai tahap terakhir Prospek; Umum `legacy` dikecualikan.
+- Detail Proyek punya tab `Overview` dan `Journey Management`. Overview khusus proyek yang sedang dibuka: penyelesaian tahap, distribusi task enam status, progress completed/open/overdue, dan riwayat aktivitas. Journey Management menampilkan keempat fase (termasuk `0 Tahap`), pemilihan fase/step, dan aksi `Selesaikan fase`.
+- Penambahan tahap memakai dialog `Nama Tahap`, `Format` (Form, Form Keuangan, Gerbang, SIMPRO), dan preview baris tabel (urutan, nama, format, status).
+- Setelah gerbang menang, PM menyusun Planning dan Running. Journey non-legacy wajib punya tepat satu Gerbang persetujuan klien sebagai tahap terakhir Prospek; Umum `legacy` dikecualikan.
 - Saat Running dimulai, tahap Closing ditambahkan otomatis dan selalu berisi tepat satu BAST dan satu Invoice paralel (0,5/0,5). Template boleh menambah tahap Closing lain; tanpa template, default BAST/Invoice/Pembayaran dipakai.
 
 ## Role dan akses
@@ -73,11 +80,12 @@ Semua form keuangan juga muncul di menu Forms SIMPRO sesuai assignee: Finance me
 
 Fungsi otoritas: `roleCanAccessCrm`, `roleCanAccessSimpro`, `roleCanAccessBusiness`, dan `landingForRole`.
 
-## Link kerja wajib
+## Link Pekerjaan
 
-- `validateWorkingLink(input)` menerima hanya URL absolut `http`/`https`.
-- `taskTransition(..., workingLink?)` menolak `To Do → In Progress` dan `Need Revision → In Progress` tanpa link valid.
-- Link disimpan pada task (`workingLink`) dan riwayatnya (`workingLinkHistory`), serta tercatat sebagai event `task.working_link_set`.
+- Kartu menampilkan input `Link Pekerjaan` dan tombol `Simpan Link`.
+- `validateWorkingLink(input)` hanya menolak nilai kosong/spasi. Tidak ada validasi URL; teks apa pun diterima dan disimpan apa adanya.
+- `taskTransition(..., workingLink?)` menolak `To Do → In Progress` dan `Need Revision → In Progress` tanpa link non-kosong. Link yang sudah tersimpan dipakai ulang tanpa perlu input ulang.
+- Link disimpan pada task (`workingLink`) dan riwayatnya (`workingLinkHistory`), serta tercatat sebagai event `task.working_link_set`. Teks non-URL ditampilkan sebagai teks biasa, bukan anchor.
 
 ## Media Order
 

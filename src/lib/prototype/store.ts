@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
   activeSteps,
+  canAddStepToPhase,
   canAssignForm,
   canAssignFormEntry,
   canAssignFormTo,
@@ -11,6 +12,7 @@ import {
   canCancelFormEntry,
   canCreateFormEntry,
   canCreateTask,
+  canDeleteStepFromPhase,
   canEditFormEntry,
   canEditPhaseStructure,
   canManageProject,
@@ -125,7 +127,14 @@ type PrototypeActions = {
     phase: Phase,
     stages: TemplateStage[],
   ) => boolean;
+  addPhaseStep: (
+    projectId: string,
+    phase: Phase,
+    stage: TemplateStage,
+  ) => boolean;
+  deletePhaseStep: (projectId: string, stepKey: string) => boolean;
   startPhase: (projectId: string, phase: Phase) => boolean;
+  completePhase: (projectId: string, phase: Phase) => boolean;
 
   saveTemplate: (input: TemplateInput) => string;
   archiveTemplate: (templateId: string) => void;
@@ -167,6 +176,7 @@ type PrototypeActions = {
     },
   ) => string;
   assignTask: (taskId: string, userId: string) => void;
+  setTaskManager: (taskId: string, managerId: string) => void;
   transitionTask: (
     taskId: string,
     to: TaskStatus,
@@ -438,6 +448,33 @@ function stepsForPhase(
       startedAt: active ? now() : undefined,
     };
   });
+}
+
+function templateStageFromStep(step: ProjectStep): TemplateStage {
+  return {
+    id: step.id,
+    name: step.name,
+    description: step.description,
+    phase: step.phase,
+    order: step.order,
+    kind: step.kind,
+    required: step.required,
+    weight: step.weight,
+    parallelGroup: step.parallelGroup,
+    financeKind: step.financeKind,
+    gateKind: step.gateKind,
+    costBeforeCommitment: step.costBeforeCommitment,
+    legacyKey: step.legacyKey,
+    formTemplate: step.formTemplate,
+    entryTypes: step.entryTypes,
+    tasks: step.tasks.map((task) => ({
+      id: task.id,
+      name: task.name,
+      role: task.role,
+      required: task.required,
+      deliverable: task.deliverable,
+    })),
+  };
 }
 
 function canManageMediaOrders(
@@ -1230,6 +1267,180 @@ export const usePrototypeStore = create<PrototypeStore>()(
         return true;
       },
 
+      addPhaseStep: (projectId, phase, stage) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!actor || !project) return false;
+        if (!canManageProject(actor, project)) return false;
+        if (!canAddStepToPhase(project, phase)) return false;
+        if (stage.phase !== phase) return false;
+        if (!stage.name.trim()) return false;
+
+        const existingSteps = state.steps
+          .filter((step) => step.projectId === projectId && step.phase === phase)
+          .sort((a, b) => a.order - b.order);
+        if (existingSteps.some((step) => step.id === stage.id)) return false;
+
+        const allSteps = state.steps.filter(
+          (step) => step.projectId === projectId,
+        );
+        const proposed = normalizeStageOrders([
+          ...existingSteps.map(templateStageFromStep),
+          { ...stage, phase, order: existingSteps.length + 1 },
+        ]);
+        const validation = journeyPhaseErrors(
+          project,
+          phase,
+          proposed,
+          allSteps,
+        );
+        if (!validation.ok) return false;
+
+        const phaseState = project.phaseStates?.[phase];
+        const phaseIndex = PHASE_ORDER.indexOf(phase);
+        const laterActive = state.steps.some(
+          (step) =>
+            step.projectId === projectId &&
+            PHASE_ORDER.indexOf(step.phase) > phaseIndex &&
+            step.status === "active",
+        );
+        const phaseActive = existingSteps.some(
+          (step) => step.status === "active",
+        );
+        const shouldActivate = Boolean(
+          phaseState?.startedAt && !phaseActive && !laterActive,
+        );
+        const offset = phaseIndex * 100;
+        const order =
+          existingSteps.length > 0
+            ? Math.max(...existingSteps.map((step) => step.order)) + 1
+            : offset + 1;
+        const [created] = stepsForPhase(
+          projectId,
+          [{ ...stage, phase, order: 0 }],
+          phase,
+          false,
+        ).map((step) => ({
+          ...step,
+          order,
+          status: shouldActivate ? ("active" as const) : ("pending" as const),
+          startedAt: shouldActivate ? now() : undefined,
+        }));
+        if (!created) return false;
+
+        const addedAt = now();
+        set({
+          steps: [...state.steps, created],
+          projects: state.projects.map((item) =>
+            item.id === projectId
+              ? {
+                  ...item,
+                  phaseStates: {
+                    ...item.phaseStates,
+                    [phase]: {
+                      ...item.phaseStates?.[phase],
+                      authoredAt:
+                        item.phaseStates?.[phase]?.authoredAt ?? addedAt,
+                    },
+                  },
+                }
+              : item,
+          ),
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: created.key,
+            eventType: "project.step_added",
+            summary: `Tahap ${created.name} ditambahkan.`,
+            metadata: {
+              phase,
+              stageId: created.id,
+              order: created.order,
+              status: created.status,
+            },
+          }),
+        });
+        return true;
+      },
+
+      deletePhaseStep: (projectId, stepKey) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!actor || !project) return false;
+        if (!canManageProject(actor, project)) return false;
+        const step = state.steps.find(
+          (item) => item.projectId === projectId && item.key === stepKey,
+        );
+        if (!step) return false;
+        if (!canDeleteStepFromPhase(state, project, step)) return false;
+
+        const phaseIndex = PHASE_ORDER.indexOf(step.phase);
+        const offset = phaseIndex * 100;
+        let index = 0;
+        const remaining = state.steps
+          .filter(
+            (item) =>
+              !(item.projectId === projectId && item.key === stepKey),
+          )
+          .map((item) => {
+            if (item.projectId !== projectId || item.phase !== step.phase) {
+              return item;
+            }
+            index += 1;
+            return { ...item, order: offset + index };
+          });
+        const removedTasks = state.tasks.filter(
+          (task) =>
+            task.projectId === projectId &&
+            (task.stageId === step.id || task.stepKey === step.key) &&
+            task.status === "backlog" &&
+            !task.archivedAt,
+        );
+        const removedEntries = state.formEntries.filter(
+          (entry) =>
+            entry.projectId === projectId &&
+            (entry.templateStageId === step.id ||
+              entry.stepKey === step.key) &&
+            (entry.status === "unassigned" ||
+              entry.status === "assigned" ||
+              entry.status === "cancelled"),
+        );
+        const removedForms = state.forms.filter(
+          (form) =>
+            form.projectId === projectId &&
+            form.stepKey === step.key &&
+            (form.status === "unassigned" || form.status === "assigned"),
+        );
+
+        set({
+          steps: remaining,
+          tasks: state.tasks.filter(
+            (task) => !removedTasks.some((item) => item.id === task.id),
+          ),
+          formEntries: state.formEntries.filter(
+            (entry) => !removedEntries.some((item) => item.id === entry.id),
+          ),
+          forms: state.forms.filter(
+            (form) => !removedForms.some((item) => item.id === form.id),
+          ),
+          projectEvents: projectEvent(state, {
+            projectId,
+            step: null,
+            eventType: "project.step_removed",
+            summary: `Tahap ${step.name} dihapus.`,
+            metadata: {
+              phase: step.phase,
+              stageId: step.id,
+              order: step.order,
+              removedTasks: removedTasks.length,
+              removedEntries: removedEntries.length,
+            },
+          }),
+        });
+        return true;
+      },
+
       startPhase: (projectId, phase) => {
         const state = get();
         const actor = userById(state, state.currentUserId);
@@ -1429,6 +1640,45 @@ export const usePrototypeStore = create<PrototypeStore>()(
           projectEvents: events,
         });
         return true;
+      },
+
+      completePhase: (projectId, phase) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const project = state.projects.find((item) => item.id === projectId);
+        if (!actor || !project) return false;
+        if (!canManageProject(actor, project)) return false;
+        if (project.status !== "active") return false;
+        if (phase === "closing") return false;
+        if (!project.phaseStates?.[phase]) return false;
+        const phaseSteps = state.steps.filter(
+          (step) => step.projectId === projectId && step.phase === phase,
+        );
+        if (phaseSteps.length === 0) return false;
+        if (
+          phaseSteps.some(
+            (step) => step.status !== "completed" && step.status !== "skipped",
+          )
+        ) {
+          return false;
+        }
+        const phaseIndex = PHASE_ORDER.indexOf(phase);
+        const next = PHASE_ORDER[phaseIndex + 1];
+        if (!next || next === "closing") return false;
+        if (project.phaseStates?.[next]?.startedAt) return false;
+
+        const completedAt = now();
+        set({
+          projectEvents: recordProjectEvent(state.projectEvents, {
+            projectId,
+            step: null,
+            eventType: "phase.completed",
+            actorId: actor.id,
+            summary: `Fase ${PHASE_LABEL[phase]} selesai.`,
+            metadata: { phase, completedAt, stageCount: phaseSteps.length },
+          }),
+        });
+        return get().startPhase(projectId, next);
       },
 
       saveTemplate: (input) => {
@@ -2127,10 +2377,17 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const state = get();
         const task = state.tasks.find((item) => item.id === taskId);
         const actor = userById(state, state.currentUserId);
-        if (!task || !actor || !canAssignTask(actor)) return;
+        if (!task || !actor) return;
+        if (!canAssignTask(actor) && task.managerId !== actor.id) return;
         const project = state.projects.find((item) => item.id === task.projectId);
         if (!project || project.status !== "active") return;
         if (task.status !== "backlog") return;
+        const step = state.steps.find(
+          (item) =>
+            item.projectId === task.projectId &&
+            (item.id === task.stageId || item.key === task.stepKey),
+        );
+        if (!step || step.status !== "active") return;
         const user = userById(state, userId);
         if (!user) return;
         set({
@@ -2170,6 +2427,68 @@ export const usePrototypeStore = create<PrototypeStore>()(
               taskId,
               before: { assigneeId: task.assigneeId ?? null, status: task.status },
               after: { assigneeId: userId, status: "todo" },
+            },
+          }),
+        });
+      },
+
+      setTaskManager: (taskId, managerId) => {
+        const state = get();
+        const task = state.tasks.find((item) => item.id === taskId);
+        const actor = userById(state, state.currentUserId);
+        if (!task || !actor) return;
+        const project = state.projects.find((item) => item.id === task.projectId);
+        if (!project || project.status !== "active") return;
+        const allowed =
+          actor.role === "admin" ||
+          actor.role === "manager" ||
+          (actor.role === "pm" && project.createdById === actor.id);
+        if (!allowed) return;
+        const manager = managerId ? userById(state, managerId) : undefined;
+        if (managerId && (!manager || manager.role !== "manager")) return;
+        if ((task.managerId ?? "") === (manager?.id ?? "")) return;
+
+        set({
+          tasks: state.tasks.map((item) =>
+            item.id === taskId
+              ? { ...item, managerId: manager?.id }
+              : item,
+          ),
+          notifications: manager
+            ? [
+                ...state.notifications,
+                notify(state, {
+                  userId: manager.id,
+                  type: "task_manager_assigned",
+                  title: "Anda menjadi Manager task",
+                  body: task.title,
+                  href: `/projects/${task.projectId}/board?task=${taskId}`,
+                }),
+              ]
+            : state.notifications,
+          activityLogs: [
+            ...state.activityLogs,
+            activity(state, {
+              projectId: task.projectId,
+              taskId,
+              actorId: actor.id,
+              action: "task_manager",
+              message: manager
+                ? `Manager task menjadi ${manager.name}.`
+                : "Manager task dilepas.",
+            }),
+          ],
+          projectEvents: projectEvent(state, {
+            projectId: task.projectId,
+            step: task.stepKey,
+            eventType: "task.manager_changed",
+            summary: manager
+              ? `Manager task ${task.code} menjadi ${manager.name}.`
+              : `Manager task ${task.code} dilepas.`,
+            metadata: {
+              taskId,
+              before: { managerId: task.managerId ?? null },
+              after: { managerId: manager?.id ?? null },
             },
           }),
         });
@@ -2267,7 +2586,13 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const task = state.tasks.find((item) => item.id === taskId);
         const actor = userById(state, state.currentUserId);
         if (!task || !actor) return false;
-        if (task.assigneeId !== actor.id && actor.role !== "admin") return false;
+        if (
+          task.assigneeId !== actor.id &&
+          task.managerId !== actor.id &&
+          actor.role !== "admin"
+        ) {
+          return false;
+        }
         const validation = validateWorkingLink(url);
         if (!validation.ok || !validation.url) return false;
         const nextLink = {

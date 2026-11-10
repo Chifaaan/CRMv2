@@ -5,6 +5,7 @@ import {
   PHASE_LABEL,
   PHASE_ORDER,
   STEP_META,
+  TASK_STATUSES,
   TASK_STATUS_LABEL,
   type AppState,
   type BusinessUnitId,
@@ -17,6 +18,7 @@ import {
   type Phase,
   type Priority,
   type Project,
+  type ProjectEvent,
   type ProjectStep,
   type ProjectTemplate,
   type Role,
@@ -147,6 +149,83 @@ export function activeStepKey(
   projectId: string,
 ): string | undefined {
   return activeSteps(state, projectId)[0]?.key;
+}
+
+/**
+ * Assignees and Media only see board stages that are currently running or
+ * already completed. PM/Manager/Admin keep the full stage list.
+ */
+export function visibleBoardSteps(
+  state: AppState,
+  user: User,
+  projectId: string,
+): ProjectStep[] {
+  const steps = state.steps
+    .filter((step) => step.projectId === projectId && step.kind === "simpro")
+    .sort((a, b) => a.order - b.order);
+  if (user.role === "assignee" || user.role === "media") {
+    return steps.filter(
+      (step) => step.status === "active" || step.status === "completed",
+    );
+  }
+  return steps;
+}
+
+export type ProjectOverview = {
+  stageCompletion: {
+    completed: number;
+    skipped: number;
+    notCompleted: number;
+  };
+  taskDistribution: Array<{
+    status: TaskStatus;
+    count: number;
+    percent: number;
+  }>;
+  progress: {
+    completed: number;
+    open: number;
+    overdue: number;
+    percent: number;
+  };
+  recentEvents: ProjectEvent[];
+};
+
+export function projectOverview(
+  state: AppState,
+  projectId: string,
+): ProjectOverview {
+  const steps = state.steps.filter((step) => step.projectId === projectId);
+  const tasks = tasksForProject(state, projectId);
+  const completed = tasks.filter((task) => task.status === "completed").length;
+  const open = tasks.length - completed;
+  const overdue = tasks.filter((task) => isOverdue(task)).length;
+  const percent =
+    tasks.length === 0 ? 0 : Math.round((completed / tasks.length) * 100);
+
+  return {
+    stageCompletion: {
+      completed: steps.filter((step) => step.status === "completed").length,
+      skipped: steps.filter((step) => step.status === "skipped").length,
+      notCompleted: steps.filter(
+        (step) => step.status === "pending" || step.status === "active",
+      ).length,
+    },
+    taskDistribution: TASK_STATUSES.map((status) => {
+      const count = tasks.filter((task) => task.status === status).length;
+      return {
+        status,
+        count,
+        percent:
+          tasks.length === 0 ? 0 : Math.round((count / tasks.length) * 100),
+      };
+    }),
+    progress: { completed, open, overdue, percent },
+    recentEvents: state.projectEvents
+      .filter((event) => event.projectId === projectId)
+      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+      .slice(0, 5),
+  };
 }
 
 export function phaseOfProject(
@@ -594,6 +673,81 @@ export function canEditPhaseStructure(
   return !state.startedAt && !state.lockedAt;
 }
 
+/**
+ * A step is structurally changeable only while nobody has started working on
+ * it. Draft/submitted/review forms, started finance forms, and cards past
+ * Backlog all count as work.
+ */
+export function stepHasStartedWork(
+  state: AppState,
+  step: ProjectStep,
+): boolean {
+  if (step.startedAt || step.completedAt) return true;
+
+  const entries = state.formEntries.filter(
+    (entry) =>
+      entry.projectId === step.projectId &&
+      (entry.templateStageId === step.id || entry.stepKey === step.key) &&
+      entry.status !== "cancelled",
+  );
+  if (
+    entries.some((entry) =>
+      ["draft", "submitted", "approved", "need_revision"].includes(
+        entry.status,
+      ),
+    )
+  ) {
+    return true;
+  }
+
+  const forms = state.forms.filter(
+    (form) => form.projectId === step.projectId && form.stepKey === step.key,
+  );
+  if (
+    forms.some(
+      (form) =>
+        (form.status !== "unassigned" && form.status !== "assigned") ||
+        Boolean(form.submittedAt),
+    )
+  ) {
+    return true;
+  }
+
+  return state.tasks.some(
+    (task) =>
+      task.projectId === step.projectId &&
+      !task.archivedAt &&
+      (task.stageId === step.id || task.stepKey === step.key) &&
+      task.status !== "backlog",
+  );
+}
+
+/** A phase can receive a step before start and, for an opened phase, after start. */
+export function canAddStepToPhase(project: Project, phase: Phase): boolean {
+  if (phase === "closing") return false;
+  if (project.status !== "active") return false;
+  if (
+    project.lifecycle === "lost" ||
+    project.lifecycle === "cancelled" ||
+    project.lifecycle === "done"
+  ) {
+    return false;
+  }
+  if (project.structureLocked) return false;
+  if (phase === "prospek") return true;
+  return Boolean(project.phaseStates?.[phase]);
+}
+
+export function canDeleteStepFromPhase(
+  state: AppState,
+  project: Project,
+  step: ProjectStep,
+): boolean {
+  if (step.phase === "closing") return false;
+  if (!canAddStepToPhase(project, step.phase)) return false;
+  return !stepHasStartedWork(state, step);
+}
+
 export type TemplateValidation = { ok: boolean; errors: string[] };
 
 /**
@@ -878,7 +1032,7 @@ export type WorkingLinkValidation = {
   reason?: string;
 };
 
-/** Working links must be absolute http(s) URLs. */
+/** Working links are opaque text. Only an empty value is rejected. */
 export function validateWorkingLink(
   input?: string | null,
 ): WorkingLinkValidation {
@@ -886,15 +1040,7 @@ export function validateWorkingLink(
   if (!trimmed) {
     return { ok: false, reason: "Link kerja wajib diisi sebelum memulai." };
   }
-  try {
-    const url = new URL(trimmed);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return { ok: false, reason: "Link kerja harus memakai http atau https." };
-    }
-    return { ok: true, url: url.toString() };
-  } catch {
-    return { ok: false, reason: "Link kerja tidak valid." };
-  }
+  return { ok: true, url: trimmed };
 }
 
 export function taskTransition(
@@ -908,13 +1054,35 @@ export function taskTransition(
     return { ok: false, reason: "Task Completed terkunci." };
   }
 
+  const project = projectById(state, task.projectId);
+  const owningPm = user.role === "pm" && project?.createdById === user.id;
+  if (owningPm) {
+    if (!task.assigneeId && !task.managerId) {
+      return {
+        ok: false,
+        reason: "Card harus memiliki Assignee atau Manager sebelum dipindahkan.",
+      };
+    }
+    if (to === "in_progress") {
+      const link = validateWorkingLink(workingLink ?? task.workingLink?.url);
+      if (!link.ok) {
+        return {
+          ok: false,
+          reason:
+            link.reason ?? "Lampirkan link kerja aktif sebelum memulai task.",
+        };
+      }
+    }
+    return { ok: true };
+  }
+
   if (user.role === "admin" && !(to === "in_progress")) return { ok: true };
 
   if (to === "todo") {
     if (task.status !== "backlog") {
       return { ok: false, reason: "Hanya task Backlog yang bisa di-assign." };
     }
-    if (!canAssignTask(user)) {
+    if (!canAssignTask(user) && task.managerId !== user.id) {
       return { ok: false, reason: "Hanya Manager/Admin yang bisa assign." };
     }
     if (!task.assigneeId) {
@@ -929,7 +1097,11 @@ export function taskTransition(
     if (!fromTodo && !fromRevision) {
       return { ok: false, reason: "Task harus To Do atau Need Revision." };
     }
-    if (task.assigneeId !== user.id && user.role !== "admin") {
+    if (
+      task.assigneeId !== user.id &&
+      task.managerId !== user.id &&
+      user.role !== "admin"
+    ) {
       return { ok: false, reason: "Hanya assignee task ini yang bisa mulai." };
     }
     const link = validateWorkingLink(workingLink ?? task.workingLink?.url);
@@ -947,7 +1119,11 @@ export function taskTransition(
     if (task.status !== "in_progress") {
       return { ok: false, reason: "Task harus In Progress." };
     }
-    if (task.assigneeId !== user.id && user.role !== "admin") {
+    if (
+      task.assigneeId !== user.id &&
+      task.managerId !== user.id &&
+      user.role !== "admin"
+    ) {
       return { ok: false, reason: "Hanya assignee task ini yang bisa submit." };
     }
     return { ok: true };

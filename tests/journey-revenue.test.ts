@@ -86,11 +86,12 @@ describe("working link validation", () => {
     expect(validateWorkingLink("http://drive.google.com/file").ok).toBe(true);
   });
 
-  it("rejects empty, relative, and non-http links", () => {
+  it("accepts arbitrary text and rejects only empty values", () => {
     expect(validateWorkingLink("").ok).toBe(false);
     expect(validateWorkingLink("   ").ok).toBe(false);
-    expect(validateWorkingLink("docs.google.com/document").ok).toBe(false);
-    expect(validateWorkingLink("ftp://example.com/file").ok).toBe(false);
+    expect(validateWorkingLink("docs.google.com/document").ok).toBe(true);
+    expect(validateWorkingLink("ftp://example.com/file").ok).toBe(true);
+    expect(validateWorkingLink("folder desain di drive").ok).toBe(true);
   });
 
   it("blocks starting a card without a link", () => {
@@ -340,7 +341,7 @@ describe("allocation and working link persistence", () => {
     expect(assigned.status).toBe("todo");
   });
 
-  it("blocks starting without a valid link and stores the link on success", () => {
+  it("blocks starting without a link and stores arbitrary link text on success", () => {
     usePrototypeStore.getState().reset();
     usePrototypeStore.getState().setCurrentUser("u-assignee3");
     const task = usePrototypeStore
@@ -354,33 +355,20 @@ describe("allocation and working link persistence", () => {
 
     usePrototypeStore
       .getState()
-      .transitionTask(task.id, "in_progress", "not-a-url");
-    expect(
-      usePrototypeStore.getState().tasks.find((item) => item.id === task.id)!
-        .status,
-    ).toBe(task.status);
-
-    usePrototypeStore
-      .getState()
-      .transitionTask(
-        task.id,
-        "in_progress",
-        "https://docs.google.com/document/d/abc",
-      );
+      .transitionTask(task.id, "in_progress", "folder desain di drive");
     const started = usePrototypeStore
       .getState()
       .tasks.find((item) => item.id === task.id)!;
     expect(started.status).toBe("in_progress");
-    expect(started.workingLink?.url).toContain("docs.google.com");
+    expect(started.workingLink?.url).toBe("folder desain di drive");
     expect(
       usePrototypeStore
         .getState()
         .projectEvents.some(
           (event) =>
             event.eventType === "task.status_changed" &&
-            (event.metadata as { workingLink?: string }).workingLink?.includes(
-              "docs.google.com",
-            ),
+            (event.metadata as { workingLink?: string }).workingLink ===
+              "folder desain di drive",
         ),
     ).toBe(true);
   });

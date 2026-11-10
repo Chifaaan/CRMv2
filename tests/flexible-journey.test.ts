@@ -512,3 +512,271 @@ describe("legacy Umum bridge", () => {
     expect(project.phaseStates?.planning?.startedAt).toBeUndefined();
   });
 });
+
+describe("active-phase step editing", () => {
+  beforeEach(() => {
+    usePrototypeStore.getState().reset();
+  });
+
+  function stage(
+    id: string,
+    name: string,
+    phase: TemplateStage["phase"],
+    tasks: TemplateStage["tasks"] = [],
+  ): TemplateStage {
+    return {
+      id,
+      name,
+      phase,
+      order: 0,
+      kind: "simpro",
+      required: true,
+      weight: 1,
+      tasks,
+    };
+  }
+
+  it("adds and deletes a step in a started phase without work", () => {
+    const projectId = createProject();
+    const store = usePrototypeStore.getState();
+    const gate: TemplateStage = {
+      id: "gate-1",
+      name: "Client Approval",
+      phase: "prospek",
+      order: 0,
+      kind: "gate",
+      gateKind: "client_approval",
+      required: true,
+      weight: 1,
+      tasks: [],
+    };
+    expect(store.addPhaseStep(projectId, "prospek", gate)).toBe(true);
+    expect(store.startPhase(projectId, "prospek")).toBe(true);
+    store.decideGate(projectId, "gate-1", "approved");
+    expect(
+      usePrototypeStore.getState().addPhaseStep(
+        projectId,
+        "planning",
+        stage("plan-1", "Plan One", "planning"),
+      ),
+    ).toBe(true);
+    expect(
+      usePrototypeStore.getState().startPhase(projectId, "planning"),
+    ).toBe(true);
+
+    expect(
+      usePrototypeStore.getState().addPhaseStep(
+        projectId,
+        "planning",
+        stage("prep-step", "Prep Step", "planning"),
+      ),
+    ).toBe(true);
+    let current = usePrototypeStore.getState();
+    const added = current.steps.find(
+      (item) => item.projectId === projectId && item.key === "prep-step",
+    )!;
+    expect(added.status).toBe("pending");
+    expect(
+      current.projectEvents.some(
+        (event) =>
+          event.projectId === projectId &&
+          event.eventType === "project.step_added",
+      ),
+    ).toBe(true);
+
+    expect(current.deletePhaseStep(projectId, "prep-step")).toBe(true);
+    current = usePrototypeStore.getState();
+    expect(
+      current.steps.some(
+        (item) => item.projectId === projectId && item.key === "prep-step",
+      ),
+    ).toBe(false);
+    expect(
+      current.projectEvents.some(
+        (event) =>
+          event.projectId === projectId &&
+          event.eventType === "project.step_removed",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects adding to Closing and rejects deleting a step with active work", () => {
+    const projectId = createProject();
+    const store = usePrototypeStore.getState();
+    const gate: TemplateStage = {
+      id: "gate-1",
+      name: "Client Approval",
+      phase: "prospek",
+      order: 0,
+      kind: "gate",
+      gateKind: "client_approval",
+      required: true,
+      weight: 1,
+      tasks: [],
+    };
+    store.addPhaseStep(projectId, "prospek", gate);
+    store.startPhase(projectId, "prospek");
+    store.decideGate(projectId, "gate-1", "approved");
+    expect(
+      usePrototypeStore.getState().addPhaseStep(
+        projectId,
+        "closing",
+        stage("closing-step", "Closing Step", "closing"),
+      ),
+    ).toBe(false);
+
+    expect(
+      usePrototypeStore.getState().addPhaseStep(
+        projectId,
+        "running",
+        stage("prep-step", "Prep Step", "running", [
+          { id: "prep-task", name: "Prep Task", required: true },
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      usePrototypeStore
+        .getState()
+        .createTasksFromTemplate(projectId, "prep-step", ["prep-task"]),
+    ).toBe(1);
+    const task = usePrototypeStore
+      .getState()
+      .tasks.find(
+        (item) => item.projectId === projectId && item.stepKey === "prep-step",
+      )!;
+    usePrototypeStore.setState({
+      tasks: usePrototypeStore
+        .getState()
+        .tasks.map((item) =>
+          item.id === task.id ? { ...item, status: "in_progress" } : item,
+        ),
+    });
+    expect(
+      usePrototypeStore.getState().deletePhaseStep(projectId, "prep-step"),
+    ).toBe(false);
+  });
+
+  it("prepares tasks for a pending step but blocks assignment until active", () => {
+    const projectId = createProject();
+    const store = usePrototypeStore.getState();
+    const gate: TemplateStage = {
+      id: "gate-1",
+      name: "Client Approval",
+      phase: "prospek",
+      order: 0,
+      kind: "gate",
+      gateKind: "client_approval",
+      required: true,
+      weight: 1,
+      tasks: [],
+    };
+    store.addPhaseStep(projectId, "prospek", gate);
+    store.startPhase(projectId, "prospek");
+    store.decideGate(projectId, "gate-1", "approved");
+    expect(
+      usePrototypeStore.getState().addPhaseStep(
+        projectId,
+        "running",
+        stage("prep-step", "Prep Step", "running", [
+          { id: "prep-task", name: "Prep Task", required: true },
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      usePrototypeStore
+        .getState()
+        .createTasksFromTemplate(projectId, "prep-step", ["prep-task"]),
+    ).toBe(1);
+    const task = usePrototypeStore
+      .getState()
+      .tasks.find(
+        (item) => item.projectId === projectId && item.stepKey === "prep-step",
+      )!;
+    expect(task.status).toBe("backlog");
+    expect(task.assigneeId).toBeUndefined();
+
+    usePrototypeStore.getState().setCurrentUser("u-manager");
+    usePrototypeStore.getState().assignTask(task.id, "u-assignee1");
+    const unchanged = usePrototypeStore
+      .getState()
+      .tasks.find((item) => item.id === task.id)!;
+    expect(unchanged.status).toBe("backlog");
+    expect(unchanged.assigneeId).toBeUndefined();
+  });
+
+  it("completes a phase only after all steps are done", () => {
+    const projectId = createProject();
+    const store = usePrototypeStore.getState();
+    const gate: TemplateStage = {
+      id: "gate-1",
+      name: "Client Approval",
+      phase: "prospek",
+      order: 0,
+      kind: "gate",
+      gateKind: "client_approval",
+      required: true,
+      weight: 1,
+      tasks: [],
+    };
+    expect(store.addPhaseStep(projectId, "prospek", gate)).toBe(true);
+    expect(store.startPhase(projectId, "prospek")).toBe(true);
+    expect(store.completePhase(projectId, "prospek")).toBe(false);
+
+    const timestamp = "2026-01-02T00:00:00.000Z";
+    const current = usePrototypeStore.getState();
+    usePrototypeStore.setState({
+      steps: current.steps.map((step) =>
+        step.projectId === projectId
+          ? { ...step, status: "completed", completedAt: timestamp }
+          : step,
+      ),
+      projects: current.projects.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              phaseStates: {
+                ...project.phaseStates,
+                planning: { authoredAt: timestamp },
+                running: { authoredAt: timestamp },
+              },
+            }
+          : project,
+      ),
+    });
+    expect(
+      usePrototypeStore.getState().addPhaseStep(
+        projectId,
+        "planning",
+        stage("plan-step", "Planning Step", "planning"),
+      ),
+    ).toBe(true);
+    expect(
+      usePrototypeStore.getState().startPhase(projectId, "planning"),
+    ).toBe(true);
+    const planning = usePrototypeStore.getState();
+    usePrototypeStore.setState({
+      steps: planning.steps.map((step) =>
+        step.projectId === projectId && step.phase === "planning"
+          ? { ...step, status: "completed", completedAt: timestamp }
+          : step,
+      ),
+    });
+    expect(
+      usePrototypeStore.getState().addPhaseStep(
+        projectId,
+        "running",
+        stage("run-step", "Running Step", "running"),
+      ),
+    ).toBe(true);
+    expect(
+      usePrototypeStore.getState().completePhase(projectId, "planning"),
+    ).toBe(true);
+    expect(
+      usePrototypeStore
+        .getState()
+        .steps.find(
+          (step) => step.projectId === projectId && step.key === "run-step",
+        )?.status,
+    ).toBe("active");
+  });
+});

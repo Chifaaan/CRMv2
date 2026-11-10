@@ -507,12 +507,21 @@ export function TaskDialog({
   const assignees = store.users.filter((user) =>
     ["assignee", "media", "manager"].includes(user.role),
   );
+  const managers = store.users.filter((user) => user.role === "manager");
+  const taskStep = task
+    ? store.steps.find(
+        (step) =>
+          step.projectId === task.projectId &&
+          (step.id === task.stageId || step.key === task.stepKey),
+      )
+    : undefined;
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<Priority>("medium");
   const [dueDate, setDueDate] = useState("");
   const [assignTo, setAssignTo] = useState("");
+  const [targetStatus, setTargetStatus] = useState<TaskStatus>("backlog");
   const [comment, setComment] = useState("");
   const [reviewComment, setReviewComment] = useState("");
   const [checklistText, setChecklistText] = useState("");
@@ -526,6 +535,7 @@ export function TaskDialog({
     setPriority(task?.priority ?? "medium");
     setDueDate(task?.dueDate?.slice(0, 10) ?? "");
     setAssignTo(task?.assigneeId ?? "");
+    setTargetStatus(task?.status ?? "backlog");
     setComment("");
     setReviewComment("");
     setChecklistText("");
@@ -537,13 +547,33 @@ export function TaskDialog({
 
   const isCreate = !task;
   const canAssign = currentUser ? canAssignTask(currentUser) : false;
+  const canSetManager = Boolean(
+    currentUser &&
+      (currentUser.role === "admin" ||
+        currentUser.role === "manager" ||
+        (currentUser.role === "pm" && project.createdById === currentUser.id)),
+  );
+  const canMoveAnywhere = Boolean(
+    task &&
+      currentUser &&
+      currentUser.role === "pm" &&
+      project.createdById === currentUser.id,
+  );
   const canReassign =
-    canAssign &&
+    (canAssign || (task?.managerId === currentUser?.id)) &&
     task !== undefined &&
+    taskStep?.status === "active" &&
     task.status !== "awaiting_approval" &&
     task.status !== "completed";
   const canReview = task && currentUser ? canReviewTask(store, currentUser, task) : false;
-  const canWork = task && currentUser && task.assigneeId === currentUser.id;
+  const canWork = Boolean(
+    task &&
+      currentUser &&
+      (task.assigneeId === currentUser.id ||
+        task.managerId === currentUser.id ||
+        currentUser.role === "admin" ||
+        canMoveAnywhere),
+  );
   const canDelete =
     task && currentUser && (currentUser.role === "admin" || (currentUser.role === "pm" && project.createdById === currentUser.id));
 
@@ -582,11 +612,11 @@ export function TaskDialog({
       toast.error(result.reason ?? "Transisi tidak diizinkan.");
       return;
     }
-    if (to === "need_revision" && !reviewComment.trim()) {
+    if (to === "need_revision" && !canMoveAnywhere && !reviewComment.trim()) {
       toast.error("Komentar revisi wajib diisi.");
       return;
     }
-    if (to === "need_revision") {
+    if (to === "need_revision" && reviewComment.trim()) {
       store.addComment(task.id, `Revisi: ${reviewComment.trim()}`);
     }
     store.transitionTask(task.id, to, to === "in_progress" ? link : undefined);
@@ -683,22 +713,75 @@ export function TaskDialog({
                   ) : null}
                 </div>
               </Field>
+              <Field label="Manager">
+                <div className="flex items-center gap-2">
+                  <UserAvatar user={userById(store, task.managerId)} showName />
+                  {canSetManager ? (
+                    <NativeSelect
+                      value={task.managerId ?? ""}
+                      onChange={(value) => store.setTaskManager(task.id, value)}
+                      className="flex-1"
+                    >
+                      <option value="">Tanpa Manager</option>
+                      {managers.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  ) : null}
+                </div>
+              </Field>
               <Field label="Prioritas">
                 <PriorityBadge priority={task.priority} />
               </Field>
             </div>
 
+            {canMoveAnywhere ? (
+              <Field
+                label="Ubah status (PM)"
+                hint="Card harus memiliki Assignee atau Manager. Link wajib ada untuk In Progress."
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <NativeSelect
+                    value={targetStatus}
+                    onChange={(value) => setTargetStatus(value as TaskStatus)}
+                    className="h-8 w-[190px] text-xs"
+                  >
+                    {Object.entries(TASK_STATUS_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={targetStatus === task.status}
+                    onClick={() => move(targetStatus)}
+                  >
+                    Pindahkan
+                  </Button>
+                </div>
+              </Field>
+            ) : null}
+
             <div className="rounded-lg border bg-muted/20 p-3">
-              <p className="mb-1 text-xs font-medium">Link kerja</p>
+              <p className="mb-1 text-xs font-medium">Link Pekerjaan</p>
               {task.workingLink ? (
-                <a
-                  href={task.workingLink.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-primary break-all text-xs underline"
-                >
-                  {task.workingLink.url}
-                </a>
+                task.workingLink.url.startsWith("http://") ||
+                task.workingLink.url.startsWith("https://") ? (
+                  <a
+                    href={task.workingLink.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary break-all text-xs underline"
+                  >
+                    {task.workingLink.url}
+                  </a>
+                ) : (
+                  <p className="break-all text-xs">{task.workingLink.url}</p>
+                )
               ) : (
                 <p className="text-muted-foreground text-xs">
                   Belum ada link. Link wajib diisi sebelum task masuk In Progress.
@@ -712,9 +795,9 @@ export function TaskDialog({
                       setWorkingLinkInput(event.target.value);
                       setWorkingLinkError("");
                     }}
-                    placeholder="https://docs.google.com/..."
+                    placeholder="https://..."
                     className="h-8 flex-1 text-xs"
-                    aria-label="Link kerja"
+                    aria-label="Link Pekerjaan"
                   />
                   <Button
                     size="sm"
@@ -722,7 +805,7 @@ export function TaskDialog({
                     onClick={() => {
                       const validation = validateWorkingLink(workingLinkInput);
                       if (!validation.ok) {
-                        setWorkingLinkError(validation.reason ?? "Link tidak valid.");
+                        setWorkingLinkError(validation.reason ?? "Link wajib diisi.");
                         return;
                       }
                       const ok = store.setWorkingLink(task.id, workingLinkInput);
@@ -733,10 +816,14 @@ export function TaskDialog({
                       }
                     }}
                   >
-                    Simpan link
+                    Simpan Link
                   </Button>
                 </div>
               ) : null}
+              <p className="text-muted-foreground mt-1 text-[10px]">
+                Wajib diisi; tidak ada validasi URL. Pastikan dapat diakses PM dan
+                Manager.
+              </p>
               {workingLinkError ? (
                 <p className="mt-1 text-xs text-rose-600">{workingLinkError}</p>
               ) : null}

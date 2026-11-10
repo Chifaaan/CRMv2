@@ -331,6 +331,7 @@ export type Task = {
   status: TaskStatus;
   requestedAssigneeId?: string;
   assigneeId?: string;
+  managerId?: string;
   reporterId: string;
   dueDate?: string;
   workingLink?: TaskWorkingLink;

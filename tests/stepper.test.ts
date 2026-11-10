@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  headerPhases,
   missingPhaseTooltip,
   phaseStageCounts,
   phaseTransitionBanner,
@@ -42,6 +43,15 @@ const umumSteps = [
 ];
 
 describe("data-driven stepper", () => {
+  it("always lists the four fixed phases for the journey header", () => {
+    expect(headerPhases()).toEqual([
+      "prospek",
+      "planning",
+      "running",
+      "closing",
+    ]);
+  });
+
   it("derives three phases for Umum and four for a full template", () => {
     expect(phasesPresent(umumSteps)).toEqual([
       "prospek",

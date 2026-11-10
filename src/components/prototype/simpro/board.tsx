@@ -39,6 +39,19 @@ const COLUMN_TONE: Record<TaskStatus, string> = {
   completed: "bg-emerald-50 border-emerald-200",
 };
 
+function httpHref(value?: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.toString();
+    }
+  } catch {
+    /* opaque text */
+  }
+  return undefined;
+}
+
 function BoardCard({
   task,
   onClick,
@@ -57,12 +70,14 @@ function BoardCard({
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
   const assignee = userById(store, task.assigneeId);
+  const manager = userById(store, task.managerId);
   const requested = userById(store, task.requestedAssigneeId);
   const stage = store.steps.find(
     (step) =>
       step.projectId === task.projectId &&
       (step.id === task.stageId || step.key === task.stepKey),
   );
+  const linkHref = httpHref(task.workingLink?.url);
 
   return (
     <div
@@ -88,15 +103,21 @@ function BoardCard({
       <p className="mt-1.5 line-clamp-3 text-xs font-medium leading-snug">{task.title}</p>
       <p className="text-muted-foreground mt-1 text-[10px]">{task.code}</p>
       {task.workingLink ? (
-        <a
-          href={task.workingLink.url}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(event) => event.stopPropagation()}
-          className="text-primary mt-1 inline-flex items-center gap-1 text-[10px] underline"
-        >
-          <ExternalLink className="size-3" /> Link kerja
-        </a>
+        linkHref ? (
+          <a
+            href={linkHref}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            className="text-primary mt-1 inline-flex items-center gap-1 text-[10px] underline"
+          >
+            <ExternalLink className="size-3" /> Link kerja
+          </a>
+        ) : (
+          <p className="text-muted-foreground mt-1 line-clamp-2 text-[10px]">
+            Link kerja: {task.workingLink.url}
+          </p>
+        )
       ) : null}
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="text-muted-foreground inline-flex items-center gap-1 text-[10px]">
@@ -111,6 +132,7 @@ function BoardCard({
           ) : (
             "Unassigned"
           )}
+          {manager ? ` · Mgr ${manager.name}` : ""}
         </span>
         {task.dueDate ? (
           <span

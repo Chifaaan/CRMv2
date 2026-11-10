@@ -25,6 +25,7 @@ import {
   formsFor,
   tasksForStep,
   userById,
+  visibleBoardSteps,
   workProgressForProject,
 } from "@/lib/prototype/domain";
 import {
@@ -325,7 +326,14 @@ function Backlog({
                 <td className="px-2 py-2">{formatDate(task.dueDate)}</td>
                 <td className="px-2 py-2">
                   {task.assigneeId ? (
-                    <UserAvatar user={userById(store, task.assigneeId)} size="sm" showName />
+                    <div className="space-y-0.5">
+                      <UserAvatar user={userById(store, task.assigneeId)} size="sm" showName />
+                      {task.managerId ? (
+                        <p className="text-muted-foreground text-[10px]">
+                          Manager: {userById(store, task.managerId)?.name}
+                        </p>
+                      ) : null}
+                    </div>
                   ) : task.requestedAssigneeId ? (
                     <span className="text-muted-foreground text-[10px]">
                       Requested: {userById(store, task.requestedAssigneeId)?.name}
@@ -507,9 +515,11 @@ export function SimproProjectPage({
     );
   }
 
-  const simproStages = store.steps
+  const allSimproStages = store.steps
     .filter((step) => step.projectId === project.id && step.kind === "simpro")
     .sort((a, b) => a.order - b.order);
+  const simproStages = visibleBoardSteps(store, currentUser, project.id);
+  const hiddenStages = allSimproStages.length - simproStages.length;
   const selectedStage =
     simproStages.find((step) => step.key === stageKey) ??
     simproStages.find((step) => step.status === "active") ??
@@ -562,6 +572,12 @@ export function SimproProjectPage({
             title={`Board · ${selectedStage.name}`}
             description="Filter tahap SIMPRO. Drag card sesuai aturan role."
           >
+            {hiddenStages > 0 ? (
+              <p className="text-muted-foreground mb-3 rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-[11px]">
+                {hiddenStages} tahap belum berjalan disembunyikan. Tahap akan
+                muncul di board setelah fase berjalan.
+              </p>
+            ) : null}
             <div className="mb-3 flex flex-wrap items-end gap-2">
               <label className="text-xs font-medium">
                 Tahap
@@ -593,8 +609,14 @@ export function SimproProjectPage({
         ) : (
           <EmptyState
             icon={ClipboardList}
-            title="Board tidak tersedia"
-            description="Proyek ini tidak memiliki tahap SIMPRO."
+            title={
+              hiddenStages > 0 ? "Tahap belum berjalan" : "Board tidak tersedia"
+            }
+            description={
+              hiddenStages > 0
+                ? "Tahap akan muncul di board setelah fase berjalan."
+                : "Proyek ini tidak memiliki tahap SIMPRO."
+            }
           />
         )
       ) : null}

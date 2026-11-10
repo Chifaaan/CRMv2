@@ -9,7 +9,7 @@
 | Dokumen terkait | [`MVP.md`](./MVP.md), [`References/`](./References/) |
 | Menggantikan | `SIMPROv2/CRM-MVP.md` dan `SIMPROv2/BRIEF.md` untuk lingkup prototype ini |
 
-> **Catatan implementasi terbaru:** aturan journey 6 step tetap di dokumen ini sudah digantikan oleh empat fase di `Docs/PRD-Alur-CRM-Baru.md`. Template kini opsional dan hanya mengisi Prospek sebagai rekomendasi; Proyek boleh mulai dengan Prospek kosong, tahap Prospek baru `pending`, dan PM memulai journey lewat Journey Management. Detail tipe tahap dan distribusi form ada di `Docs/Stage-Types.md`.
+> **Catatan implementasi terbaru:** aturan journey 6 step tetap di dokumen ini sudah digantikan oleh empat fase di `Docs/PRD-Alur-CRM-Baru.md`. Template kini opsional dan hanya mengisi Prospek sebagai rekomendasi; Proyek boleh mulai dengan Prospek kosong, tahap Prospek baru `pending`, dan PM memulai journey lewat Journey Management. Detail Proyek kini bertab **Overview** dan **Journey Management**: Overview khusus proyek yang dibuka (penyelesaian tahap, distribusi task, progress, riwayat), Journey Management menampilkan keempat fase termasuk `0 Tahap`, dan tahap baru dibuat lewat dialog nama/format dengan preview tabel. Fase yang sudah dimulai boleh menambah/menghapus tahap selama belum ada pekerjaan. Board SIMPRO untuk Assignee/Media hanya menampilkan tahap aktif dan selesai. Kartu punya Manager opsional di samping Assignee, PM boleh memindahkan kartu yang punya owner ke status mana pun, dan Link Pekerjaan tidak divalidasi sebagai URL. Detail tipe tahap dan distribusi form ada di `Docs/Stage-Types.md`.
 
 ---
 
@@ -437,7 +437,9 @@ Tidak ada aksi edit dari SIMPRO.
 - Seluruh eksekusi Running dilakukan di SIMPRO.
 - CRM hanya menampilkan mirror read-only.
 - Board SIMPRO hanya menampilkan task dari **step aktif**.
+- Untuk Assignee/Media yang terikat proyek, pilihan tahap board hanya menampilkan tahap `active` dan `completed`; tahap `pending` disembunyikan. Tahap selesai tetap bisa dibuka read-only.
 - Task Running tidak bisa dibuat sebelum step Running aktif.
+- Manager opsional pada kartu bisa memulai/mengajukan dan assign/reassign, tetapi tidakreview. PM pemilik boleh memindahkan kartu yang punya Assignee/Manager ke status mana pun; PM tetap tidak assign.
 
 #### 8.8.2 Pembuatan task
 
@@ -455,6 +457,7 @@ Tidak ada aksi edit dari SIMPRO.
 - deskripsi,
 - prioritas (`Low`, `Medium`, `High`, `Critical`),
 - assignee (satu orang),
+- manager (opsional, satu orang) di samping assignee,
 - due date (opsional),
 - checklist,
 - komentar,
