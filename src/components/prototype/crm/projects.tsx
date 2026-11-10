@@ -18,6 +18,7 @@ import {
   canCreateProject,
   completionStats,
   isGroupableProject,
+  prospekById,
   userById,
   visibleProjects,
 } from "@/lib/prototype/domain";
@@ -230,8 +231,13 @@ export function CrmProjects() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return projects.filter((project) => {
+      if (typeFilter === "prospek" && !project.prospekId) return false;
       if (query) {
-        const haystack = `${project.name} ${project.code} ${project.client}`.toLowerCase();
+        const parent = project.prospekId
+          ? prospekById(store, project.prospekId)?.name ?? ""
+          : "";
+        const haystack =
+          `${project.name} ${project.code} ${project.client} ${parent}`.toLowerCase();
         if (!haystack.includes(query)) return false;
       }
       if (status && project.status !== status) return false;
@@ -245,7 +251,7 @@ export function CrmProjects() {
       }
       return true;
     });
-  }, [projects, search, status, priority, phase, templateFilter, store.steps]);
+  }, [projects, search, status, priority, phase, templateFilter, store, typeFilter]);
 
   if (!currentUser) return null;
   const canManageGroups =
@@ -254,7 +260,7 @@ export function CrmProjects() {
   const showProjects = typeFilter !== "group";
 
   const ungrouped = showProjects
-    ? filtered.filter((project) => !project.groupId)
+    ? filtered.filter((project) => !project.groupId || project.prospekId)
     : [];
   const filteredIds = new Set(filtered.map((project) => project.id));
   const groupCards = showGroups
@@ -410,6 +416,7 @@ export function CrmProjects() {
           <option value="all">Semua tipe</option>
           <option value="group">Group</option>
           <option value="project">Project</option>
+          <option value="prospek">Berasal dari Prospek</option>
         </NativeSelect>
         <NativeSelect value={phase} onChange={setPhase}>
           <option value="">Semua fase</option>
@@ -578,6 +585,16 @@ export function CrmProjects() {
                       showGroup
                       draggable={false}
                     />
+                    {project.prospekId ? (
+                      <Link
+                        href={`/crm/prospek/${project.prospekId}`}
+                        className="text-primary mt-1 inline-flex px-1 text-[10px] font-medium hover:underline"
+                      >
+                        Dari Prospek:{" "}
+                        {prospekById(store, project.prospekId)?.name ??
+                          project.prospekId}
+                      </Link>
+                    ) : null}
                     {canManageGroups && isGroupableProject(project) ? (
                       <Button
                         type="button"

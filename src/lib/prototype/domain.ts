@@ -3,6 +3,7 @@ import {
   FORM_STEP_KEYS,
   PHASE_LABEL,
   PHASE_ORDER,
+  NEW_PROJECT_PHASES,
   STEP_META,
   TASK_STATUS_LABEL,
   type AppState,
@@ -17,6 +18,7 @@ import {
   type PitchingRab,
   type Priority,
   type Project,
+  type ProjectTemplate,
   type ProjectStep,
   type Prospek,
   type ProspekPitching,
@@ -28,6 +30,7 @@ import {
   type User,
   type WorkloadRow,
 } from "./types";
+import { isNewProjectTemplate } from "./templates";
 
 export function userById(state: AppState, id?: string): User | undefined {
   return state.users.find((user) => user.id === id);
@@ -502,8 +505,14 @@ export function canViewProject(
   user: User,
   project: Project,
 ): boolean {
-  if (user.role === "admin" || user.role === "manager" || user.role === "finance") {
+  if (user.role === "admin" || user.role === "manager") {
     return true;
+  }
+  if (user.role === "finance") {
+    if (!isNewLifecycleProject(project)) return true;
+    return state.forms.some(
+      (form) => form.projectId === project.id && form.assigneeId === user.id,
+    );
   }
   if (user.role === "pm") return project.createdById === user.id;
   if (user.role === "assignee") {
@@ -529,6 +538,92 @@ export function visibleProjects(state: AppState): Project[] {
 
 export function canManageProject(user: User, project?: Project): boolean {
   return user.role === "admin" || (user.role === "pm" && project?.createdById === user.id);
+}
+
+export function isNewLifecycleProject(project?: Project): boolean {
+  return (
+    project?.creationMode === "template" || project?.creationMode === "manual"
+  );
+}
+
+export function canManageProjectSteps(
+  user: User,
+  project?: Project,
+): boolean {
+  return canManageProject(user, project);
+}
+
+export function projectPhase(
+  project: Project,
+  steps: ProjectStep[],
+): Phase {
+  if (project.phaseCompletedAt?.running) return "finance";
+  if (project.phaseCompletedAt?.planning) return "running";
+  const active = steps
+    .filter((step) => step.status === "active")
+    .sort((a, b) => a.order - b.order)[0];
+  if (active) return active.phase;
+  if (project.initialPhase) return project.initialPhase;
+  return isNewLifecycleProject(project) ? "planning" : "prospek";
+}
+
+export function projectProgress(
+  state: AppState,
+  projectId: string,
+): { mode: "percent" | "count"; value: number; label: string } {
+  const project = projectById(state, projectId);
+  const steps = state.steps.filter((step) => step.projectId === projectId);
+  if (!project || !isNewLifecycleProject(project)) {
+    const value = calculateJourneyProgress(state, projectId);
+    return { mode: "percent", value, label: `${value}%` };
+  }
+  if (project.creationMode === "manual") {
+    const completed = steps.filter((step) => step.status === "completed").length;
+    return {
+      mode: "count",
+      value: completed,
+      label: `${completed} step selesai`,
+    };
+  }
+  const counted = steps.filter((step) => step.status !== "skipped");
+  const completed = counted.filter((step) => step.status === "completed").length;
+  const value = counted.length === 0 ? 0 : Math.round((completed / counted.length) * 100);
+  return { mode: "percent", value, label: `${value}%` };
+}
+
+export function isTemplateCompatibleForNewProject(template: ProjectTemplate): boolean {
+  return isNewProjectTemplate(template);
+}
+
+export function validWorkUrl(value?: string): boolean {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function canAssignKanbanTask(
+  user: User,
+  project: Project | undefined,
+  target: User | undefined,
+): boolean {
+  if (!project || !target) return false;
+  if (!isOperationalAssignee(target)) return false;
+  return user.role === "admin" || user.role === "manager";
+}
+
+export function canCancelKanbanTask(
+  state: AppState,
+  user: User,
+  task: Task,
+): boolean {
+  const project = projectById(state, task.projectId);
+  if (!project) return false;
+  if (!canManageProject(user, project)) return false;
+  return task.status === "backlog" || task.status === "todo";
 }
 
 export function canAssignProjectManager(
@@ -1026,16 +1121,21 @@ export function validateTemplateStages(
   if (stages.length === 0) errors.push("Template harus punya minimal satu tahap.");
 
   if (!options.legacy) {
-    for (const phase of PHASE_ORDER) {
+    const hasProspek = stages.some((stage) => stage.phase === "prospek");
+    for (const phase of NEW_PROJECT_PHASES) {
       if (!stages.some((stage) => stage.phase === phase)) {
         errors.push(`Fase ${PHASE_LABEL[phase]} harus punya minimal satu tahap.`);
       }
     }
-    const winningGates = stages.filter(
-      (stage) => stage.kind === "gate" && stage.gateKind === "client_approval",
-    );
-    if (winningGates.length !== 1) {
-      errors.push("Template harus punya tepat satu gerbang menang (persetujuan klien).");
+    if (hasProspek) {
+      const winningGates = stages.filter(
+        (stage) => stage.kind === "gate" && stage.gateKind === "client_approval",
+      );
+      if (winningGates.length !== 1) {
+        errors.push(
+          "Template harus punya tepat satu gerbang menang (persetujuan klien).",
+        );
+      }
     }
   }
 
@@ -1131,61 +1231,125 @@ export function taskTransition(
   user: User,
   task: Task,
   to: TaskStatus,
+  options?: { comment?: string; workUrl?: string },
 ): { ok: boolean; reason?: string } {
   if (task.status === "completed") {
     return { ok: false, reason: "Task Completed terkunci." };
   }
 
   const project = projectById(state, task.projectId);
+  if (!project) return { ok: false, reason: "Proyek tidak ditemukan." };
 
-  if (user.role === "admin") return { ok: true };
+  if (!isNewLifecycleProject(project)) {
+    if (user.role === "admin") return { ok: true };
+
+    if (to === "todo") {
+      if (task.status !== "backlog") {
+        return { ok: false, reason: "Hanya task Backlog yang bisa di-assign." };
+      }
+      if (!task.assigneeId) {
+        return { ok: false, reason: "Pilih assignee terlebih dahulu." };
+      }
+      const assignee = userById(state, task.assigneeId);
+      if (!canAssignOperational(user, project, assignee)) {
+        return {
+          ok: false,
+          reason:
+            "Hanya Manager/Admin, atau PM pemilik proyek ke Manager proyek, yang bisa assign.",
+        };
+      }
+      return { ok: true };
+    }
+
+    if (to === "in_progress") {
+      const fromRevision = task.status === "need_revision";
+      const fromTodo = task.status === "todo";
+      if (!fromTodo && !fromRevision) {
+        return { ok: false, reason: "Task harus To Do atau Need Revision." };
+      }
+      if (!canWorkTask(user, task)) {
+        return { ok: false, reason: "Hanya assignee task ini yang bisa mulai." };
+      }
+      return { ok: true };
+    }
+
+    if (to === "awaiting_approval") {
+      if (task.status !== "in_progress") {
+        return { ok: false, reason: "Task harus In Progress." };
+      }
+      if (!canWorkTask(user, task)) {
+        return { ok: false, reason: "Hanya assignee task ini yang bisa submit." };
+      }
+      return { ok: true };
+    }
+
+    if (to === "completed" || to === "need_revision") {
+      if (task.status !== "awaiting_approval") {
+        return { ok: false, reason: "Task harus Awaiting Approval." };
+      }
+      if (!canReviewTask(state, user, task)) {
+        return { ok: false, reason: "Hanya PM pemilik proyek/Admin yang review." };
+      }
+      return { ok: true };
+    }
+
+    return { ok: false, reason: "Transisi status tidak diizinkan." };
+  }
 
   if (to === "todo") {
     if (task.status !== "backlog") {
-      return { ok: false, reason: "Hanya task Backlog yang bisa di-assign." };
+      return { ok: false, reason: "Hanya card Backlog yang bisa di-assign." };
     }
     if (!task.assigneeId) {
       return { ok: false, reason: "Pilih assignee terlebih dahulu." };
     }
-    const assignee = userById(state, task.assigneeId);
-    if (!canAssignOperational(user, project, assignee)) {
+    if (!canAssignKanbanTask(user, project, userById(state, task.assigneeId))) {
       return {
         ok: false,
-        reason:
-          "Hanya Manager/Admin, atau PM pemilik proyek ke Manager proyek, yang bisa assign.",
+        reason: "Hanya Manager/Admin yang dapat meng-assign card.",
       };
     }
     return { ok: true };
   }
 
   if (to === "in_progress") {
-    const fromRevision = task.status === "need_revision";
-    const fromTodo = task.status === "todo";
-    if (!fromTodo && !fromRevision) {
-      return { ok: false, reason: "Task harus To Do atau Need Revision." };
+    if (task.status !== "todo" && task.status !== "need_revision") {
+      return { ok: false, reason: "Card harus To Do atau Need Revision." };
     }
     if (!canWorkTask(user, task)) {
-      return { ok: false, reason: "Hanya assignee task ini yang bisa mulai." };
+      return { ok: false, reason: "Hanya assignee card ini yang bisa mulai." };
+    }
+    if (!validWorkUrl(options?.workUrl ?? task.workUrl)) {
+      return {
+        ok: false,
+        reason: "Link Pekerjaan wajib berupa URL HTTP/HTTPS absolut.",
+      };
     }
     return { ok: true };
   }
 
   if (to === "awaiting_approval") {
     if (task.status !== "in_progress") {
-      return { ok: false, reason: "Task harus In Progress." };
+      return { ok: false, reason: "Card harus In Progress." };
     }
     if (!canWorkTask(user, task)) {
-      return { ok: false, reason: "Hanya assignee task ini yang bisa submit." };
+      return { ok: false, reason: "Hanya assignee card ini yang bisa submit." };
     }
     return { ok: true };
   }
 
   if (to === "completed" || to === "need_revision") {
     if (task.status !== "awaiting_approval") {
-      return { ok: false, reason: "Task harus Awaiting Approval." };
+      return { ok: false, reason: "Card harus Awaiting Approval." };
     }
     if (!canReviewTask(state, user, task)) {
-      return { ok: false, reason: "Hanya PM pemilik proyek/Admin yang review." };
+      return {
+        ok: false,
+        reason: "Hanya PM pemilik proyek/Admin yang dapat review.",
+      };
+    }
+    if (to === "need_revision" && !options?.comment?.trim()) {
+      return { ok: false, reason: "Komentar revisi wajib diisi." };
     }
     return { ok: true };
   }

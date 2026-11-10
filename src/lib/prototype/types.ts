@@ -4,7 +4,7 @@ export type Priority = "low" | "medium" | "high" | "critical";
 
 export type ProjectStatus = "active" | "completed" | "cancelled";
 
-export type Phase = "prospek" | "planning" | "running" | "closing";
+export type Phase = "prospek" | "planning" | "running" | "finance";
 
 export type StageKind = "form" | "finance_form" | "gate" | "simpro";
 
@@ -147,6 +147,16 @@ export type User = {
   color: string;
 };
 
+export type ProjectCreationMode = "template" | "manual" | "legacy";
+
+export type ProspekProjectSnapshot = {
+  picId?: string;
+  client: string;
+  periodStart: string;
+  periodEnd: string;
+  pagu: number;
+};
+
 export type Project = {
   id: string;
   code: string;
@@ -162,6 +172,12 @@ export type Project = {
   createdById: string;
   managerId?: string;
   groupId?: string;
+  creationMode?: ProjectCreationMode;
+  startedAt?: string;
+  initialPhase?: "planning" | "running";
+  phaseCompletedAt?: Partial<Record<"planning" | "running" | "finance", string>>;
+  startPromptDismissedAt?: string;
+  prospekSnapshot?: ProspekProjectSnapshot;
   prospekId?: string;
   pitchingId?: string;
   inheritedRab?: PitchingRabSnapshot;
@@ -248,6 +264,7 @@ export type ProjectStep = {
   legacyKey?: StepKey;
   formTemplate?: FormTemplate;
   tasks: StageTask[];
+  managerPicId?: string;
   gateDecision?: GateDecision;
   noWorkConfirmedAt?: string;
   noWorkConfirmedById?: string;
@@ -310,6 +327,7 @@ export type Task = {
   assigneeId?: string;
   reporterId: string;
   dueDate?: string;
+  workUrl?: string;
   createdAt: string;
   archivedAt?: string;
   archiveReason?: string;
@@ -686,16 +704,18 @@ export const STEP_META: {
   { key: "survey", label: "Survey", phase: "prospek", order: 2, weight: 1 },
   { key: "rab", label: "RAB", phase: "prospek", order: 3, weight: 1 },
   { key: "running", label: "Running", phase: "running", order: 4, weight: 1 },
-  { key: "bast", label: "BAST", phase: "closing", order: 5, weight: 0.5 },
-  { key: "invoice", label: "Invoice", phase: "closing", order: 6, weight: 0.5 },
+  { key: "bast", label: "BAST", phase: "finance", order: 5, weight: 0.5 },
+  { key: "invoice", label: "Invoice", phase: "finance", order: 6, weight: 0.5 },
 ];
 
 export const PHASE_ORDER: Phase[] = [
   "prospek",
   "planning",
   "running",
-  "closing",
+  "finance",
 ];
+
+export const NEW_PROJECT_PHASES: Phase[] = ["planning", "running", "finance"];
 
 export const STAGE_KIND_LABEL: Record<StageKind, string> = {
   form: "Form",
@@ -766,14 +786,14 @@ export const PHASE_LABEL: Record<Phase, string> = {
   prospek: "Prospek",
   planning: "Planning",
   running: "Running",
-  closing: "Closing",
+  finance: "Finance",
 };
 
 export const PHASE_HINT: Record<Phase, string> = {
   prospek: "Belum ada komitmen kontrak: brief sampai persetujuan klien.",
   planning: "Komitmen mulai berjalan: booking vendor/venue, PO, briefing.",
   running: "Eksekusi pekerjaan dan produksi.",
-  closing: "Laporan akhir, BAST, invoice, pembayaran, evaluasi.",
+  finance: "BAST, invoice, pembayaran, dan penutupan proyek.",
 };
 
 export const LIFECYCLE_LABEL: Record<Lifecycle, string> = {

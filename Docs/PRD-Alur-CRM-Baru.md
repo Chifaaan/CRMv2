@@ -335,3 +335,11 @@ Task dan deliverable lanjutan, estimasi vs rencana vs aktual (anggaran, margin, 
 | Running | Running |
 | Finishing: BAST, Invoice | Closing |
 | (belum ada) | Planning (kosong di Umum, terisi di KOL dan Event) |
+
+## Siklus proyek pasca-Prospek
+
+- Proyek baru memakai Planning -> Running -> Finance.
+- Proyek baru belum aktif sampai PM/Admin memulai dari Planning atau Running.
+- Finance memakai Form Keuangan (BAST, Invoice, Pembayaran), bukan Kanban.
+- Proyek legacy dengan fase Prospek tetap dipertahankan.
+

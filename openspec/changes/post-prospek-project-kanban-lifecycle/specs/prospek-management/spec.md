@@ -26,6 +26,18 @@ Sistem SHALL mengizinkan PM pemilik atau Admin mengonversi Pitching menang yang 
 - **WHEN** anak proyek hasil konversi dibuka dari daftar Prospek
 - **THEN** sistem menampilkan proyek tersebut sebagai anak dari Prospek dan Pitching asalnya tanpa mengubah perilaku Groups atau keanggotaan ProjectGroup
 
+#### Scenario: Group is created from the prospek name
+- **WHEN** Pitching menang dikonversi dan belum ada Group dengan nama Prospek
+- **THEN** sistem membuat Group baru bernama sama dengan Prospek dan memasukkan anak proyek ke Group tersebut
+
+#### Scenario: Existing group is reused
+- **WHEN** Pitching menang dikonversi dan sudah ada Group dengan nama Prospek
+- **THEN** sistem memakai Group tersebut tanpa membuat Group duplikat dan memasukkan anak proyek ke Group itu
+
+#### Scenario: Multiple winning pitchings share the group
+- **WHEN** dua Pitching menang dari Prospek yang sama dikonversi
+- **THEN** kedua anak proyek menjadi anggota Group Prospek yang sama
+
 ## ADDED Requirements
 
 ### Requirement: Prospek child projects are discoverable as project cards

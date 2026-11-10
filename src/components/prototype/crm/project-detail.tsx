@@ -45,6 +45,7 @@ import {
   canCreateFormEntry,
   canEditForm,
   canManageProject,
+  canManageProjectSteps,
   evaluateGate,
   formatCurrency,
   formatDate,
@@ -54,8 +55,11 @@ import {
   formFor,
   formLabel,
   formsFor,
+  isNewLifecycleProject,
   operationalAssigneeCandidates,
   pitchingsFor,
+  projectPhase,
+  projectProgress,
   prospekById,
   prospekPitchingById,
   rolesForPitching,
@@ -71,6 +75,7 @@ import {
   PHASE_HINT,
   PHASE_LABEL,
   type FormEntry,
+  type FormStepKey,
   type Phase,
   type Project,
   type ProjectStep,
@@ -1333,7 +1338,10 @@ function FormStagePanel({
           </div>
         )}
 
-        {canManage && entries.length === 0 && !step.noWorkConfirmedAt ? (
+        {canManage &&
+        entries.length === 0 &&
+        !step.noWorkConfirmedAt &&
+        !isNewLifecycleProject(project) ? (
           <div className="mt-3 rounded-lg border border-dashed p-2">
             <p className="text-muted-foreground mb-2 text-[11px]">
               Tidak ada pekerjaan di tahap ini? Konfirmasi akan dicatat di audit trail.
@@ -1541,7 +1549,10 @@ function SimproStagePanel({
         />
       ) : null}
 
-      {canManage && tasks.length === 0 && !step.noWorkConfirmedAt ? (
+      {canManage &&
+      tasks.length === 0 &&
+      !step.noWorkConfirmedAt &&
+      !isNewLifecycleProject(project) ? (
         <Button
           size="sm"
           variant="outline"
@@ -1836,13 +1847,27 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   }
 
   const active = activeSteps(store, project.id);
-  const journey = calculateJourneyProgress(store, project.id);
+  const newLifecycle = isNewLifecycleProject(project);
+  const progress = projectProgress(store, project.id);
+  const journey = progress.value;
   const work = workProgressForProject(store, project.id);
-  const phase = active[0]?.phase;
+  const phase = active[0]?.phase ?? projectPhase(project, projectSteps);
   const group = project.groupId
     ? store.groups.find((item) => item.id === project.groupId)
     : undefined;
   const canManage = canManageProject(currentUser, project);
+  const canManageSteps = canManageProjectSteps(currentUser, project);
+  const managerPicId =
+    project.managerId ?? store.users.find((user) => user.role === "manager")?.id;
+  const currentPhase = projectPhase(project, projectSteps);
+  const currentPhaseSteps = projectSteps.filter(
+    (step) => step.phase === currentPhase,
+  );
+  const phaseReady =
+    currentPhaseSteps.length > 0 &&
+    currentPhaseSteps.every(
+      (step) => step.status === "completed" || step.status === "skipped",
+    );
   const canCancel = canCancelProject(currentUser, project);
   const selectedStep =
     projectSteps.find((step) => step.key === selectedStepKey) ?? fallbackStep;
@@ -2009,8 +2034,8 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           <div className="mt-5 grid gap-3 text-xs sm:grid-cols-2">
             <div>
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-white/70">Journey</span>
-                <span className="font-semibold">{journey}%</span>
+                <span className="text-white/70">Progress</span>
+                <span className="font-semibold">{progress.label}</span>
               </div>
               <ProgressBar value={journey} className="bg-white/20" tone="bg-white" />
             </div>
@@ -2046,6 +2071,174 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           </div>
         </div>
       </div>
+
+      {newLifecycle && !project.startedAt ? (
+        <SectionCard
+          title="Proyek belum dimulai"
+          description={
+            canManage
+              ? "Pilih fase awal. Finance hanya tersedia setelah Running selesai."
+              : "Menunggu PM memulai proyek."
+          }
+        >
+          {canManage ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (!managerPicId) {
+                    toast.error("Tetapkan Manager proyek terlebih dahulu.");
+                    return;
+                  }
+                  const ok = store.startProject(project.id, "planning", {
+                    managerPicId,
+                  });
+                  toast[ok ? "success" : "error"](
+                    ok ? "Proyek dimulai dari Planning." : "Gagal memulai proyek.",
+                  );
+                }}
+              >
+                Mulai dari Planning
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (!managerPicId) {
+                    toast.error("Tetapkan Manager proyek terlebih dahulu.");
+                    return;
+                  }
+                  const ok = store.startProject(project.id, "running", {
+                    managerPicId,
+                  });
+                  toast[ok ? "success" : "error"](
+                    ok
+                      ? "Proyek dimulai dari Running; Planning dilewati."
+                      : "Gagal memulai proyek.",
+                  );
+                }}
+              >
+                Langsung ke Running
+              </Button>
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-xs">
+              Menunggu PM memulai proyek.
+            </p>
+          )}
+        </SectionCard>
+      ) : null}
+
+      {newLifecycle && project.startedAt && canManageSteps ? (
+        <SectionCard
+          title="Kelola fase"
+          description="Tambah step pada fase aktif atau selesaikan fase setelah semua step selesai."
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const name = window.prompt("Nama step baru");
+                  if (!name?.trim()) return;
+                  let financeKind: FormStepKey | undefined;
+                  if (currentPhase === "finance") {
+                    const value = window.prompt(
+                      "Jenis form Finance: bast, invoice, atau payment",
+                      "bast",
+                    );
+                    if (!value || !["bast", "invoice", "payment"].includes(value)) {
+                      toast.error("Jenis form Finance tidak valid.");
+                      return;
+                    }
+                    financeKind = value as FormStepKey;
+                  }
+                  const id = store.addProjectStep(project.id, {
+                    name,
+                    phase: currentPhase,
+                    financeKind,
+                    managerPicId,
+                  });
+                  toast[id ? "success" : "error"](
+                    id ? "Step ditambahkan." : "Gagal menambah step.",
+                  );
+                }}
+              >
+                <Plus className="size-3.5" /> Tambah step
+              </Button>
+              <Button
+                size="sm"
+                disabled={!phaseReady || currentPhase === "prospek"}
+                onClick={() => {
+                  const ok = store.completeProjectPhase(
+                    project.id,
+                    currentPhase,
+                  );
+                  toast[ok ? "success" : "error"](
+                    ok
+                      ? `Fase ${PHASE_LABEL[currentPhase]} selesai.`
+                      : "Fase belum siap diselesaikan.",
+                  );
+                }}
+              >
+                Selesaikan fase {PHASE_LABEL[currentPhase]}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-1 text-xs">
+            {currentPhaseSteps.length === 0 ? (
+              <p className="text-muted-foreground">
+                Belum ada step pada fase ini.
+              </p>
+            ) : (
+              currentPhaseSteps
+                .sort((a, b) => a.order - b.order)
+                .map((step) => (
+                  <div
+                    key={step.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded border px-2 py-1"
+                  >
+                    <span>
+                      {step.name} · {step.status}
+                      {step.managerPicId
+                        ? ` · PIC ${userById(store, step.managerPicId)?.name ?? "-"}`
+                        : ""}
+                    </span>
+                    {step.status === "pending" ? (
+                      <span className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[10px]"
+                          onClick={() => store.reorderProjectStep(project.id, step.id, "up")}
+                        >
+                          ↑
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[10px]"
+                          onClick={() => store.reorderProjectStep(project.id, step.id, "down")}
+                        >
+                          ↓
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[10px]"
+                          onClick={() => store.deleteProjectStep(project.id, step.id)}
+                        >
+                          Hapus
+                        </Button>
+                      </span>
+                    ) : null}
+                  </div>
+                ))
+            )}
+          </div>
+        </SectionCard>
+      ) : null}
 
       {transitionBanner && !bannerDismissed ? (
         <div

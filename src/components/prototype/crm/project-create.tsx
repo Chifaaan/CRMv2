@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { usePrototypeStore } from "@/lib/prototype/store";
+import { newProjectTemplates } from "@/lib/prototype/templates";
 import {
   canCreateProject,
   userById,
@@ -102,6 +103,7 @@ type Draft = {
   coverColor: string;
   templateId: string;
   managerId: string;
+  mode: "template" | "manual";
   stages: TemplateStage[];
 };
 
@@ -109,9 +111,7 @@ export function CrmProjectCreate() {
   const store = usePrototypeStore();
   const router = useRouter();
   const currentUser = userById(store, store.currentUserId);
-  const activeTemplates = store.templates.filter(
-    (template) => template.status === "active",
-  );
+  const activeTemplates = newProjectTemplates(store.templates);
   const [draft, setDraft] = useState<Draft>({
     name: "",
     client: "",
@@ -122,6 +122,7 @@ export function CrmProjectCreate() {
     coverColor: COVER_COLORS[0],
     templateId: activeTemplates[0]?.id ?? "",
     managerId: "",
+    mode: "template",
     stages: cloneStages(activeTemplates[0]?.stages ?? []),
   });
   const [dirty, setDirty] = useState(false);
@@ -134,7 +135,7 @@ export function CrmProjectCreate() {
         const parsed = JSON.parse(raw) as Draft;
         if (parsed?.stages?.length) {
           // eslint-disable-next-line react-hooks/set-state-in-effect
-          setDraft({ ...parsed, managerId: parsed.managerId ?? "" });
+          setDraft({ ...parsed, managerId: parsed.managerId ?? "", mode: parsed.mode ?? "template" });
           setRestored(true);
         }
       }
@@ -275,13 +276,15 @@ export function CrmProjectCreate() {
       toast.error("Nama proyek wajib diisi.");
       return;
     }
-    if (!template) {
-      toast.error("Pilih template terlebih dahulu.");
-      return;
-    }
-    if (!validation.ok) {
-      toast.error(validation.errors[0] ?? "Tahapan belum valid.");
-      return;
+    if (draft.mode === "template") {
+      if (!template) {
+        toast.error("Pilih template terlebih dahulu.");
+        return;
+      }
+      if (!validation.ok) {
+        toast.error(validation.errors[0] ?? "Tahapan belum valid.");
+        return;
+      }
     }
     const id = store.createProject({
       name: draft.name.trim(),
@@ -295,9 +298,10 @@ export function CrmProjectCreate() {
         ? new Date(`${draft.targetEndDate}T00:00:00`).toISOString()
         : "",
       coverColor: draft.coverColor,
-      templateId: template.id,
+      mode: draft.mode,
+      templateId: draft.mode === "template" ? template?.id : undefined,
       managerId: draft.managerId,
-      stages: draft.stages,
+      stages: draft.mode === "template" ? draft.stages : undefined,
     });
     if (!id) {
       toast.error("Gagal membuat proyek.");
@@ -408,6 +412,26 @@ export function CrmProjectCreate() {
             </div>
           </Field>
           <Field
+            label="Mode proyek"
+            hint="Manual membuat proyek tanpa step; step ditambahkan setelah mulai."
+            className="sm:col-span-2"
+          >
+            <NativeSelect
+              value={draft.mode}
+              onChange={(value) =>
+                patch({
+                  mode: value as "template" | "manual",
+                  ...(value === "template"
+                    ? {}
+                    : { stages: [], templateId: "" }),
+                })
+              }
+            >
+              <option value="template">Dari template</option>
+              <option value="manual">Manual</option>
+            </NativeSelect>
+          </Field>
+          <Field
             label="Template"
             hint="Satu proyek memakai tepat satu template."
             className="sm:col-span-2"
@@ -415,6 +439,7 @@ export function CrmProjectCreate() {
             <NativeSelect
               value={draft.templateId}
               onChange={chooseTemplate}
+              disabled={draft.mode === "manual"}
             >
               {activeTemplates.map((item) => (
                 <option key={item.id} value={item.id}>

@@ -57,6 +57,15 @@ function BoardCard({
     : undefined;
   const assignee = userById(store, task.assigneeId);
   const requested = userById(store, task.requestedAssigneeId);
+  const currentUser = userById(store, store.currentUserId);
+  const project = store.projects.find((item) => item.id === task.projectId);
+  const canSeeWorkLink = Boolean(
+    currentUser &&
+      (currentUser.role === "admin" ||
+        currentUser.role === "manager" ||
+        task.assigneeId === currentUser.id ||
+        (currentUser.role === "pm" && project?.createdById === currentUser.id)),
+  );
   const stage = store.steps.find(
     (step) =>
       step.projectId === task.projectId &&
@@ -86,6 +95,17 @@ function BoardCard({
       </div>
       <p className="mt-1.5 line-clamp-3 text-xs font-medium leading-snug">{task.title}</p>
       <p className="text-muted-foreground mt-1 text-[10px]">{task.code}</p>
+      {task.workUrl && canSeeWorkLink ? (
+        <a
+          href={task.workUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => event.stopPropagation()}
+          className="text-primary mt-1 block truncate text-[10px] hover:underline"
+        >
+          Link Pekerjaan
+        </a>
+      ) : null}
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="text-muted-foreground inline-flex items-center gap-1 text-[10px]">
           {assignee ? (

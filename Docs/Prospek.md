@@ -24,6 +24,7 @@ Prospek adalah wadah CRM untuk peluang sebelum proyek berjalan. Satu Prospek ber
 - **Form scope:** entri Form Prospek memakai `scope: "prospek"`, `prospekId`, dan `pitchingId`. Entri Form proyek lama tetap `scope: "project"`.
 - **Read-only:** Pitching kalah mengunci RAB, Quotation, Form, dan kontraknya. Kontrak terkunci setelah konversi. Undo kalah mengembalikan status sebelumnya.
 - **Reminder:** hanya in-app untuk penugasan, mendekati due date (3 hari), dan overdue; tidak ada email.
+- **Siklus anak proyek:** anak proyek hasil konversi memakai tiga fase Planning → Running → Finance, dibuat belum aktif, dan menampilkan snapshot PIC/client/periode/pagu Prospek.
 - **Tampilan:** CRM Projects, CRM Groups, dan Forms punya toggle Card/Table; default Card dan preferensi disimpan per halaman.
 - **Legacy:** proyek lama dengan step Pitching dan `ProjectGroup` lama tidak dimigrasikan ke Prospek.
 

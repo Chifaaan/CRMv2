@@ -5,8 +5,9 @@ import { CalendarDays, FolderKanban, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  calculateJourneyProgress,
   formatDate,
+  isNewLifecycleProject,
+  projectProgress,
   userById,
   workProgressForProject,
 } from "@/lib/prototype/domain";
@@ -52,7 +53,8 @@ export function ProjectCard({
   draggable?: boolean;
 }) {
   const store = usePrototypeStore();
-  const journey = calculateJourneyProgress(store, project.id);
+  const progress = projectProgress(store, project.id);
+  const newProject = isNewLifecycleProject(project) && !project.startedAt;
   const work = workProgressForProject(store, project.id);
   const team = projectTeam(project.id, store, includeFinance);
   const group = project.groupId
@@ -88,6 +90,11 @@ export function ProjectCard({
         }}
       >
         <div className="absolute top-2 right-2 flex gap-1">
+          {newProject ? (
+            <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800 ring-1 ring-amber-200">
+              NEW Project
+            </span>
+          ) : null}
           {closedLabel ? (
             <span
               className={cn(
@@ -121,10 +128,10 @@ export function ProjectCard({
 
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[10px]">
-            <span className="text-muted-foreground">Journey</span>
-            <span className="font-semibold">{journey}%</span>
+            <span className="text-muted-foreground">Progress</span>
+            <span className="font-semibold">{progress.label}</span>
           </div>
-          <ProgressBar value={journey} />
+          <ProgressBar value={progress.mode === "percent" ? progress.value : 0} />
           <div className="flex items-center justify-between text-[10px]">
             <span className="text-muted-foreground">Work</span>
             <span className="font-semibold">{work}%</span>

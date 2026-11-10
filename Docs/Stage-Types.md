@@ -30,6 +30,15 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 - Termine kontrak tampil sebagai acuan pembayaran pada fase Closing anak proyek dan tidak membuat form Invoice/Pembayaran otomatis.
 - Proyek lama dengan step Pitching dan `ProjectGroup` lama tidak dimigrasikan. Lihat `Docs/Prospek.md`.
 
+## Siklus proyek baru
+
+- Proyek baru memakai tiga fase: Planning → Running → Finance. Fase Prospek hanya untuk proyek legacy.
+- Proyek baru dibuat belum aktif (NEW Project). PM/Admin memulai dari Planning atau langsung Running; Finance tidak bisa menjadi fase awal.
+- Step Planning/Running memakai Kanban SIMPRO; step Finance memakai Form Keuangan (BAST, Invoice, Pembayaran).
+- PM/Admin mengelola step yang belum dimulai; step aktif/selesai hanya boleh mengubah nama, Manager PIC, dan deskripsi.
+- Link Pekerjaan HTTP/HTTPS wajib sebelum card masuk In Progress.
+- Finance selesai hanya setelah minimal satu step Finance selesai; proyek menjadi completed.
+
 ## Mesin Form
 
 - Satu tahap Form punya satu template form dan banyak entri.

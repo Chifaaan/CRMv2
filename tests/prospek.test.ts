@@ -391,8 +391,10 @@ describe("prospek pitching flow", () => {
 
     const steps = state().steps.filter((step) => step.projectId === projectId);
     const active = steps.find((step) => step.status === "active");
-    expect(active?.phase).not.toBe("prospek");
-    expect(steps.filter((step) => step.status === "completed").length).toBeGreaterThan(0);
+    expect(active).toBeUndefined();
+    expect(steps.every((step) => step.status === "pending")).toBe(true);
+    expect(child.creationMode).toBe("template");
+    expect(child.prospekSnapshot?.pagu).toBe(prospek("prs-beta").pagu);
 
     expect(state().convertPitching("pp-beta-kol")).toBe(projectId);
     expect(

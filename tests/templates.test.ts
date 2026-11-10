@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+﻿import { beforeEach, describe, expect, it } from "vitest";
 import {
   calculateJourneyProgress,
   canEditProjectStructure,
@@ -166,7 +166,7 @@ describe("template validation", () => {
     expect(validateTemplateStages(duplicate).ok).toBe(false);
 
     const backward = stages.map((stage, index) =>
-      index === 2 ? { ...stage, phase: "closing" as const } : stage,
+      index === 2 ? { ...stage, phase: "finance" as const } : stage,
     );
     expect(
       validateTemplateStages(backward).errors.some((error) =>
@@ -299,7 +299,6 @@ describe("persistence migration", () => {
       ...seed,
       templates: undefined,
       prospeks: undefined,
-      prospekPitchings: undefined,
       pitchingRabs: undefined,
       pitchingQuotations: undefined,
       prospekEvents: undefined,
@@ -338,7 +337,7 @@ describe("persistence migration", () => {
     };
     const once = migratePersistedState(legacy);
     const twice = migratePersistedState(once);
-    expect(twice.templates?.length).toBe(3);
+    expect(twice.templates?.length).toBe(6);
     expect(
       twice.projects?.every(
         (project) =>
@@ -353,7 +352,7 @@ describe("persistence migration", () => {
     ).toBe(true);
     expect(
       twice.steps?.find((step) => step.key === "bast")?.phase,
-    ).toBe("closing");
+    ).toBe("finance");
     expect(
       twice.steps?.find((step) => step.key === "pitching")?.phase,
     ).toBe("prospek");
@@ -375,3 +374,4 @@ describe("persistence migration", () => {
     expect(JSON.stringify(twice)).toBe(JSON.stringify(migratePersistedState(twice)));
   });
 });
+

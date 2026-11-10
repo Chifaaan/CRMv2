@@ -160,7 +160,7 @@ export function CrmDashboard() {
         <StatCard label="Prospek" value={phaseCounts.prospek} sub="Brief sampai menang" icon={ClipboardCheck} accent="from-amber-500 to-orange-600" />
         <StatCard label="Planning" value={phaseCounts.planning} sub="Komitmen vendor & venue" icon={ClipboardCheck} accent="from-violet-500 to-indigo-600" />
         <StatCard label="Running" value={phaseCounts.running} sub="Eksekusi di SIMPRO" icon={PlayCircle} accent="from-sky-500 to-blue-600" />
-        <StatCard label="Closing" value={phaseCounts.closing} sub="BAST, Invoice, evaluasi" icon={Wallet} accent="from-emerald-500 to-teal-600" />
+        <StatCard label="Closing" value={phaseCounts.finance} sub="BAST, Invoice, evaluasi" icon={Wallet} accent="from-emerald-500 to-teal-600" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">

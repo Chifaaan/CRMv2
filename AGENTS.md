@@ -57,8 +57,8 @@ Prototype adaptations already made:
 
 ## Product rules that are easy to get wrong
 
-- Four fixed phases: Prospek → Planning → Running → Closing. Phase order cannot be changed by users. The meaning of "Planning" changed: it now starts at contract commitment.
-- Stages come from a project template. They may be customized only while creating a project, then `structureLocked` freezes them. There is no add/remove/reorder/skip after creation.
+- Proyek baru memakai tiga fase tetap: Planning → Running → Finance. Fase Prospek hanya dipertahankan pada proyek legacy. Urutan fase tidak dapat diubah pengguna. "Finance" dimulai saat komitmen kontrak; proyek baru dimulai belum aktif (NEW Project) sampai PM/Admin memilih fase awal.
+- Stages come from a project template or Manual mode. New projects are unstarted; PM/Admin manage pending steps after creation, while active/completed steps only allow name, Manager PIC, and description changes. Legacy projects keep their locked structure.
 - Template "Umum" is `legacy` and must keep the old six stages: Pitching → Survey → RAB → Running → BAST ∥ Invoice. New templates require one stage per phase and exactly one winning gate.
 - Journey % is weighted: sum of completed stage weights / sum of non-skipped stage weights. Umum weights (1,1,1,1,0.5,0.5) must produce the exact legacy numbers; a submitted BAST/Invoice still counts before the stage is formally completed.
 - Four stage kinds only: **Form Keuangan, Form, Gerbang, SIMPRO**. Checklist is removed; migrated checklist tasks become a checklist field in a Form template.
@@ -70,15 +70,15 @@ Prototype adaptations already made:
 - RAB, Quotation, Form Pitching, dan Kontrak dapat di-assign kepada Assignee, Manager, atau Finance. Penerima mendapat notifikasi in-app dan pekerjaannya muncul di My Tasks; Form Pitching juga muncul di Forms.
 - Pitching ditampilkan sebagai card dan membuka halaman bersection RAB, Quotation, Form Pitching, Kontrak, dan Finishing. Kontrak terkunci sampai Pitching menang.
 - Pitching yang belum dikonversi dapat ditandai kalah kapan saja, langsung masuk arsip read-only, dan dapat di-undo ke status sebelumnya oleh PM pemilik/Admin.
-- Pagu Prospek hanya peringatan, bukan batas keras. Termine kontrak tampil sebagai acuan pembayaran di Closing dan tidak membuat form finance otomatis.
+- Pagu Prospek hanya peringatan, bukan batas keras. Termine kontrak tampil sebagai acuan pembayaran di Finance dan tidak membuat form finance otomatis.
 - Konversi Pitching menang otomatis membuat atau memakai ulang Group bernama sama dengan Prospek dan memasukkan anak proyek ke Group tersebut.
 - CRM Projects, CRM Groups, dan Forms memiliki toggle Card/Table dengan default Card dan preferensi tersimpan per halaman.
 - Reminder Prospek hanya in-app: penugasan, mendekati due date (3 hari), dan overdue. Tidak ada email.
 - Proyek lama dengan step Pitching dan `ProjectGroup` lama tidak dimigrasikan ke Prospek.
 - Form stages have one form template and many entries. Entries are created by PM, assigned by Manager/Admin, filled by the assignee, and reviewed by PM. All non-cancelled entries must be approved; at least one entry is required unless "no work" is explicitly confirmed and audited.
 - Manager dan Assignee sama-sama dapat menjadi assignee operasional task/Form. PM pemilik hanya boleh assign ke Manager proyeknya; Manager/Admin tetap boleh assign ke Assignee atau Manager. Manager assignee boleh mengerjakan task/Form miliknya tetapi tidak mendapat hak review.
-- SIMPRO stages use Kanban cards. Tasks carry `stageId`; the board filters by stage (default active), shows the stage on cards, and completed stages are read-only. A stage closes when no task remains, with at least one task unless "no work" is confirmed.
-- Form Keuangan supports RAB, BAST, Invoice, and Pembayaran. Pembayaran only exists in new templates (Closing), so Umum progress is unchanged. These forms open as full pages under `/crm/projects/[id]/forms/[type]`; Detail Proyek keeps the summary, Review, and History inline. RAB/BAST/Invoice also appear in SIMPRO Forms for the assigned Finance, owning PM, and Admin only.
+- SIMPRO stages use Kanban cards. Tasks carry `stageId`; the board filters by stage (default active), shows the stage on cards, and completed stages are read-only. New-lifecycle steps require at least one non-cancelled card, all Completed; legacy steps may use "no work" confirmation. Link Pekerjaan is required before In Progress.
+- Form Keuangan supports RAB, BAST, Invoice, and Pembayaran. Pembayaran only exists in new templates (Finance), so Umum progress is unchanged. These forms open as full pages under `/crm/projects/[id]/forms/[type]`; Detail Proyek keeps the summary, Review, and History inline. RAB/BAST/Invoice also appear in SIMPRO Forms for the assigned Finance, owning PM, and Admin only.
 - Task cards exist only on SIMPRO stages (including legacy Pitching and Running). Form entries never appear in My Tasks.
 - BAST and Invoice are parallel finance stages (`parallelGroup: "finance"`); each is 0.5 weight.
 - Survey form lives in SIMPRO and keeps the legacy Survey screen (wrapped as a Form stage); RAB and finance forms live in CRM.

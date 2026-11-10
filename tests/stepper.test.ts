@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import {
   missingPhaseTooltip,
   phaseStageCounts,
@@ -37,8 +37,8 @@ const umumSteps = [
   step("survey", "prospek", 2, "completed", "2026-10-03"),
   step("rab", "prospek", 3, "completed", "2026-10-03"),
   step("running", "running", 4, "active"),
-  step("bast", "closing", 5, "pending"),
-  step("invoice", "closing", 6, "pending"),
+  step("bast", "finance", 5, "pending"),
+  step("invoice", "finance", 6, "pending"),
 ];
 
 describe("data-driven stepper", () => {
@@ -46,7 +46,7 @@ describe("data-driven stepper", () => {
     expect(phasesPresent(umumSteps)).toEqual([
       "prospek",
       "running",
-      "closing",
+      "finance",
     ]);
 
     const full = [
@@ -57,7 +57,7 @@ describe("data-driven stepper", () => {
       "prospek",
       "planning",
       "running",
-      "closing",
+      "finance",
     ]);
   });
 
@@ -78,7 +78,7 @@ describe("data-driven stepper", () => {
     expect(phaseStageCounts(umumSteps)).toEqual({
       prospek: 3,
       running: 1,
-      closing: 2,
+      finance: 2,
     });
   });
 });
@@ -111,3 +111,4 @@ describe("mixed-template group phase badges", () => {
     expect(PHASE_LABEL[alpha!]).not.toBe(PHASE_LABEL[delta!]);
   });
 });
+

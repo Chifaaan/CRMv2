@@ -10,6 +10,9 @@ import type {
 export const UMUM_TEMPLATE_ID = "tpl-umum";
 export const KOL_TEMPLATE_ID = "tpl-kol";
 export const EVENT_TEMPLATE_ID = "tpl-event";
+export const UMUM_EXECUTION_TEMPLATE_ID = "tpl-umum-eksekusi";
+export const KOL_EXECUTION_TEMPLATE_ID = "tpl-kol-eksekusi";
+export const EVENT_EXECUTION_TEMPLATE_ID = "tpl-event-eksekusi";
 
 function task(
   id: string,
@@ -107,13 +110,13 @@ function umumStages(): TemplateStage[] {
     simproStage("tpl-umum-running", "Running", "running", {
       legacyKey: "running",
     }),
-    stage("tpl-umum-bast", "BAST", "closing", "finance_form", {
+    stage("tpl-umum-bast", "BAST", "finance", "finance_form", {
       legacyKey: "bast",
       financeKind: "bast",
       weight: 0.5,
       parallelGroup: "finance",
     }),
-    stage("tpl-umum-invoice", "Invoice", "closing", "finance_form", {
+    stage("tpl-umum-invoice", "Invoice", "finance", "finance_form", {
       legacyKey: "invoice",
       financeKind: "invoice",
       weight: 0.5,
@@ -164,21 +167,21 @@ function kolStages(): TemplateStage[] {
     formStage(
       "tpl-kol-report",
       "Final Report",
-      "closing",
+      "finance",
       {},
       ["Susun laporan akhir"],
     ),
-    stage("tpl-kol-bast", "BAST", "closing", "finance_form", {
+    stage("tpl-kol-bast", "BAST", "finance", "finance_form", {
       financeKind: "bast",
       weight: 0.5,
       parallelGroup: "finance",
     }),
-    stage("tpl-kol-invoice", "Invoice", "closing", "finance_form", {
+    stage("tpl-kol-invoice", "Invoice", "finance", "finance_form", {
       financeKind: "invoice",
       weight: 0.5,
       parallelGroup: "finance",
     }),
-    stage("tpl-kol-payment", "Pembayaran", "closing", "finance_form", {
+    stage("tpl-kol-payment", "Pembayaran", "finance", "finance_form", {
       financeKind: "payment",
       description: "Pembayaran invoice dan bukti transfer.",
     }),
@@ -256,21 +259,21 @@ function eventStages(): TemplateStage[] {
     formStage(
       "tpl-event-report",
       "Post-Event Report",
-      "closing",
+      "finance",
       {},
       ["Susun laporan pasca-acara"],
     ),
-    stage("tpl-event-bast", "BAST", "closing", "finance_form", {
+    stage("tpl-event-bast", "BAST", "finance", "finance_form", {
       financeKind: "bast",
       weight: 0.5,
       parallelGroup: "finance",
     }),
-    stage("tpl-event-invoice", "Invoice", "closing", "finance_form", {
+    stage("tpl-event-invoice", "Invoice", "finance", "finance_form", {
       financeKind: "invoice",
       weight: 0.5,
       parallelGroup: "finance",
     }),
-    stage("tpl-event-payment", "Pembayaran", "closing", "finance_form", {
+    stage("tpl-event-payment", "Pembayaran", "finance", "finance_form", {
       financeKind: "payment",
       description: "Pembayaran invoice dan bukti transfer.",
     }),
@@ -279,6 +282,64 @@ function eventStages(): TemplateStage[] {
 
 function withOrder(stages: TemplateStage[]): TemplateStage[] {
   return stages.map((item, index) => ({ ...item, order: index + 1 }));
+}
+
+function executionStages(
+  prefix: string,
+  planningName: string,
+  runningName: string,
+): TemplateStage[] {
+  return withOrder([
+    simproStage(`${prefix}-planning`, planningName, "planning", {
+      tasks: [task(`${prefix}-t1`, planningName, "Manager", "Rencana kerja")],
+    }),
+    simproStage(`${prefix}-running`, runningName, "running", {
+      tasks: [task(`${prefix}-t2`, runningName, "Assignee", "Hasil pekerjaan")],
+    }),
+    stage(`${prefix}-bast`, "BAST", "finance", "finance_form", {
+      financeKind: "bast",
+      weight: 0.5,
+      parallelGroup: "finance",
+    }),
+    stage(`${prefix}-invoice`, "Invoice", "finance", "finance_form", {
+      financeKind: "invoice",
+      weight: 0.5,
+      parallelGroup: "finance",
+    }),
+    stage(`${prefix}-payment`, "Pembayaran", "finance", "finance_form", {
+      financeKind: "payment",
+    }),
+  ]);
+}
+
+export function isNewProjectTemplate(template: ProjectTemplate): boolean {
+  const phases = new Set<string>(template.stages.map((stage) => stage.phase));
+  if (phases.has("prospek")) return false;
+  if (!["planning", "running", "finance"].every((phase) => phases.has(phase))) {
+    return false;
+  }
+  const planning = template.stages.filter((stage) => stage.phase === "planning");
+  const running = template.stages.filter((stage) => stage.phase === "running");
+  const finance = template.stages.filter((stage) => stage.phase === "finance");
+  if (planning.length === 0 || running.length === 0 || finance.length === 0) {
+    return false;
+  }
+  if (![...planning, ...running].every((stage) => stage.kind === "simpro")) {
+    return false;
+  }
+  return finance.every(
+    (stage) =>
+      stage.kind === "finance_form" &&
+      ["bast", "invoice", "payment"].includes(stage.financeKind ?? ""),
+  );
+}
+
+export function newProjectTemplates(
+  templates: ProjectTemplate[],
+): ProjectTemplate[] {
+  return templates.filter(
+    (template) => template.status === "active" && isNewProjectTemplate(template),
+  );
 }
 
 export function createSeedTemplates(): ProjectTemplate[] {
@@ -338,6 +399,60 @@ export function createSeedTemplates(): ProjectTemplate[] {
           note: "Checklist dipecah menjadi Form dan SIMPRO.",
           createdAt,
         },
+      ],
+      createdById: "u-admin",
+      createdAt,
+    },
+    {
+      id: UMUM_EXECUTION_TEMPLATE_ID,
+      name: "Umum Eksekusi",
+      description: "Tiga fase: Planning, Running, dan Finance.",
+      projectType: "Umum Eksekusi",
+      version: 1,
+      status: "active",
+      stages: executionStages(
+        "tpl-umum-eksekusi",
+        "Project Kickoff",
+        "Project Execution",
+      ),
+      changelog: [
+        { version: 1, note: "Template eksekusi pasca-Prospek.", createdAt },
+      ],
+      createdById: "u-admin",
+      createdAt,
+    },
+    {
+      id: KOL_EXECUTION_TEMPLATE_ID,
+      name: "KOL Eksekusi",
+      description: "Eksekusi KOL pasca-Prospek: Planning, Running, Finance.",
+      projectType: "KOL Eksekusi",
+      version: 1,
+      status: "active",
+      stages: executionStages(
+        "tpl-kol-eksekusi",
+        "KOL Briefing",
+        "Content Posting",
+      ),
+      changelog: [
+        { version: 1, note: "Template eksekusi KOL pasca-Prospek.", createdAt },
+      ],
+      createdById: "u-admin",
+      createdAt,
+    },
+    {
+      id: EVENT_EXECUTION_TEMPLATE_ID,
+      name: "Event Eksekusi",
+      description: "Eksekusi event pasca-Prospek: Planning, Running, Finance.",
+      projectType: "Event Eksekusi",
+      version: 1,
+      status: "active",
+      stages: executionStages(
+        "tpl-event-eksekusi",
+        "Confirm Vendor",
+        "Event Execution",
+      ),
+      changelog: [
+        { version: 1, note: "Template eksekusi event pasca-Prospek.", createdAt },
       ],
       createdById: "u-admin",
       createdAt,

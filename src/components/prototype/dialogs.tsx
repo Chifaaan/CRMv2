@@ -31,11 +31,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
+  canCancelKanbanTask,
   canReviewTask,
   canWorkTask,
   formatDate,
   formatDateTime,
   isGroupableProject,
+  isNewLifecycleProject,
   operationalAssigneeCandidates,
   taskTransition,
   userById,
@@ -534,6 +536,7 @@ export function TaskDialog({
   const [assignTo, setAssignTo] = useState("");
   const [comment, setComment] = useState("");
   const [reviewComment, setReviewComment] = useState("");
+  const [workUrl, setWorkUrl] = useState("");
   const [checklistText, setChecklistText] = useState("");
 
   useEffect(() => {
@@ -545,13 +548,16 @@ export function TaskDialog({
     setAssignTo(task?.assigneeId ?? "");
     setComment("");
     setReviewComment("");
+    setWorkUrl(task?.workUrl ?? "");
     setChecklistText("");
   }, [open, task]);
 
   if (!project) return null;
 
   const isCreate = !task;
-  const canAssign = assignees.length > 0;
+  const canAssign = isNewLifecycleProject(project)
+    ? currentUser?.role === "admin" || currentUser?.role === "manager"
+    : assignees.length > 0;
   const canReassign =
     canAssign &&
     task !== undefined &&
@@ -559,8 +565,20 @@ export function TaskDialog({
     task.status !== "completed";
   const canReview = task && currentUser ? canReviewTask(store, currentUser, task) : false;
   const canWork = task && currentUser ? canWorkTask(currentUser, task) : false;
+  const canSeeWorkLink = Boolean(
+    currentUser &&
+      (currentUser.role === "admin" ||
+        currentUser.role === "manager" ||
+        canWork ||
+        (currentUser.role === "pm" && project?.createdById === currentUser.id)),
+  );
   const canDelete =
-    task && currentUser && (currentUser.role === "admin" || (currentUser.role === "pm" && project.createdById === currentUser.id));
+    task && currentUser
+      ? isNewLifecycleProject(project)
+        ? canCancelKanbanTask(store, currentUser, task)
+        : currentUser.role === "admin" ||
+          (currentUser.role === "pm" && project?.createdById === currentUser.id)
+      : false;
 
   const saveNew = () => {
     if (!title.trim()) {
@@ -589,10 +607,14 @@ export function TaskDialog({
       toast.error("Komentar revisi wajib diisi.");
       return;
     }
-    if (to === "need_revision") {
-      store.addComment(task.id, `Revisi: ${reviewComment.trim()}`);
+    if (to === "in_progress" && !workUrl.trim()) {
+      toast.error("Link Pekerjaan wajib diisi sebelum mulai kerja.");
+      return;
     }
-    store.transitionTask(task.id, to);
+    store.transitionTask(task.id, to, {
+      workUrl: to === "in_progress" ? workUrl : undefined,
+      comment: to === "need_revision" ? reviewComment : undefined,
+    });
     toast.success(`Task dipindahkan ke ${TASK_STATUS_LABEL[to]}.`);
   };
 
@@ -700,6 +722,33 @@ export function TaskDialog({
                 <PriorityBadge priority={task.priority} />
               </Field>
             </div>
+
+            {canWork && (task.status === "todo" || task.status === "need_revision") ? (
+              <Field
+                label="Link Pekerjaan"
+                hint="URL HTTP/HTTPS absolut; pastikan dapat diakses PM dan Manager."
+              >
+                <Input
+                  value={workUrl}
+                  onChange={(event) => setWorkUrl(event.target.value)}
+                  placeholder="https://..."
+                />
+              </Field>
+            ) : null}
+
+            {task.workUrl && canSeeWorkLink ? (
+              <p className="text-xs">
+                Link Pekerjaan:{" "}
+                <a
+                  href={task.workUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  {task.workUrl}
+                </a>
+              </p>
+            ) : null}
 
             <div className="flex flex-wrap gap-2">
               {canWork && (task.status === "todo" || task.status === "need_revision") ? (
