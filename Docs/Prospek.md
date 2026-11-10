@@ -20,14 +20,15 @@ Prospek adalah wadah CRM untuk peluang sebelum proyek berjalan. Satu Prospek ber
 
 - **Pagu hanya peringatan.** Total RAB dan Quotation dibandingkan dengan pagu; peringatan tidak memblokir penyimpanan.
 - **Akses:** PM membuat dan hanya melihat Prospek miliknya; Manager/Admin melihat semua; Assignee dan Finance tidak melihat menu/halaman Prospek. Pekerjaan yang di-assign dibuka dari My Tasks/Forms atau `/work/prospek/[pitchingId]/[section]`.
-- **Assignment:** RAB, Quotation, Form Pitching, dan Kontrak dapat di-assign kepada Assignee, Manager, atau Finance. Penerima mendapat notifikasi in-app; Form Pitching juga muncul di Forms.
+- **Urutan Pitching:** RAB → Quotation → Form Pitching → Decision → Kontrak. Tahap berikutnya terkunci sampai tahap sebelumnya selesai; warna membedakan selesai/aktif/terkunci.
+- **Assignment:** RAB dan Quotation hanya dapat di-assign kepada Finance; Form Pitching dan Kontrak dapat di-assign kepada Assignee, Manager, atau Finance. Finance mengisi RAB/Quotation, PM mereview. Penerima mendapat notifikasi in-app; Form Pitching juga muncul di Forms.
 - **Form scope:** entri Form Prospek memakai `scope: "prospek"`, `prospekId`, dan `pitchingId`. Entri Form proyek lama tetap `scope: "project"`.
 - **Read-only:** Pitching kalah mengunci RAB, Quotation, Form, dan kontraknya. Kontrak terkunci setelah konversi. Undo kalah mengembalikan status sebelumnya.
 - **Reminder:** hanya in-app untuk penugasan, mendekati due date (3 hari), dan overdue; tidak ada email.
-- **Siklus anak proyek:** anak proyek hasil konversi memakai tiga fase Planning → Running → Finance, dibuat belum aktif, dan menampilkan snapshot PIC/client/periode/pagu Prospek.
+- **Siklus anak proyek:** anak proyek hasil konversi memakai tiga fase Planning → Running → Finance, dibuat belum aktif, menyalin step dari template Pitching, dan menampilkan snapshot PIC/client/periode/pagu Prospek. Konversi berjalan otomatis saat kontrak lengkap.
 - **Forms:** halaman Forms adalah inbox seluruh penugasan Form dari Prospek, Project, dan Finance. Penerima assignment selalu melihat Form miliknya, penugasan user lain tidak ditampilkan, dan Manager/Admin dapat meng-assign entri yang belum di-assign langsung dari halaman Forms.
-- **Journey manual:** proyek baru tidak memakai template; step dibuat PM/Admin di tab Journey Management, lalu pemilih step menentukan card task SIMPRO yang tampil.
-- **Tampilan:** CRM Projects, CRM Groups, dan Forms punya toggle Card/Table; default Card dan preferensi disimpan per halaman.
+- **Journey manual:** proyek langsung tidak memakai template; step dibuat PM/Admin di tab Journey Management, lalu pemilih step menentukan card task SIMPRO yang tampil. Proyek hasil Prospek memakai template Pitching dan step pending tetap dapat diedit/dihapus.
+- **Tampilan:** CRM Projects, CRM Groups, Forms, dan Prospek punya toggle Card/Table; default Card dan preferensi disimpan per halaman. Projects dan Prospek memiliki pagination, dan Projects menampilkan daftar datar dengan label Prospek/Umbrella.
 - **Legacy:** proyek lama dengan step Pitching dan `ProjectGroup` lama tidak dimigrasikan ke Prospek.
 
 ## Implementasi

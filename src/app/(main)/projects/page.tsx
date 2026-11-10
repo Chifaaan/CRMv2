@@ -1,7 +1,5 @@
-"use client";
-
-import { SimproProjects } from "@/components/prototype/simpro/projects";
+import { redirect } from "next/navigation";
 
 export default function ProjectsPage() {
-  return <SimproProjects />;
+  redirect("/crm/projects");
 }

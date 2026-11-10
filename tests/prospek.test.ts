@@ -7,6 +7,7 @@ import {
   canReviewFormEntry,
   formsNeedingAction,
   isProspekAssignee,
+  pitchingStageStates,
   prospekAssigneeCandidates,
   prospekPitchingsFor,
   prospekPaguSummary,
@@ -58,8 +59,46 @@ const completeContract: PitchingContract = {
   ],
 };
 
+function approvePitchingForm(pitchingId: string) {
+  const owner = pitching(pitchingId).createdById;
+  const existing = state().formEntries.filter(
+    (entry) => entry.pitchingId === pitchingId,
+  );
+  if (existing.length > 0) {
+    usePrototypeStore.setState({
+      formEntries: state().formEntries.map((entry) =>
+        entry.pitchingId === pitchingId
+          ? { ...entry, status: "approved" as const }
+          : entry,
+      ),
+    });
+    return;
+  }
+  const entry: FormEntry = {
+    id: `fentry-test-${pitchingId}`,
+    scope: "prospek",
+    prospekId: pitching(pitchingId).prospekId,
+    pitchingId,
+    stepKey: "test-form",
+    templateStageId: "test-form",
+    title: "Form Pitching Test",
+    assigneeId: "u-assignee1",
+    status: "approved",
+    payload: { values: {}, photos: [] },
+    versions: [],
+    createdById: owner,
+    createdAt: new Date().toISOString(),
+  };
+  usePrototypeStore.setState({
+    formEntries: [...state().formEntries, entry],
+  });
+}
+
 function prepareWinningPitching() {
-  state().setCurrentUser("u-assignee2");
+  state().setCurrentUser("u-pm2");
+  state().assignPitchingRab("pp-beta-kol", "u-finance");
+  state().assignPitchingQuotation("pp-beta-kol", "u-finance");
+  state().setCurrentUser("u-finance");
   state().savePitchingRab("pp-beta-kol", {
     items: [
       {
@@ -82,6 +121,9 @@ function prepareWinningPitching() {
   });
   state().submitPitchingQuotation("pp-beta-kol");
   state().setCurrentUser("u-pm2");
+  state().reviewPitchingRab("pp-beta-kol", "approved", "");
+  state().reviewPitchingQuotation("pp-beta-kol", "approved", "");
+  approvePitchingForm("pp-beta-kol");
 }
 
 describe("prospek management", () => {
@@ -228,13 +270,14 @@ describe("prospek pitching flow", () => {
   });
 
   it("assigns, saves, submits, and versions RAB", () => {
-    state().assignPitchingRab("pp-beta-kol", "u-assignee2");
+    state().setCurrentUser("u-pm2");
+    state().assignPitchingRab("pp-beta-kol", "u-finance");
     expect(
       state().pitchingRabs.find((rab) => rab.pitchingId === "pp-beta-kol")
         ?.status,
     ).toBe("assigned");
 
-    state().setCurrentUser("u-assignee2");
+    state().setCurrentUser("u-finance");
     state().submitPitchingRab("pp-beta-kol");
     expect(
       state().pitchingRabs.find((rab) => rab.pitchingId === "pp-beta-kol")
@@ -261,11 +304,13 @@ describe("prospek pitching flow", () => {
     )!;
     expect(rab.status).toBe("submitted");
     expect(rab.versions).toHaveLength(1);
-    expect(rab.submittedById).toBe("u-assignee2");
+    expect(rab.submittedById).toBe("u-finance");
   });
 
   it("validates quotation mode and limits approval to the owning PM", () => {
-    state().setCurrentUser("u-assignee2");
+    state().setCurrentUser("u-pm2");
+    state().assignPitchingQuotation("pp-beta-kol", "u-finance");
+    state().setCurrentUser("u-finance");
     state().savePitchingQuotation("pp-beta-kol", {
       mode: "link",
       url: "not-a-url",
@@ -305,37 +350,12 @@ describe("prospek pitching flow", () => {
     ).toBe("approved");
   });
 
-  it("requires RAB and quotation before a decision and locks losing pitching", () => {
+  it("requires approved RAB, quotation, and form before a decision and locks losing pitching", () => {
     state().setCurrentUser("u-pm2");
     state().decideProspekPitching("pp-beta-kol", "won");
     expect(pitching("pp-beta-kol").status).toBe("draft");
 
-    state().setCurrentUser("u-assignee2");
-    state().savePitchingRab("pp-beta-kol", {
-      items: [
-        {
-          id: "rab-test-2",
-          kind: "cost",
-          description: "Produksi",
-          category: "Produksi",
-          qty: 1,
-          unit: "paket",
-          unitPrice: 50_000_000,
-        },
-      ],
-      notes: "",
-    });
-    state().submitPitchingRab("pp-beta-kol");
-    state().savePitchingQuotation("pp-beta-kol", {
-      mode: "link",
-      url: "https://example.com/quotation",
-      amount: 60_000_000,
-    });
-    state().submitPitchingQuotation("pp-beta-kol");
-
-    state().setCurrentUser("u-pm2");
-    state().decideProspekPitching("pp-beta-kol", "lost");
-    expect(pitching("pp-beta-kol").status).toBe("draft");
+    prepareWinningPitching();
     state().decideProspekPitching("pp-beta-kol", "lost", "Kalah harga");
     expect(pitching("pp-beta-kol").status).toBe("lost");
     expect(pitching("pp-beta-kol").lostReason).toBe("Kalah harga");
@@ -381,19 +401,22 @@ describe("prospek pitching flow", () => {
     state().savePitchingContract("pp-beta-kol", completeContract);
     expect(pitching("pp-beta-kol").contract?.number).toBe("KTR/TEST/001");
 
-    const projectId = state().convertPitching("pp-beta-kol");
-    expect(projectId).not.toBe("");
-    const child = state().projects.find((project) => project.id === projectId)!;
+    const child = state().projects.find(
+      (project) => project.pitchingId === "pp-beta-kol",
+    )!;
+    expect(child).toBeDefined();
+    const projectId = child.id;
     expect(child.prospekId).toBe("prs-beta");
     expect(child.pitchingId).toBe("pp-beta-kol");
     expect(child.prospekContract?.termine).toHaveLength(1);
     expect(child.inheritedRab?.items).toHaveLength(1);
 
     const steps = state().steps.filter((step) => step.projectId === projectId);
-    const active = steps.find((step) => step.status === "active");
-    expect(active).toBeUndefined();
-    expect(steps).toHaveLength(0);
-    expect(child.creationMode).toBe("manual");
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.some((step) => step.status === "active")).toBe(false);
+    expect(child.creationMode).toBe("template");
+    expect(child.templateId).toBe("tpl-kol");
+    expect(child.templateVersion).toBe(2);
     expect(child.prospekSnapshot?.pagu).toBe(prospek("prs-beta").pagu);
 
     expect(state().convertPitching("pp-beta-kol")).toBe(projectId);
@@ -464,11 +487,67 @@ describe("refined prospek pitching flow", () => {
     expect(visibleProspeks(seed, assignee)).toEqual([]);
   });
 
+  it("only Finance can be assigned to RAB and Quotation", () => {
+    state().setCurrentUser("u-pm2");
+    usePrototypeStore.setState({
+      pitchingRabs: state().pitchingRabs.map((rab) =>
+        rab.pitchingId === "pp-beta-kol"
+          ? { ...rab, assigneeId: undefined }
+          : rab,
+      ),
+      pitchingQuotations: state().pitchingQuotations.map((quotation) =>
+        quotation.pitchingId === "pp-beta-kol"
+          ? { ...quotation, assigneeId: undefined }
+          : quotation,
+      ),
+    });
+    state().assignPitchingRab("pp-beta-kol", "u-assignee1");
+    state().assignPitchingQuotation("pp-beta-kol", "u-manager");
+    expect(
+      state().pitchingRabs.find((rab) => rab.pitchingId === "pp-beta-kol")
+        ?.assigneeId,
+    ).toBeUndefined();
+    expect(
+      state().pitchingQuotations.find(
+        (quotation) => quotation.pitchingId === "pp-beta-kol",
+      )?.assigneeId,
+    ).toBeUndefined();
+
+    state().assignPitchingRab("pp-beta-kol", "u-finance");
+    state().assignPitchingQuotation("pp-beta-kol", "u-finance");
+    expect(
+      state().pitchingRabs.find((rab) => rab.pitchingId === "pp-beta-kol")
+        ?.assigneeId,
+    ).toBe("u-finance");
+  });
+
+  it("marks Pitching stages complete in order", () => {
+    expect(
+      pitchingStageStates(state(), pitching("pp-beta-kol")).map(
+        (stage) => stage.status,
+      ),
+    ).toEqual(["active", "locked", "locked", "locked", "locked"]);
+
+    prepareWinningPitching();
+    expect(
+      pitchingStageStates(state(), pitching("pp-beta-kol")).map(
+        (stage) => stage.status,
+      ),
+    ).toEqual(["complete", "complete", "complete", "active", "locked"]);
+
+    state().decideProspekPitching("pp-beta-kol", "won");
+    expect(
+      pitchingStageStates(state(), pitching("pp-beta-kol")).map(
+        (stage) => stage.status,
+      ),
+    ).toEqual(["complete", "complete", "complete", "complete", "active"]);
+  });
+
   it("projects assigned RAB, quotation, contract, and form work into My Tasks items", () => {
     prepareWinningPitching();
     state().decideProspekPitching("pp-beta-kol", "won");
     state().assignPitchingRab("pp-beta-kol", "u-finance");
-    state().assignPitchingQuotation("pp-beta-kol", "u-manager");
+    state().assignPitchingQuotation("pp-beta-kol", "u-finance");
     state().assignPitchingContract("pp-beta-kol", "u-finance", "2026-11-20");
     const formId = state().createProspekFormEntry(
       "prs-beta",
@@ -480,10 +559,10 @@ describe("refined prospek pitching flow", () => {
 
     expect(
       prospekWorkItemsForUser(state(), "u-finance").map((item) => item.kind),
-    ).toEqual(expect.arrayContaining(["rab", "contract"]));
+    ).toEqual(expect.arrayContaining(["rab", "quotation", "contract"]));
     expect(
       prospekWorkItemsForUser(state(), "u-manager").map((item) => item.kind),
-    ).toContain("quotation");
+    ).not.toContain("quotation");
     expect(
       prospekWorkItemsForUser(state(), "u-assignee1").map((item) => item.kind),
     ).toContain("form");
@@ -507,6 +586,7 @@ describe("refined prospek pitching flow", () => {
     state().decideProspekPitching("pp-beta-kol", "lost", "Tidak berhak");
     expect(pitching("pp-beta-kol").status).toBe("draft");
 
+    prepareWinningPitching();
     state().setCurrentUser("u-pm2");
     state().decideProspekPitching("pp-beta-kol", "lost", "Batal karena budget");
     expect(pitching("pp-beta-kol").status).toBe("lost");
@@ -531,16 +611,17 @@ describe("refined prospek pitching flow", () => {
     ).toBe(true);
   });
 
-  it("allows losing a winning pitching and undo restores the win and contract", () => {
-    state().setCurrentUser("u-pm1");
-    state().decideProspekPitching("pp-alpha-event", "lost", "Klien berubah pikiran");
-    expect(pitching("pp-alpha-event").status).toBe("lost");
-    expect(pitching("pp-alpha-event").statusBeforeLoss).toBe("won");
-    expect(pitching("pp-alpha-event").contract?.number).toBe("KTR/2026/001");
+  it("allows losing a winning pitching before conversion and undo restores the win", () => {
+    prepareWinningPitching();
+    state().decideProspekPitching("pp-beta-kol", "won");
+    expect(pitching("pp-beta-kol").status).toBe("won");
 
-    state().undoPitchingLoss("pp-alpha-event");
-    expect(pitching("pp-alpha-event").status).toBe("won");
-    expect(pitching("pp-alpha-event").contract?.number).toBe("KTR/2026/001");
+    state().decideProspekPitching("pp-beta-kol", "lost", "Klien berubah pikiran");
+    expect(pitching("pp-beta-kol").status).toBe("lost");
+    expect(pitching("pp-beta-kol").statusBeforeLoss).toBe("won");
+
+    state().undoPitchingLoss("pp-beta-kol");
+    expect(pitching("pp-beta-kol").status).toBe("won");
   });
 
   it("blocks losing or undo after conversion", () => {
@@ -637,9 +718,9 @@ describe("refined prospek pitching flow", () => {
       description: "",
       templateId: "tpl-kol",
     });
-    state().assignPitchingRab(secondPitching, "u-assignee1");
-    state().assignPitchingQuotation(secondPitching, "u-assignee1");
-    state().setCurrentUser("u-assignee1");
+    state().assignPitchingRab(secondPitching, "u-finance");
+    state().assignPitchingQuotation(secondPitching, "u-finance");
+    state().setCurrentUser("u-finance");
     state().savePitchingRab(secondPitching, {
       items: [
         {
@@ -662,6 +743,9 @@ describe("refined prospek pitching flow", () => {
     });
     state().submitPitchingQuotation(secondPitching);
     state().setCurrentUser("u-pm1");
+    state().reviewPitchingRab(secondPitching, "approved", "");
+    state().reviewPitchingQuotation(secondPitching, "approved", "");
+    approvePitchingForm(secondPitching);
     state().decideProspekPitching(secondPitching, "won");
     state().savePitchingContract(secondPitching, {
       ...completeContract,

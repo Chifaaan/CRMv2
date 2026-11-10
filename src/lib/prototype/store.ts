@@ -33,10 +33,12 @@ import {
   isProspekComplete,
   missingFinanceSteps,
   pitchingForFormEntry,
+  pitchingFormComplete,
   pitchingQuotationFor,
   pitchingRabFor,
   projectPhase,
   prospekAssigneeCandidates,
+  prospekFinanceCandidates,
   prospekById,
   prospekPitchingsFor,
   taskTransition,
@@ -115,8 +117,10 @@ type ProjectInput = {
 
 type CreateProjectInput = ProjectInput & {
   templateId?: string;
+  templateVersion?: number;
   /** Stages customized during creation; omitted means an exact template copy. */
   stages?: TemplateStage[];
+  allowProspekTemplate?: boolean;
   mode?: "template" | "manual" | "legacy";
   prospekId?: string;
   pitchingId?: string;
@@ -322,6 +326,11 @@ type PrototypeActions = {
   assignPitchingRab: (pitchingId: string, userId: string) => void;
   savePitchingRab: (pitchingId: string, input: PitchingRabInput) => void;
   submitPitchingRab: (pitchingId: string) => void;
+  reviewPitchingRab: (
+    pitchingId: string,
+    decision: "approved" | "need_revision",
+    comment?: string,
+  ) => void;
   assignPitchingQuotation: (pitchingId: string, userId: string) => void;
   assignPitchingContract: (
     pitchingId: string,
@@ -349,6 +358,7 @@ type PrototypeActions = {
     contract: PitchingContract,
   ) => void;
   convertPitching: (pitchingId: string) => string;
+  autoConvertWinningPitchings: (prospekId: string) => string[];
   createProspekFormEntry: (
     prospekId: string,
     pitchingId: string,
@@ -1086,7 +1096,13 @@ export const usePrototypeStore = create<PrototypeStore>()(
           state.templates.find((item) => item.id === UMUM_TEMPLATE_ID) ??
           state.templates[0];
         if (!template) return "";
-        if (mode === "template" && !isNewProjectTemplate(template)) return "";
+        if (
+          mode === "template" &&
+          !isNewProjectTemplate(template) &&
+          !input.allowProspekTemplate
+        ) {
+          return "";
+        }
         const projectId = uid("p");
         const manager = input.managerId
           ? userById(state, input.managerId)
@@ -1113,7 +1129,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           prospekSnapshot: input.prospekSnapshot,
           createdAt: now(),
           templateId: template.id,
-          templateVersion: template.version,
+          templateVersion: input.templateVersion ?? template.version,
           structureLocked: mode === "legacy",
           prospekId: input.prospekId,
           pitchingId: input.pitchingId,
@@ -4196,7 +4212,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           !rab ||
           !target ||
           !canAssignProspekWork(actor, prospek) ||
-          !prospekAssigneeCandidates(state, actor, prospek).some(
+          !prospekFinanceCandidates(state, actor, prospek).some(
             (user) => user.id === userId,
           )
         ) {
@@ -4321,6 +4337,56 @@ export const usePrototypeStore = create<PrototypeStore>()(
         });
       },
 
+      reviewPitchingRab: (pitchingId, decision, comment) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        const prospek = prospekById(state, pitching?.prospekId);
+        const rab = pitchingRabFor(state, pitchingId);
+        if (
+          !actor ||
+          !pitching ||
+          !prospek ||
+          !rab ||
+          rab.status !== "submitted" ||
+          !canDecidePitching(actor, prospek)
+        ) {
+          return;
+        }
+        if (decision === "need_revision" && !comment?.trim()) return;
+        const reviewedAt = now();
+        set({
+          pitchingRabs: state.pitchingRabs.map((item) =>
+            item.id === rab.id
+              ? {
+                  ...item,
+                  status: decision,
+                  reviewedAt,
+                  reviewedById: actor.id,
+                  reviewComment: comment?.trim() || undefined,
+                  updatedAt: reviewedAt,
+                  updatedById: actor.id,
+                }
+              : item,
+          ),
+          prospekEvents: prospekEvent(state, {
+            prospekId: prospek.id,
+            pitchingId,
+            eventType: "pitching.rab_reviewed",
+            summary:
+              decision === "approved"
+                ? `RAB ${pitching.title} disetujui.`
+                : `RAB ${pitching.title} dikembalikan untuk revisi.`,
+            metadata: {
+              decision,
+              comment: comment?.trim() || null,
+            },
+          }),
+        });
+      },
+
       assignPitchingQuotation: (pitchingId, userId) => {
         const state = get();
         const actor = userById(state, state.currentUserId);
@@ -4337,7 +4403,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           !quotation ||
           !target ||
           !canAssignProspekWork(actor, prospek) ||
-          !prospekAssigneeCandidates(state, actor, prospek).some(
+          !prospekFinanceCandidates(state, actor, prospek).some(
             (user) => user.id === userId,
           )
         ) {
@@ -4570,6 +4636,14 @@ export const usePrototypeStore = create<PrototypeStore>()(
         ) {
           return;
         }
+        if (
+          (pitching.status !== "draft" && pitching.status !== "won") ||
+          rab?.status !== "approved" ||
+          quotation?.status !== "approved" ||
+          !pitchingFormComplete(state, pitchingId)
+        ) {
+          return;
+        }
         const decidedAt = now();
         let nextPitchings: AppState["prospekPitchings"];
         if (decision === "lost") {
@@ -4590,14 +4664,6 @@ export const usePrototypeStore = create<PrototypeStore>()(
               : item,
           );
         } else {
-          if (
-            pitching.status !== "draft" ||
-            rab?.status !== "submitted" ||
-            !quotation ||
-            !["submitted", "approved"].includes(quotation.status)
-          ) {
-            return;
-          }
           nextPitchings = state.prospekPitchings.map((item) =>
             item.id === pitchingId
               ? {
@@ -4631,6 +4697,9 @@ export const usePrototypeStore = create<PrototypeStore>()(
             },
           }),
         });
+        if (decision === "won") {
+          get().autoConvertWinningPitchings(prospek.id);
+        }
       },
 
       undoPitchingLoss: (pitchingId) => {
@@ -4781,6 +4850,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             },
           }),
         });
+        get().autoConvertWinningPitchings(prospek.id);
       },
 
       convertPitching: (pitchingId) => {
@@ -4792,12 +4862,23 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const prospek = prospekById(state, pitching?.prospekId);
         if (!actor || !pitching || !prospek) return "";
         if (pitching.projectId) return pitching.projectId;
-        if (!canConvertPitching(state, actor, pitching)) return "";
+        if (
+          !canConvertPitching(state, actor, pitching) &&
+          !(pitching.status === "won" && contractComplete(pitching.contract))
+        ) {
+          return "";
+        }
         const rab = pitchingRabFor(state, pitchingId);
         const quotation = pitchingQuotationFor(state, pitchingId);
         if (!pitching.contract) return "";
         const manager = userById(state, prospek.picId);
         const groupPlan = ensureProspekGroup(state, prospek);
+        const pitchingTemplate = state.templates.find(
+          (item) => item.id === pitching.templateId,
+        );
+        const executionStages =
+          pitchingTemplate?.stages.filter((stage) => stage.phase !== "prospek") ??
+          [];
         const projectId = get().createProject({
           name: pitching.title,
           client: prospek.client,
@@ -4808,7 +4889,11 @@ export const usePrototypeStore = create<PrototypeStore>()(
           coverColor: "#6366f1",
           managerId: manager?.role === "manager" ? manager.id : undefined,
           groupId: groupPlan.groupId,
-          mode: "manual",
+          mode: "template",
+          templateId: pitching.templateId,
+          templateVersion: pitching.templateVersion,
+          allowProspekTemplate: true,
+          stages: executionStages.length > 0 ? executionStages : undefined,
           prospekId: prospek.id,
           pitchingId: pitching.id,
           prospekSnapshot: {
@@ -4881,6 +4966,23 @@ export const usePrototypeStore = create<PrototypeStore>()(
           prospekEvents: events,
         });
         return projectId;
+      },
+
+      autoConvertWinningPitchings: (prospekId) => {
+        const state = get();
+        const eligible = state.prospekPitchings.filter(
+          (pitching) =>
+            pitching.prospekId === prospekId &&
+            pitching.status === "won" &&
+            !pitching.projectId &&
+            contractComplete(pitching.contract),
+        );
+        const created: string[] = [];
+        for (const pitching of eligible) {
+          const projectId = get().convertPitching(pitching.id);
+          if (projectId) created.push(projectId);
+        }
+        return created;
       },
 
       createProspekFormEntry: (
@@ -5062,7 +5164,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
     }),
     {
       name: "crm-simpro:v1",
-      version: 8,
+      version: 9,
       migrate: (persisted) =>
         migratePersistedState(persisted) as unknown as PrototypeStore,
       partialize: (state) => ({
@@ -5102,6 +5204,9 @@ export const usePrototypeStore = create<PrototypeStore>()(
         state.setProjectEvents(linkProjectsToTemplate(events, state.projects));
         state.setForms(migrateFormVersions(state));
         state.syncProspekReminders();
+        for (const prospek of state.prospeks ?? []) {
+          state.autoConvertWinningPitchings(prospek.id);
+        }
         state.setHydrated(true);
       },
     },

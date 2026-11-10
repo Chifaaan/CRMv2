@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Search, Target } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ListPaginationBar } from "@/components/ui/list-pagination-bar";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DEFAULT_LIST_PAGE_SIZE,
+  type ListPageSize,
+} from "@/lib/list-pagination";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   canCreateProspek,
@@ -33,6 +38,7 @@ import {
   PageHeader,
   StatCard,
 } from "../ui";
+import { useViewPreference, ViewToggle } from "../view-toggle";
 
 const STATUS_LABEL: Record<ProspekStatus, string> = {
   active: "Aktif",
@@ -113,6 +119,9 @@ export function CrmProspek() {
   const currentUser = userById(store, store.currentUserId);
   const [statusFilter, setStatusFilter] = useState<"all" | ProspekStatus>("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<ListPageSize>(DEFAULT_LIST_PAGE_SIZE);
+  const [view, setView] = useViewPreference("crm-prospek");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({
@@ -154,6 +163,15 @@ export function CrmProspek() {
   const activeCount = allVisible.filter(
     (prospek) => prospek.status === "active",
   ).length;
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPage(1);
+  }, [search, statusFilter, pageSize]);
+
+  const pages = Math.max(1, Math.ceil(prospeks.length / pageSize));
+  const safePage = Math.min(page, pages);
+  const paged = prospeks.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const resetDraft = () =>
     setDraft({
@@ -208,11 +226,14 @@ export function CrmProspek() {
         title="Prospek"
         description="Umbrella project untuk menampung Pitching, RAB, Quotation, dan kontrak sebelum proyek berjalan."
         actions={
-          canCreateProspek(currentUser) ? (
-            <Button size="sm" onClick={() => setOpen(true)}>
-              <Plus className="size-4" /> Prospek baru
-            </Button>
-          ) : null
+          <div className="flex flex-wrap items-center gap-2">
+            <ViewToggle value={view} onChange={setView} />
+            {canCreateProspek(currentUser) ? (
+              <Button size="sm" onClick={() => setOpen(true)}>
+                <Plus className="size-4" /> Prospek baru
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
@@ -264,13 +285,75 @@ export function CrmProspek() {
             ) : undefined
           }
         />
+      ) : view === "table" ? (
+        <div className="overflow-x-auto rounded-xl border bg-card">
+          <table className="w-full min-w-[980px] text-left text-xs">
+            <thead className="text-muted-foreground border-b bg-muted/30 text-[10px] uppercase tracking-wide">
+              <tr>
+                <th className="px-3 py-2">Prospek</th>
+                <th className="px-3 py-2">Client</th>
+                <th className="px-3 py-2">PIC</th>
+                <th className="px-3 py-2">Periode</th>
+                <th className="px-3 py-2">Pagu</th>
+                <th className="px-3 py-2">Pitching</th>
+                <th className="px-3 py-2">Menang</th>
+                <th className="px-3 py-2">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paged.map((prospek) => {
+                const pitchings = prospekPitchingsFor(store, prospek.id);
+                const won = pitchings.filter(
+                  (pitching) => pitching.status === "won",
+                ).length;
+                return (
+                  <tr
+                    key={prospek.id}
+                    className="hover:bg-muted/40 cursor-pointer border-b last:border-0"
+                    onClick={() => router.push(`/crm/prospek/${prospek.id}`)}
+                  >
+                    <td className="px-3 py-2">
+                      <p className="font-medium">{prospek.name}</p>
+                      <p className="text-muted-foreground text-[10px]">
+                        {prospek.code}
+                      </p>
+                    </td>
+                    <td className="px-3 py-2">{prospek.client || "—"}</td>
+                    <td className="px-3 py-2">
+                      {userById(store, prospek.picId)?.name ?? "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {formatDate(prospek.periodStart)} –{" "}
+                      {formatDate(prospek.periodEnd)}
+                    </td>
+                    <td className="px-3 py-2">{formatCurrency(prospek.pagu)}</td>
+                    <td className="px-3 py-2">{pitchings.length}</td>
+                    <td className="px-3 py-2">{won}</td>
+                    <td className="px-3 py-2">
+                      <ProspekStatusBadge status={prospek.status} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {prospeks.map((prospek) => (
+          {paged.map((prospek) => (
             <ProspekCard key={prospek.id} prospek={prospek} />
           ))}
         </div>
       )}
+
+      <ListPaginationBar
+        total={prospeks.length}
+        page={safePage}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        disabled={prospeks.length === 0}
+      />
 
       <Dialog
         open={open}

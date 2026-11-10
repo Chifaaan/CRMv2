@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, FolderKanban, Users } from "lucide-react";
+import { CalendarDays, FolderKanban, Target, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
@@ -60,6 +60,15 @@ export function ProjectCard({
   const group = project.groupId
     ? store.groups.find((item) => item.id === project.groupId)
     : undefined;
+  const prospek = project.prospekId
+    ? store.prospeks.find((item) => item.id === project.prospekId)
+    : undefined;
+  const attribution = prospek
+    ? { label: "Prospek", name: prospek.name, icon: Target }
+    : group
+      ? { label: "Umbrella", name: group.name, icon: Users }
+      : null;
+  const AttributionIcon = attribution?.icon;
   const template = project.templateId
     ? store.templates.find((item) => item.id === project.templateId)
     : undefined;
@@ -117,6 +126,14 @@ export function ProjectCard({
       </div>
       <div className="space-y-3 p-4">
         <div>
+          {attribution && AttributionIcon ? (
+            <span className="bg-primary/10 text-primary mb-1.5 inline-flex max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+              <AttributionIcon className="size-3 shrink-0" />
+              <span className="truncate">
+                {attribution.label} · {attribution.name}
+              </span>
+            </span>
+          ) : null}
           <h3 className="line-clamp-1 text-sm font-semibold">{project.name}</h3>
           <p className="text-muted-foreground mt-0.5 line-clamp-1 text-xs">
             {project.client || "Tanpa klien"}

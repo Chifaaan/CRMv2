@@ -32,10 +32,10 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 
 ## Siklus proyek baru
 
-- Proyek baru memakai tiga fase: Planning → Running → Finance. Fase Prospek hanya untuk proyek legacy.
+- Proyek baru yang dibuat langsung memakai tiga fase: Planning → Running → Finance. Proyek hasil konversi Prospek memakai template Pitching. Fase Prospek hanya untuk proyek legacy.
 - Detail proyek siklus baru selalu menampilkan tab Planning, Running, dan Finance; fase tanpa step menampilkan `0 Step`.
 - Proyek baru dibuat belum aktif (NEW Project). PM/Admin memulai dari Planning atau langsung Running; Finance tidak bisa menjadi fase awal.
-- Step Planning/Running memakai Kanban SIMPRO; step Finance memakai Form Keuangan (BAST, Invoice, Pembayaran).
+- Step Planning/Running memakai Kanban SIMPRO di tab Board CRM; step Finance memakai Form Keuangan (BAST, Invoice, Pembayaran).
 - Saat Running selesai, step BAST dan Invoice dibuat otomatis pada fase Finance. Step Finance lain tetap dapat ditambahkan.
 - PM/Admin mengelola step yang belum dimulai; step aktif/selesai hanya boleh mengubah nama, Manager PIC, dan deskripsi.
 - Link Pekerjaan HTTP/HTTPS wajib sebelum card masuk In Progress.
@@ -43,12 +43,28 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 
 ## Workspace proyek
 
-- Detail proyek CRM memiliki dua tab: Overview dan Journey Management.
+- Detail proyek CRM memiliki lima tab: Overview, Journey Management, Board, Backlog, dan Forms.
 - Overview berisi Asal Prospek, Penyelesaian Tahap, Distribusi task, Progress overview, lalu Riwayat Aktivitas. Distribusi dan progress hanya menghitung task proyek tersebut.
-- Journey Management sepenuhnya manual: proyek baru tidak memakai template; PM/Admin membuat step bebas pada fase aktif atau fase berikutnya.
+- Journey Management sepenuhnya manual untuk proyek langsung; proyek hasil Prospek memakai template Pitching. PM/Admin membuat step bebas pada fase aktif atau fase berikutnya.
 - Journey Management menyediakan pemilih step dari Kelola fase. Card task di bawahnya menampilkan task SIMPRO untuk step terpilih; step pending tampil sebagai belum dimulai dan step non-SIMPRO menampilkan isi tahapnya sendiri.
+- Board, Backlog, dan Forms memindahkan fungsi Detail Proyek SIMPRO ke dalam CRM. Route SIMPRO lama diarahkan ke tab CRM yang setara.
 - Memilih Planning tidak membuat step Running; Running kosong sampai ditambahkan.
 - Link Pekerjaan wajib non-empty, tanpa validasi URL, dan memiliki tombol Simpan.
+
+## Projects dan Prospek
+
+- Halaman CRM Projects menampilkan daftar proyek datar tanpa section Groups dan tanpa accordion Group.
+- Proyek dengan `prospekId` diberi label `Prospek · <nama>` pada card; proyek dengan Group diberi label Umbrella.
+- CRM Projects dan Prospek memiliki pagination dengan pilihan ukuran halaman.
+- Prospek memiliki toggle Card/Table; Card tetap menjadi tampilan awal.
+
+## Pitching
+
+- Tahap Pitching berurutan: RAB → Quotation → Form Pitching → Decision → Kontrak.
+- RAB dan Quotation hanya di-assign kepada Finance; Finance mengisi dan submit, PM mereview dan menandai selesai atau perlu revisi.
+- Form Pitching harus selesai sebelum Decision; Kontrak hanya terbuka setelah Pitching menang.
+- Tahap selesai, aktif, dan terkunci dibedakan dengan warna.
+- Pitching menang dengan kontrak lengkap otomatis menjadi anak proyek dengan step dari template Pitching.
 
 ## Mesin Form
 
@@ -63,7 +79,7 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 ## SIMPRO
 
 - Task punya `stageId` dan terhubung ke tahap SIMPRO.
-- Board di Detail Proyek SIMPRO hanya menampilkan tahap yang sedang berjalan dan tahap yang sudah selesai untuk semua role. Tahap pending tidak ditampilkan atau dapat diakses lewat pilihan tahap maupun tautan langsung.
+- Board berada di tab Board pada Detail Proyek CRM dan hanya menampilkan tahap yang sedang berjalan dan tahap yang sudah selesai untuk semua role. Tahap pending tidak ditampilkan atau dapat diakses lewat pilihan tahap maupun tautan langsung.
 - Board punya filter tahap (default tahap aktif), label tahap pada kartu, dan tahap selesai read-only.
 - Task default template SIMPRO adalah usulan; PM memilih lewat "Buat dari template".
 

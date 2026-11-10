@@ -534,7 +534,13 @@ export type PitchingRabItem = RabItem & {
   kind: PitchingRabItemKind;
 };
 
-export type PitchingRabStatus = "unassigned" | "assigned" | "draft" | "submitted";
+export type PitchingRabStatus =
+  | "unassigned"
+  | "assigned"
+  | "draft"
+  | "submitted"
+  | "approved"
+  | "need_revision";
 
 export type PitchingRabVersion = {
   id: string;
@@ -564,6 +570,9 @@ export type PitchingRab = {
   dueDate?: string;
   submittedAt?: string;
   submittedById?: string;
+  reviewedAt?: string;
+  reviewedById?: string;
+  reviewComment?: string;
   versions: PitchingRabVersion[];
   updatedAt?: string;
   updatedById?: string;

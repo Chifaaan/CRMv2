@@ -279,6 +279,20 @@ describe("post-prospek project lifecycle", () => {
     ).toHaveLength(3);
   });
 
+  it("lets PM edit and delete pending steps copied from a Pitching template", () => {
+    state().setCurrentUser("u-pm1");
+    const created = state().autoConvertWinningPitchings("prs-alpha");
+    expect(created.length).toBeGreaterThan(0);
+    const projectId = created[0];
+    const pending = steps(projectId).find((step) => step.status === "pending");
+    expect(pending).toBeDefined();
+    expect(
+      state().updateProjectStep(projectId, pending!.id, { name: "Renamed Step" }),
+    ).toBe(true);
+    expect(state().deleteProjectStep(projectId, pending!.id)).toBe(true);
+    expect(state().steps.some((step) => step.id === pending!.id)).toBe(false);
+  });
+
   it("lets PM move a card to any status when an assignee exists", () => {
     state().setCurrentUser("u-pm1");
     const projectId = state().createProject({

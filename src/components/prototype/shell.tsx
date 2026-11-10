@@ -42,8 +42,6 @@ import { clearPrototypeFiles } from "@/lib/prototype/files";
 import { NativeSelect, UserAvatar } from "./ui";
 
 const NAV_SIMPRO = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/my-tasks", label: "My tasks", icon: ListTodo },
   { href: "/forms", label: "Forms", icon: CheckCheck },
 ];

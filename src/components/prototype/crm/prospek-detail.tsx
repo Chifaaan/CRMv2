@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
-  ExternalLink,
   FileText,
   FolderKanban,
   History,
@@ -32,7 +31,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
-  canConvertPitching,
   canDecidePitching,
   canManageProspek,
   canViewProspek,
@@ -40,9 +38,11 @@ import {
   formatCurrency,
   formatDate,
   formatDateTime,
+  pitchingFormComplete,
   pitchingQuotationFor,
   pitchingRabFor,
   prospekAssigneeCandidates,
+  prospekFinanceCandidates,
   prospekById,
   prospekPitchingsFor,
   prospekPaguSummary,
@@ -128,9 +128,11 @@ async function uploadAttachment(
 export function RabPanel({
   pitching,
   editable,
+  canReview = false,
 }: {
   pitching: ProspekPitching;
   editable: boolean;
+  canReview?: boolean;
 }) {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
@@ -142,10 +144,11 @@ export function RabPanel({
     rab?.dueDate ? rab.dueDate.slice(0, 10) : "",
   );
   const [assignTo, setAssignTo] = useState(rab?.assigneeId ?? "");
+  const [reviewComment, setReviewComment] = useState("");
 
   if (!rab) return null;
   const candidates = currentUser
-    ? prospekAssigneeCandidates(store, currentUser, prospek)
+    ? prospekFinanceCandidates(store, currentUser, prospek)
     : [];
   const total = items.reduce(
     (sum, item) => sum + Number(item.qty || 0) * Number(item.unitPrice || 0),
@@ -401,6 +404,48 @@ export function RabPanel({
           </div>
         ) : null}
 
+        {canReview && rab.status === "submitted" ? (
+          <div className="space-y-2 border-t pt-2">
+            <Textarea
+              rows={2}
+              value={reviewComment}
+              onChange={(event) => setReviewComment(event.target.value)}
+              placeholder="Komentar review (wajib jika minta revisi)"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  store.reviewPitchingRab(pitching.id, "approved", reviewComment);
+                  toast.success("RAB disetujui.");
+                }}
+              >
+                <Check className="size-3.5" /> Setujui RAB
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => {
+                  store.reviewPitchingRab(
+                    pitching.id,
+                    "need_revision",
+                    reviewComment,
+                  );
+                  toast.success("RAB dikembalikan untuk revisi.");
+                }}
+              >
+                Minta revisi
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {rab.reviewComment ? (
+          <p className="text-muted-foreground rounded-lg bg-muted/40 p-2 text-[11px]">
+            Review RAB: {rab.reviewComment}
+          </p>
+        ) : null}
+
         {rab.versions.length > 0 ? (
           <div className="space-y-1">
             <p className="text-muted-foreground text-[10px] font-semibold uppercase">
@@ -448,7 +493,7 @@ export function QuotationPanel({
 
   if (!quotation) return null;
   const candidates = currentUser
-    ? prospekAssigneeCandidates(store, currentUser, prospek)
+    ? prospekFinanceCandidates(store, currentUser, prospek)
     : [];
 
   return (
@@ -853,7 +898,7 @@ export function ContractPanel({
   return (
     <SectionCard
       title="Kontrak & Termine"
-      description="Wajib lengkap sebelum Pitching menang dapat dikonversi menjadi proyek."
+      description="Wajib lengkap agar Pitching menang dikonversi otomatis menjadi proyek."
       actions={
         contractComplete(contract) ? (
           <span className="text-[10px] font-semibold text-emerald-700">
@@ -1089,28 +1134,28 @@ export function DecisionPanel({
   const quotation = pitchingQuotationFor(store, pitching.id);
   const [reason, setReason] = useState("");
   const canDecide = currentUser ? canDecidePitching(currentUser, prospek) : false;
-  const convertible = currentUser
-    ? canConvertPitching(store, currentUser, pitching)
-    : false;
-  const rabReady = rab?.status === "submitted";
-  const quotationReady = Boolean(
-    quotation && ["submitted", "approved"].includes(quotation.status),
-  );
+  const rabReady = rab?.status === "approved";
+  const quotationReady = quotation?.status === "approved";
+  const formReady = pitchingFormComplete(store, pitching.id);
   const contractReady = contractComplete(pitching.contract);
+  const decisionReady = rabReady && quotationReady && formReady;
 
   return (
     <SectionCard
-      title="Decision & Konversi"
-      description="Putuskan menang/kalah, lengkapi kontrak, lalu konversi menjadi anak proyek."
+      title="Decision"
+      description="Putuskan menang/kalah setelah RAB, Quotation, dan Form Pitching selesai. Kontrak diisi setelah menang dan dikonversi otomatis saat lengkap."
       actions={<PitchingStatusBadge status={pitching.status} />}
     >
       <div className="space-y-3">
-        <div className="grid gap-2 text-[11px] sm:grid-cols-3">
+        <div className="grid gap-2 text-[11px] sm:grid-cols-4">
           <p className={rabReady ? "text-emerald-700" : "text-rose-700"}>
-            {rabReady ? "✓" : "✕"} RAB submitted
+            {rabReady ? "✓" : "✕"} RAB approved
           </p>
           <p className={quotationReady ? "text-emerald-700" : "text-rose-700"}>
-            {quotationReady ? "✓" : "✕"} Quotation submitted/approved
+            {quotationReady ? "✓" : "✕"} Quotation approved
+          </p>
+          <p className={formReady ? "text-emerald-700" : "text-rose-700"}>
+            {formReady ? "✓" : "✕"} Form Pitching approved
           </p>
           <p className={contractReady ? "text-emerald-700" : "text-rose-700"}>
             {contractReady ? "✓" : "✕"} Kontrak lengkap
@@ -1120,7 +1165,7 @@ export function DecisionPanel({
         {pitching.status === "draft" && canDecide && !locked ? (
           <Button
             size="sm"
-            disabled={!rabReady || !quotationReady}
+            disabled={!decisionReady}
             onClick={() => {
               store.decideProspekPitching(pitching.id, "won");
               toast.success("Pitching ditandai menang.");
@@ -1143,7 +1188,7 @@ export function DecisionPanel({
             <Button
               size="sm"
               variant="destructive"
-              disabled={!reason.trim()}
+              disabled={!reason.trim() || !decisionReady}
               onClick={() => {
                 store.decideProspekPitching(pitching.id, "lost", reason);
                 toast.success("Pitching ditandai kalah dan masuk arsip.");
@@ -1184,27 +1229,15 @@ export function DecisionPanel({
               >
                 <FolderKanban className="size-3.5" /> Buka anak proyek
               </Link>
-            ) : canDecide ? (
-              <Button
-                size="sm"
-                disabled={!convertible}
-                onClick={() => {
-                  const projectId = store.convertPitching(pitching.id);
-                  if (!projectId) {
-                    toast.error("Konversi gagal. Periksa syarat konversi.");
-                    return;
-                  }
-                  toast.success("Pitching menjadi anak proyek.");
-                }}
-              >
-                <ExternalLink className="size-3.5" /> Konversi ke proyek
-              </Button>
-            ) : null}
-            {!convertible && !pitching.projectId ? (
-              <span className="text-muted-foreground text-[11px]">
-                Lengkapi kontrak dan pastikan Pitching menang.
+            ) : contractReady ? (
+              <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                Kontrak lengkap. Proyek sedang dikonversi otomatis.
               </span>
-            ) : null}
+            ) : (
+              <span className="text-muted-foreground text-[11px]">
+                Lengkapi kontrak untuk memicu konversi otomatis.
+              </span>
+            )}
           </div>
         ) : null}
       </div>

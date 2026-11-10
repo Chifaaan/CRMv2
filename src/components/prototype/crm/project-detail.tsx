@@ -103,6 +103,11 @@ import {
 import { PitchingDialog, ProjectDialog, TaskDialog } from "../dialogs";
 import { TaskProgressPanels } from "../simpro/task-progress";
 import { ProjectStepHistory } from "./project-history";
+import {
+  CrmProjectBacklogTab,
+  CrmProjectBoardTab,
+  CrmProjectFormsTab,
+} from "./project-work-panels";
 import { hasUnsavedFormChanges, StepFormPanel } from "./step-form-panel";
 
 type StepTone = "done" | "active" | "attention" | "empty";
@@ -1821,13 +1826,23 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
   const [selectedStepKey, setSelectedStepKey] = useState<string | null>(null);
   const [selectedPhase, setSelectedPhase] = useState<Phase>("prospek");
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<"overview" | "journey">("overview");
+  const [workspaceTab, setWorkspaceTab] = useState<
+    "overview" | "journey" | "board" | "backlog" | "forms"
+  >("overview");
+  const [workTaskId, setWorkTaskId] = useState<string | undefined>(undefined);
+  const [workTaskStepKey, setWorkTaskStepKey] = useState<string | undefined>(undefined);
+  const [workTaskOpen, setWorkTaskOpen] = useState(false);
 
   useEffect(() => {
     const url = new URL(window.location.href);
     const value = url.searchParams.get("tab");
-    if (value === "journey") {
-      setWorkspaceTab("journey");
+    if (
+      value === "journey" ||
+      value === "board" ||
+      value === "backlog" ||
+      value === "forms"
+    ) {
+      setWorkspaceTab(value);
       return;
     }
     setWorkspaceTab("overview");
@@ -1837,7 +1852,20 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     }
   }, []);
 
-  const switchWorkspaceTab = (tab: "overview" | "journey") => {
+  useEffect(() => {
+    const taskId = new URLSearchParams(window.location.search).get("task");
+    if (!taskId) return;
+    if (store.tasks.some((task) => task.id === taskId && task.projectId === projectId)) {
+      setWorkTaskId(taskId);
+      setWorkTaskOpen(true);
+    }
+    // Only react to a new project; the query is a one-shot deep link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  const switchWorkspaceTab = (
+    tab: "overview" | "journey" | "board" | "backlog" | "forms",
+  ) => {
     setWorkspaceTab(tab);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", tab);
@@ -2148,6 +2176,9 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           {[
             { key: "overview" as const, label: "Overview" },
             { key: "journey" as const, label: "Journey Management" },
+            { key: "board" as const, label: "Board" },
+            { key: "backlog" as const, label: "Backlog" },
+            { key: "forms" as const, label: "Forms" },
           ].map((item) => (
             <button
               key={item.key}
@@ -2526,6 +2557,40 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </div>
       ) : null}
 
+      {workspaceTab === "board" ? (
+        <CrmProjectBoardTab
+          project={project}
+          onTaskClick={(task) => {
+            setWorkTaskId(task.id);
+            setWorkTaskStepKey(task.stepKey);
+            setWorkTaskOpen(true);
+          }}
+          onNewTask={(stepKey) => {
+            setWorkTaskId(undefined);
+            setWorkTaskStepKey(stepKey);
+            setWorkTaskOpen(true);
+          }}
+        />
+      ) : null}
+
+      {workspaceTab === "backlog" ? (
+        <CrmProjectBacklogTab
+          project={project}
+          onTaskClick={(task) => {
+            setWorkTaskId(task.id);
+            setWorkTaskStepKey(task.stepKey);
+            setWorkTaskOpen(true);
+          }}
+          onNewTask={(stepKey) => {
+            setWorkTaskId(undefined);
+            setWorkTaskStepKey(stepKey);
+            setWorkTaskOpen(true);
+          }}
+        />
+      ) : null}
+
+      {workspaceTab === "forms" ? <CrmProjectFormsTab project={project} /> : null}
+
       {project.status === "completed" ? (
         <CompletedSummary project={project} />
       ) : null}
@@ -2561,7 +2626,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </SectionCard>
       ) : null}
 
-      {activeStep && selectedStep && selectedStep.status !== "active" ? (
+      {workspaceTab === "journey" && activeStep && selectedStep && selectedStep.status !== "active" ? (
         <div>
           <Button
             variant="link"
@@ -2628,6 +2693,20 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           ) : null}
         </div>
       ) : null}
+
+      <TaskDialog
+        open={workTaskOpen}
+        onOpenChange={(open) => {
+          setWorkTaskOpen(open);
+          if (!open) {
+            setWorkTaskId(undefined);
+            setWorkTaskStepKey(undefined);
+          }
+        }}
+        projectId={project.id}
+        taskId={workTaskId}
+        stepKey={workTaskStepKey}
+      />
 
       <ProjectDialog open={editOpen} onOpenChange={setEditOpen} project={project} />
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>

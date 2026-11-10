@@ -52,13 +52,13 @@ Prototype adaptations already made:
 - `src/proxy.ts` is a pass-through; auth is replaced by the local role switcher.
 - `(main)/layout.tsx` renders `PrototypeShell`, not the server-auth shell.
 - The SIMPRO board is configured to exactly six statuses. Do **not** restore `on_check`, `ready_to_deploy`, or the parking lot (`on_hold`, `cancelled`) from the legacy `board-constants.ts`.
-- Legacy nav items and project tabs are hidden but their old route files still exist.
+- Legacy nav items and project tabs are hidden but their old route files still exist. `/dashboard` and `/projects` redirect to CRM, and SIMPRO navigation only keeps My Tasks and Forms.
 - `/api` rewrites still point at the old backend, but the prototype does not call them.
 
 ## Product rules that are easy to get wrong
 
-- Proyek baru memakai tiga fase tetap: Planning → Running → Finance dan dibuat **manual-only**: tanpa step template, PM/Admin menyusun step sendiri di Journey Management. Fase Prospek hanya dipertahankan pada proyek legacy. "Finance" dimulai saat komitmen kontrak; proyek baru belum aktif (NEW Project) sampai PM/Admin memilih fase awal.
-- Detail proyek CRM memiliki tab Overview (Asal Prospek, Penyelesaian Tahap, Distribusi task dan Progress overview di atas Riwayat) dan Journey Management (step manual dengan pemilih step yang menentukan card task SIMPRO). Board CRM dihapus; Board SIMPRO tetap tersedia di detail proyek SIMPRO.
+- Proyek baru yang dibuat langsung memakai tiga fase tetap: Planning → Running → Finance dan dibuat **manual-only**. Proyek hasil konversi Prospek memakai template Pitching. Fase Prospek hanya dipertahankan pada proyek legacy. "Finance" dimulai saat komitmen kontrak; proyek baru belum aktif (NEW Project) sampai PM/Admin memilih fase awal.
+- Detail proyek CRM memiliki lima tab: Overview, Journey Management, Board, Backlog, dan Forms. Board/Backlog/Forms dipindahkan dari Detail Proyek SIMPRO; Overview tetap memuat Asal Prospek, Penyelesaian Tahap, Distribusi task, Progress overview, dan Riwayat.
 - Detail proyek siklus baru selalu menampilkan fase Planning, Running, dan Finance, termasuk fase kosong dengan keterangan `0 Step`. Saat Running selesai, step BAST dan Invoice dibuat otomatis pada fase Finance; PM/Admin tetap dapat menambah step Finance lain.
 - Stages come from a project template or Manual mode. New projects are unstarted; PM/Admin manage pending steps after creation, while active/completed steps only allow name, Manager PIC, and description changes. Legacy projects keep their locked structure.
 - Template "Umum" is `legacy` and must keep the old six stages: Pitching → Survey → RAB → Running → BAST ∥ Invoice. New templates require one stage per phase and exactly one winning gate.
@@ -66,15 +66,15 @@ Prototype adaptations already made:
 - Four stage kinds only: **Form Keuangan, Form, Gerbang, SIMPRO**. Checklist is removed; migrated checklist tasks become a checklist field in a Form template.
 - Proyek memiliki satu Manager penanggung jawab opsional (`managerId`) yang dipilih PM pemilik atau Admin saat membuat/mengedit proyek. Penunjukan ini tidak mengubah visibilitas Manager; Manager tetap melihat semua proyek.
 - Prospek adalah umbrella project di CRM. Satu Prospek berisi banyak Pitching; setiap Pitching punya RAB, Quotation, tugas Form, dan kontrak sendiri.
-- Alur Prospek tetap: Detail → Pitching → RAB → Quotation → Decision → Kontrak. Pitching yang menang dan kontraknya lengkap dikonversi menjadi anak proyek; Pitching yang kalah menjadi riwayat read-only.
+- Alur Prospek tetap: Detail → Pitching → RAB → Quotation → Form Pitching → Decision → Kontrak. Tahap harus berurutan; RAB/Quotation di-assign ke Finance, direview PM, dan Form Pitching harus disetujui sebelum Decision. Pitching menang dengan kontrak lengkap dikonversi otomatis menjadi anak proyek; Pitching yang kalah menjadi riwayat read-only.
 - Prospek dan seluruh pekerjaannya berada di CRM. SIMPRO hanya menerima anak proyek hasil konversi, yang dimulai setelah tahap/fase Prospek selesai.
 - PM membuat dan hanya melihat Prospek miliknya; Manager/Admin melihat semua; Assignee dan Finance tidak memiliki akses ke menu/halaman Prospek dan hanya membuka pekerjaan yang di-assign lewat My Tasks/Forms serta route `/work/prospek/*`.
-- RAB, Quotation, Form Pitching, dan Kontrak dapat di-assign kepada Assignee, Manager, atau Finance. Penerima mendapat notifikasi in-app dan pekerjaannya muncul di My Tasks; halaman Forms adalah inbox seluruh assignment Form dari Prospek, Project, dan Finance, dengan kategori Prospek atau Project. Manager/Admin dapat meng-assign entri Form yang belum di-assign langsung dari halaman Forms.
-- Pitching ditampilkan sebagai card dan membuka halaman bersection RAB, Quotation, Form Pitching, Kontrak, dan Finishing. Kontrak terkunci sampai Pitching menang.
-- Pitching yang belum dikonversi dapat ditandai kalah kapan saja, langsung masuk arsip read-only, dan dapat di-undo ke status sebelumnya oleh PM pemilik/Admin.
+- RAB dan Quotation Pitching hanya dapat di-assign kepada Finance; Form Pitching dan Kontrak dapat di-assign kepada Assignee, Manager, atau Finance. Penerima mendapat notifikasi in-app dan pekerjaannya muncul di My Tasks; halaman Forms adalah inbox seluruh assignment Form dari Prospek, Project, dan Finance, dengan kategori Prospek atau Project. Manager/Admin dapat meng-assign entri Form yang belum di-assign langsung dari halaman Forms.
+- Pitching ditampilkan sebagai card dan membuka halaman berurutan RAB, Quotation, Form Pitching, Decision, dan Kontrak. Kontrak terkunci sampai Pitching menang.
+- Pitching yang belum dikonversi dapat ditandai kalah setelah tahap sebelumnya selesai, langsung masuk arsip read-only, dan dapat di-undo ke status sebelumnya oleh PM pemilik/Admin.
 - Pagu Prospek hanya peringatan, bukan batas keras. Termine kontrak tampil sebagai acuan pembayaran di Finance dan tidak membuat form finance otomatis.
-- Konversi Pitching menang otomatis membuat atau memakai ulang Group bernama sama dengan Prospek dan memasukkan anak proyek ke Group tersebut.
-- CRM Projects, CRM Groups, dan Forms memiliki toggle Card/Table dengan default Card dan preferensi tersimpan per halaman. Tabel Projects memiliki kolom Prospek.
+- Konversi Pitching menang otomatis membuat atau memakai ulang Group bernama sama dengan Prospek, memasukkan anak proyek ke Group tersebut, dan menyalin step template Pitching.
+- CRM Projects menampilkan daftar proyek datar tanpa section Groups, dengan label Prospek/Umbrella pada card. CRM Projects, CRM Groups, Forms, dan Prospek memiliki toggle Card/Table; Projects dan Prospek memiliki pagination. Tabel Projects dan Prospek memiliki kolom Prospek/attribution.
 - Reminder Prospek hanya in-app: penugasan, mendekati due date (3 hari), dan overdue. Tidak ada email.
 - Proyek lama dengan step Pitching dan `ProjectGroup` lama tidak dimigrasikan ke Prospek.
 - Form stages have one form template and many entries. Entries are created by PM, assigned by Manager/Admin, filled by the assignee, and reviewed by PM. All non-cancelled entries must be approved; at least one entry is required unless "no work" is explicitly confirmed and audited.

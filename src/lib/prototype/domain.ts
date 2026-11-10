@@ -850,6 +850,95 @@ export function canDecidePitching(
   );
 }
 
+export function prospekFinanceCandidates(
+  state: AppState,
+  user: User,
+  prospek?: Prospek,
+): User[] {
+  if (!canAssignProspekWork(user, prospek)) return [];
+  return state.users.filter((candidate) => candidate.role === "finance");
+}
+
+export function pitchingFormEntries(
+  state: AppState,
+  pitchingId: string,
+): FormEntry[] {
+  return state.formEntries.filter(
+    (entry) => entry.pitchingId === pitchingId && entry.status !== "cancelled",
+  );
+}
+
+export function pitchingFormComplete(
+  state: AppState,
+  pitchingId: string,
+): boolean {
+  const entries = pitchingFormEntries(state, pitchingId);
+  return entries.length > 0 && entries.every((entry) => entry.status === "approved");
+}
+
+export type PitchingStageKey =
+  | "rab"
+  | "quotation"
+  | "form"
+  | "decision"
+  | "contract";
+
+export type PitchingStageState = {
+  key: PitchingStageKey;
+  label: string;
+  status: "complete" | "active" | "locked";
+};
+
+export function pitchingStageStates(
+  state: AppState,
+  pitching: ProspekPitching,
+): PitchingStageState[] {
+  const rab = pitchingRabFor(state, pitching.id);
+  const quotation = pitchingQuotationFor(state, pitching.id);
+  const rabDone = rab?.status === "approved";
+  const quotationDone = quotation?.status === "approved";
+  const formDone = pitchingFormComplete(state, pitching.id);
+  const decisionDone = pitching.status === "won" || pitching.status === "lost";
+  const contractDone = contractComplete(pitching.contract);
+
+  return [
+    {
+      key: "rab",
+      label: "RAB",
+      status: rabDone ? "complete" : "active",
+    },
+    {
+      key: "quotation",
+      label: "Quotation",
+      status: rabDone ? (quotationDone ? "complete" : "active") : "locked",
+    },
+    {
+      key: "form",
+      label: "Form Pitching",
+      status: quotationDone ? (formDone ? "complete" : "active") : "locked",
+    },
+    {
+      key: "decision",
+      label: "Decision",
+      status: formDone
+        ? decisionDone
+          ? "complete"
+          : "active"
+        : "locked",
+    },
+    {
+      key: "contract",
+      label: "Kontrak",
+      status:
+        pitching.status === "won"
+          ? contractDone
+            ? "complete"
+            : "active"
+          : "locked",
+    },
+  ];
+}
+
 function pitchingWorkLocked(
   state: AppState,
   pitching: ProspekPitching,
@@ -869,7 +958,11 @@ export function canEditPitchingRab(
   if (user.role === "admin" || user.role === "manager") return true;
   if (canManageProspek(user, prospek)) return true;
   const rab = pitchingRabFor(state, pitching.id);
-  return Boolean(rab?.assigneeId === user.id && isProspekAssignee(user));
+  return Boolean(
+    rab?.status !== "approved" &&
+      rab?.assigneeId === user.id &&
+      isProspekAssignee(user),
+  );
 }
 
 export function canEditQuotation(
@@ -883,7 +976,9 @@ export function canEditQuotation(
   if (canManageProspek(user, prospek)) return true;
   const quotation = pitchingQuotationFor(state, pitching.id);
   return Boolean(
-    quotation?.assigneeId === user.id && isProspekAssignee(user),
+    quotation?.status !== "approved" &&
+      quotation?.assigneeId === user.id &&
+      isProspekAssignee(user),
   );
 }
 
@@ -961,7 +1056,7 @@ export function prospekWorkItemsForUser(
     const rab = pitchingRabFor(state, pitching.id);
     if (
       rab?.assigneeId === userId &&
-      ["assigned", "draft"].includes(rab.status)
+      ["assigned", "draft", "need_revision"].includes(rab.status)
     ) {
       items.push({
         ...base,
