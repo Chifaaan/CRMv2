@@ -1935,9 +1935,14 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     (task) =>
       task.projectId === project.id &&
       !task.archivedAt &&
-      (currentUser.role !== "assignee" || task.assigneeId === currentUser.id),
+      (currentUser.role !== "assignee" &&
+        currentUser.role !== "media") ||
+        task.assigneeId === currentUser.id,
   );
   const canCancel = canCancelProject(currentUser, project);
+  const gateStep = projectSteps.find(
+    (step) => step.kind === "gate" && step.status === "active",
+  );
   const selectedPhaseSteps = projectSteps.filter(
     (step) => step.phase === selectedPhase,
   );
@@ -1949,7 +1954,6 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
       .find((step) => step.status !== "pending") ??
     selectedPhaseSteps[0];
   const selectedKey = selectedStep?.key;
-  const readOnly = project.status !== "active" || selectedStep?.status !== "active";
   const allStepsDone =
     projectSteps.length > 0 &&
     projectSteps.every(
@@ -1999,7 +2003,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
     window.history.replaceState(null, "", url);
   };
 
-  const stepContent = (() => {
+  const stepSummary = (() => {
     if (!selectedStep) {
       return (
         <EmptyState
@@ -2009,47 +2013,127 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         />
       );
     }
-    if (selectedStep.status === "pending") {
-      return (
-        <EmptyState
-          icon={Clock3}
-          title="Belum dimulai"
-          description="Tahap ini belum dapat dibuka."
-        />
-      );
-    }
-    if (selectedStep.kind === "gate") {
-      return (
-        <GateStage project={project} step={selectedStep} readOnly={readOnly} />
-      );
-    }
-    if (selectedStep.kind === "form") {
-      if (selectedStep.legacyKey === "survey" && !selectedStep.formTemplate) {
-        return <SurveyStep project={project} readOnly={readOnly} />;
-      }
-      return (
-        <FormStagePanel project={project} step={selectedStep} readOnly={readOnly} />
-      );
-    }
-    if (selectedStep.kind === "simpro") {
-      if (selectedStep.legacyKey === "pitching") {
-        return <PitchingStep project={project} readOnly={readOnly} />;
-      }
-      if (selectedStep.legacyKey === "running") {
-        return <RunningStep project={project} readOnly={readOnly} />;
-      }
-      return (
-        <SimproStagePanel project={project} step={selectedStep} readOnly={readOnly} />
-      );
-    }
-    if (selectedStep.financeKind === "survey") {
-      return <SurveyStep project={project} readOnly={readOnly} />;
-    }
-    if (selectedStep.financeKind === "rab") {
-      return <RabStep project={project} readOnly={readOnly} />;
-    }
+    const stepTasks = store.tasks.filter(
+      (task) =>
+        task.projectId === project.id &&
+        task.stepKey === selectedStep.key &&
+        !task.archivedAt,
+    );
+    const stepEntries = store.formEntries.filter(
+      (entry) =>
+        entry.projectId === project.id &&
+        entry.stepKey === selectedStep.key &&
+        entry.status !== "cancelled",
+    );
+    const approved = stepEntries.filter(
+      (entry) => entry.status === "approved",
+    ).length;
     return (
-      <FinanceStep project={project} step={selectedStep} readOnly={readOnly} />
+      <SectionCard
+        title={`Ringkasan ${selectedStep.name}`}
+        description={`Status ${STEP_STATUS_TEXT[selectedStep.status] ?? selectedStep.status} · PIC ${
+          userById(store, selectedStep.managerPicId)?.name ?? "Belum diisi"
+        }`}
+      >
+        <div className="space-y-3 text-xs">
+          {selectedStep.kind === "simpro" ? (
+            <>
+              <p>
+                {stepTasks.length} kartu ·{" "}
+                {stepTasks.filter((task) => task.status === "completed").length}{" "}
+                selesai
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => switchWorkspaceTab("board")}
+                >
+                  Buka Board
+                </Button>
+                {canManage ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const title = window.prompt("Judul kartu:");
+                      if (!title?.trim()) return;
+                      const taskId = store.createTask(project.id, {
+                        title: title.trim(),
+                        description: "",
+                        priority: "medium",
+                        stepKey: selectedStep.key,
+                      });
+                      toast[taskId ? "success" : "error"](
+                        taskId
+                          ? "Kartu dibuat."
+                          : "Kartu tidak dapat dibuat pada step ini.",
+                      );
+                    }}
+                  >
+                    Buat kartu
+                  </Button>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+          {selectedStep.kind === "form" ? (
+            <>
+              <p>
+                {stepEntries.length} entri · {approved} disetujui
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => switchWorkspaceTab("forms")}
+                >
+                  Buka Forms
+                </Button>
+              </div>
+            </>
+          ) : null}
+          {selectedStep.kind === "finance_form" ? (
+            <>
+              <p>
+                {stepEntries.length} entri · {approved} disetujui
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => switchWorkspaceTab("forms")}
+                >
+                  Buka Forms
+                </Button>
+              </div>
+            </>
+          ) : null}
+          {selectedStep.kind === "gate" ? (
+            <>
+              <p>
+                Keputusan Gerbang dicatat dari tab Overview. Status saat ini:{" "}
+                {selectedStep.status}.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => switchWorkspaceTab("overview")}
+              >
+                Lihat keputusan di Overview
+              </Button>
+            </>
+          ) : null}
+          {selectedStep.kind !== "simpro" &&
+          selectedStep.kind !== "form" &&
+          selectedStep.kind !== "finance_form" &&
+          selectedStep.kind !== "gate" ? (
+            <p className="text-muted-foreground">
+              Ringkasan step tersedia untuk dibaca.
+            </p>
+          ) : null}
+        </div>
+      </SectionCard>
     );
   })();
 
@@ -2151,7 +2235,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
               <CalendarDays className="size-3.5" /> {formatDate(project.startDate)} → {formatDate(project.targetEndDate)}
             </span>
             <span className="inline-flex items-center gap-1">
-              <Users className="size-3.5" /> {group ? `Group ${group.name}` : "Tanpa group"}
+              <Users className="size-3.5" /> {group ? `Umbrella ${group.name}` : "Tanpa Umbrella"}
             </span>
           </div>
 
@@ -2355,33 +2439,45 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
                         : ""}
                     </span>
                     <span className="flex flex-wrap gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 text-[10px]"
-                        onClick={() => {
-                          const name = window.prompt("Nama step", step.name);
-                          if (!name?.trim()) return;
-                          const description = window.prompt(
-                            "Deskripsi step",
-                            step.description ?? "",
-                          );
-                          const manager = window.prompt(
-                            "Manager PIC (user id)",
-                            step.managerPicId ?? managerPicId ?? "",
-                          );
-                          const ok = store.updateProjectStep(project.id, step.id, {
-                            name,
-                            description: description ?? "",
-                            managerPicId: manager ?? "",
-                          });
-                          toast[ok ? "success" : "error"](
-                            ok ? "Step diperbarui." : "Gagal memperbarui step.",
-                          );
-                        }}
-                      >
-                        Edit
-                      </Button>
+                      {step.status === "pending" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[10px]"
+                          onClick={() => {
+                            const name = window.prompt("Nama step", step.name);
+                            if (!name?.trim()) return;
+                            const description = window.prompt(
+                              "Deskripsi step",
+                              step.description ?? "",
+                            );
+                            const manager = window.prompt(
+                              "Manager PIC (user id)",
+                              step.managerPicId ?? managerPicId ?? "",
+                            );
+                            const phaseInput = window.prompt(
+                              "Fase (planning/running/finance)",
+                              step.phase,
+                            );
+                            const phase = ["planning", "running", "finance"].includes(
+                              phaseInput ?? "",
+                            )
+                              ? (phaseInput as "planning" | "running" | "finance")
+                              : step.phase;
+                            const ok = store.updateProjectStep(project.id, step.id, {
+                              name,
+                              description: description ?? "",
+                              managerPicId: manager ?? "",
+                              phase,
+                            });
+                            toast[ok ? "success" : "error"](
+                              ok ? "Step diperbarui." : "Gagal memperbarui step.",
+                            );
+                          }}
+                        >
+                          Edit
+                        </Button>
+                      ) : null}
                       {step.status === "pending" ? (
                         <>
                           <Button
@@ -2519,6 +2615,18 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
         </SectionCard>
       ) : null}
 
+      {workspaceTab === "overview" && gateStep ? (
+        <div id="gate">
+          <GateStage
+            project={project}
+            step={gateStep}
+            readOnly={
+              project.status !== "active" || gateStep.status !== "active"
+            }
+          />
+        </div>
+      ) : null}
+
       {workspaceTab === "overview" ? (
         <div className="space-y-3">
           <SectionCard
@@ -2651,7 +2759,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
           {projectSteps.length > 0 ? (
             <SectionCard
               title="Pilih step"
-              description="Task di bawah mengikuti step yang dipilih dari Kelola fase."
+              description="Kelola struktur step di sini. Pekerjaan dibuka lewat Board atau Forms."
             >
               <div className="flex flex-wrap items-center gap-3">
                 <NativeSelect
@@ -2687,7 +2795,7 @@ export function CrmProjectDetail({ projectId }: { projectId: string }) {
               </div>
             </SectionCard>
           ) : null}
-          {stepContent}
+          {stepSummary}
           {selectedKey ? (
             <ProjectStepHistory projectId={project.id} stepKey={selectedKey} />
           ) : null}

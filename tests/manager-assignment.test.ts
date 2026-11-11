@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  activeFormEntriesForAssignee,
+  assignmentQueueForUser,
   canAssignOperational,
   canAssignProjectManager,
   canEditFormEntry,
@@ -10,7 +12,12 @@ import {
   canWorkTask,
   formsNeedingAction,
   isOperationalAssignee,
+  isScheduledFormEntry,
+  isScheduledTask,
+  landingForRole,
   operationalAssigneeCandidates,
+  roleCanAccessCrm,
+  roleCanAccessSimpro,
   taskTransition,
   userById,
   workloadRows,
@@ -340,6 +347,11 @@ describe("form entry assignment and execution", () => {
       .getState()
       .createFormEntry(projectId, step.key, { title: "Entri Manager" });
     usePrototypeStore.getState().assignFormEntry(entryId, "u-manager");
+    usePrototypeStore.setState((state) => ({
+      steps: state.steps.map((item) =>
+        item.id === step.id ? { ...item, status: "active" as const } : item,
+      ),
+    }));
     expect(formsNeedingAction(usePrototypeStore.getState(), "u-manager")).toBe(
       1,
     );
@@ -347,5 +359,188 @@ describe("form entry assignment and execution", () => {
       (item) => item.user.id === "u-manager",
     )!;
     expect(row.activeFormCount).toBe(1);
+  });
+});
+
+describe("media role and scheduled work", () => {
+  beforeEach(() => {
+    usePrototypeStore.getState().reset();
+  });
+
+  it("treats Media as an operational worker with limited access", () => {
+    const state = createSeedState();
+    const media = userById(state, "u-media")!;
+    expect(media.role).toBe("media");
+    expect(isOperationalAssignee(media)).toBe(true);
+    expect(roleCanAccessCrm("media")).toBe(false);
+    expect(roleCanAccessSimpro("media")).toBe(true);
+    expect(landingForRole("media")).toBe("/my-tasks");
+    expect(canWorkTask(media, { ...state.tasks[0], assigneeId: "u-media" })).toBe(
+      true,
+    );
+    expect(
+      operationalAssigneeCandidates(state, userById(state, "u-manager")!, state.projects[0])
+        .some((user) => user.id === "u-media"),
+    ).toBe(true);
+  });
+
+  it("derives scheduled work from a pending step", () => {
+    const state = createSeedState();
+    const pending = state.steps.find((step) => step.status === "pending");
+    expect(pending).toBeTruthy();
+    const task = state.tasks[0];
+    const entry = state.formEntries[0];
+    expect(
+      isScheduledTask(state, {
+        ...task,
+        projectId: pending!.projectId,
+        stageId: pending!.id,
+      }),
+    ).toBe(true);
+    expect(
+      isScheduledFormEntry(state, {
+        ...entry,
+        projectId: pending!.projectId,
+        templateStageId: pending!.id,
+        stepKey: pending!.key,
+      }),
+    ).toBe(true);
+  });
+
+  it("builds an assignment queue for managers and admins only", () => {
+    const state = createSeedState();
+    const manager = userById(state, "u-manager")!;
+    const assignee = userById(state, "u-assignee1")!;
+    const projectTask = state.tasks.find((task) => task.projectId);
+    expect(projectTask).toBeTruthy();
+    const queued = {
+      ...state,
+      tasks: state.tasks.map((task) =>
+        task.id === projectTask!.id
+          ? { ...task, status: "backlog" as const, assigneeId: undefined }
+          : task,
+      ),
+    };
+    expect(
+      assignmentQueueForUser(queued, manager).some(
+        (item) => item.kind === "task" && item.task.id === projectTask!.id,
+      ),
+    ).toBe(true);
+    expect(assignmentQueueForUser(queued, assignee)).toHaveLength(0);
+  });
+
+  it("excludes scheduled forms from the badge and workload", () => {
+    const projectId = createProject("u-manager", KOL_TEMPLATE_ID);
+    const step = usePrototypeStore
+      .getState()
+      .steps.filter((item) => item.projectId === projectId)
+      .sort((a, b) => a.order - b.order)[0];
+    const entryId = usePrototypeStore
+      .getState()
+      .createFormEntry(projectId, step.key, { title: "Entri Terjadwal" });
+    usePrototypeStore.getState().assignFormEntry(entryId, "u-manager");
+    usePrototypeStore.setState((state) => ({
+      steps: state.steps.map((item) =>
+        item.id === step.id ? { ...item, status: "active" as const } : item,
+      ),
+    }));
+    expect(formsNeedingAction(usePrototypeStore.getState(), "u-manager")).toBe(
+      1,
+    );
+    const scheduledStep = usePrototypeStore
+      .getState()
+      .steps.find((item) => item.status === "pending");
+    expect(scheduledStep).toBeTruthy();
+    const state = usePrototypeStore.getState();
+    const entry = state.formEntries.find((item) => item.id === entryId)!;
+    expect(
+      activeFormEntriesForAssignee(
+        {
+          ...state,
+          formEntries: state.formEntries.map((item) =>
+            item.id === entryId
+              ? {
+                  ...item,
+                  projectId: scheduledStep!.projectId,
+                  templateStageId: scheduledStep!.id,
+                  stepKey: scheduledStep!.key,
+                }
+              : item,
+          ),
+        },
+        "u-manager",
+      ),
+    ).toHaveLength(0);
+    expect(entry.status).toBe("assigned");
+  });
+
+  it("pre-assigns a pending-step card without starting it", () => {
+    const projectId = createProject("u-manager", KOL_TEMPLATE_ID);
+    const pendingStep = usePrototypeStore
+      .getState()
+      .steps.find(
+        (item) =>
+          item.projectId === projectId &&
+          item.kind === "simpro" &&
+          item.status === "pending",
+      )!;
+    expect(pendingStep).toBeTruthy();
+    const taskId = usePrototypeStore.getState().createTask(projectId, {
+      title: "Kartu Terjadwal",
+      description: "",
+      priority: "medium",
+      stepKey: pendingStep.key,
+    });
+    expect(taskId).not.toBe("");
+    usePrototypeStore.getState().setCurrentUser("u-manager");
+    usePrototypeStore.getState().assignTask(taskId, "u-assignee1");
+    const task = usePrototypeStore
+      .getState()
+      .tasks.find((item) => item.id === taskId)!;
+    expect(task.assigneeId).toBe("u-assignee1");
+    expect(task.status).toBe("backlog");
+    usePrototypeStore.getState().setCurrentUser("u-assignee1");
+    expect(
+      taskTransition(
+        usePrototypeStore.getState(),
+        userById(usePrototypeStore.getState(), "u-assignee1")!,
+        task,
+        "in_progress",
+        { workUrl: "https://example.com/work" },
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("adds Media to the workload rows", () => {
+    const media = workloadRows(createSeedState()).find(
+      (row) => row.user.id === "u-media",
+    )!;
+    expect(media.user.role).toBe("media");
+    expect(media.activeCount).toBe(0);
+  });
+
+  it("creates and assigns a pending-step form entry without allowing fill", () => {
+    const projectId = createProject("u-manager", KOL_TEMPLATE_ID);
+    const pendingForm = usePrototypeStore
+      .getState()
+      .steps.find(
+        (item) =>
+          item.projectId === projectId &&
+          item.kind === "form" &&
+          item.status === "pending",
+      )!;
+    expect(pendingForm).toBeTruthy();
+    const entryId = usePrototypeStore
+      .getState()
+      .createFormEntry(projectId, pendingForm.key, { title: "Form Terjadwal" });
+    expect(entryId).not.toBe("");
+    usePrototypeStore.getState().setCurrentUser("u-manager");
+    usePrototypeStore.getState().assignFormEntry(entryId, "u-manager");
+    const entry = usePrototypeStore
+      .getState()
+      .formEntries.find((item) => item.id === entryId)!;
+    expect(entry.assigneeId).toBe("u-manager");
+    expect(canEditFormEntry(usePrototypeStore.getState(), userById(usePrototypeStore.getState(), "u-manager")!, entry)).toBe(false);
+    expect(formsNeedingAction(usePrototypeStore.getState(), "u-manager")).toBe(0);
   });
 });

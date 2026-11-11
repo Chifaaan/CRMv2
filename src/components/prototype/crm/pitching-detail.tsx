@@ -22,11 +22,11 @@ import { EmptyState, SectionCard } from "../ui";
 import {
   ContractPanel,
   DecisionPanel,
-  FormPanel,
   HistoryPanel,
   QuotationPanel,
   RabPanel,
 } from "./prospek-detail";
+import { PitchingFormBoard } from "./pitching-form-board";
 
 const SECTIONS = [
   { key: "rab", label: "RAB", icon: FileText },
@@ -219,10 +219,7 @@ export function CrmPitchingDetail({
         />
       ) : null}
       {section === "form" ? (
-        <FormPanel
-          pitching={pitching}
-          locked={locked || stageByKey.form.status !== "active"}
-        />
+        <PitchingFormBoard pitching={pitching} />
       ) : null}
       {section === "decision" ? (
         <div className="space-y-3">

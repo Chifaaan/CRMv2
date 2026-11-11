@@ -3,7 +3,25 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { FolderKanban, Plus, Search } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ListPaginationBar } from "@/components/ui/list-pagination-bar";
 import {
@@ -13,7 +31,10 @@ import {
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   calculateJourneyProgress,
+  canAddProjectToGroup,
+  canCreateGroup,
   canCreateProject,
+  groupsForUser,
   prospekById,
   userById,
   visibleProjects,
@@ -27,7 +48,48 @@ import {
   ProgressBar,
 } from "../ui";
 import { ProjectCard, projectTeam } from "../project-card";
+import { GroupDialog } from "../dialogs";
 import { useViewPreference, ViewToggle } from "../view-toggle";
+
+function DndProjectCard({
+  project,
+  href,
+}: {
+  project: ReturnType<typeof visibleProjects>[number];
+  href: string;
+}) {
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `project-drop-${project.id}`,
+  });
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    transform,
+    isDragging,
+  } = useDraggable({ id: project.id });
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
+    : undefined;
+  return (
+    <div
+      ref={setDropRef}
+      className={
+        isOver ? "rounded-xl ring-2 ring-primary/40 ring-offset-2" : undefined
+      }
+    >
+      <div
+        ref={setDragRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        className={isDragging ? "opacity-60" : undefined}
+      >
+        <ProjectCard project={project} href={href} draggable={false} />
+      </div>
+    </div>
+  );
+}
 
 export function CrmProjects() {
   const store = usePrototypeStore();
@@ -42,6 +104,22 @@ export function CrmProjects() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<ListPageSize>(DEFAULT_LIST_PAGE_SIZE);
   const [view, setView] = useViewPreference("crm-projects");
+  const [groupSeed, setGroupSeed] = useState<string[]>([]);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [tableProjectId, setTableProjectId] = useState<string | null>(null);
+  const [tableGroupId, setTableGroupId] = useState("");
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+  const umbrellaOptions = currentUser
+    ? groupsForUser(store, currentUser).filter((group) =>
+        store.projects.some(
+          (project) =>
+            project.id === tableProjectId &&
+            canAddProjectToGroup(currentUser, group, project),
+        ),
+      )
+    : [];
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -90,6 +168,18 @@ export function CrmProjects() {
   );
 
   if (!currentUser) return null;
+
+  const onDragEnd = (event: DragEndEvent) => {
+    if (!event.over || !currentUser || !canCreateGroup(currentUser)) return;
+    const sourceId = String(event.active.id);
+    const targetId = String(event.over.id).replace("project-drop-", "");
+    if (sourceId === targetId) return;
+    const source = projects.find((project) => project.id === sourceId);
+    const target = projects.find((project) => project.id === targetId);
+    if (!source || !target) return;
+    setGroupSeed([source.id, target.id]);
+    setGroupDialogOpen(true);
+  };
 
   return (
     <div className="space-y-5">
@@ -177,10 +267,12 @@ export function CrmProjects() {
                 <th className="px-3 py-2">Proyek</th>
                 <th className="px-3 py-2">Client</th>
                 <th className="px-3 py-2">Prospek</th>
+                <th className="px-3 py-2">Umbrella</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2">Fase</th>
                 <th className="px-3 py-2">Progress</th>
                 <th className="px-3 py-2">Anggota</th>
+                <th className="px-3 py-2">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -220,6 +312,13 @@ export function CrmProjects() {
                         "—"
                       )}
                     </td>
+                    <td className="px-3 py-2">
+                      {project.groupId
+                        ? (store.groups.find(
+                            (group) => group.id === project.groupId,
+                          )?.name ?? "—")
+                        : "—"}
+                    </td>
                     <td className="px-3 py-2 capitalize">{project.status}</td>
                     <td className="px-3 py-2">
                       {activeStep ? PHASE_LABEL[activeStep.phase] : "—"}
@@ -233,6 +332,19 @@ export function CrmProjects() {
                     <td className="px-3 py-2">
                       <AvatarStack users={team} />
                     </td>
+                    <td className="px-3 py-2">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setTableProjectId(project.id);
+                          setTableGroupId("");
+                        }}
+                      >
+                        Tambah ke Umbrella
+                      </Button>
+                    </td>
                   </tr>
                 );
               })}
@@ -240,16 +352,17 @@ export function CrmProjects() {
           </table>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {paged.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              href={`/crm/projects/${project.id}`}
-              draggable={false}
-            />
-          ))}
-        </div>
+        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {paged.map((project) => (
+              <DndProjectCard
+                key={project.id}
+                project={project}
+                href={`/crm/projects/${project.id}`}
+              />
+            ))}
+          </div>
+        </DndContext>
       )}
 
       <ListPaginationBar
@@ -260,6 +373,52 @@ export function CrmProjects() {
         onPageSizeChange={setPageSize}
         disabled={filtered.length === 0}
       />
+
+      <GroupDialog
+        open={groupDialogOpen}
+        onOpenChange={setGroupDialogOpen}
+        initialProjectIds={groupSeed}
+      />
+
+      <Dialog
+        open={Boolean(tableProjectId)}
+        onOpenChange={(open) => {
+          if (!open) setTableProjectId(null);
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Tambah ke Umbrella</DialogTitle>
+            <DialogDescription>
+              Pilih Umbrella yang boleh Anda kelola.
+            </DialogDescription>
+          </DialogHeader>
+          <NativeSelect value={tableGroupId} onChange={setTableGroupId}>
+            <option value="">Pilih Umbrella</option>
+            {umbrellaOptions.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </NativeSelect>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTableProjectId(null)}>
+              Batal
+            </Button>
+            <Button
+              disabled={!tableProjectId || !tableGroupId}
+              onClick={() => {
+                if (!tableProjectId || !tableGroupId) return;
+                store.addProjectToGroup(tableGroupId, tableProjectId);
+                toast.success("Proyek ditambahkan ke Umbrella.");
+                setTableProjectId(null);
+              }}
+            >
+              Tambah
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

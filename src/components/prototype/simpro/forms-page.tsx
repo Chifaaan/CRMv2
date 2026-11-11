@@ -9,13 +9,12 @@ import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   canAssignFormEntry,
-  canViewProspek,
-  formEntryScope,
+  canReviewFormEntry,
   formatDate,
+  isScheduledFormEntry,
   operationalAssigneeCandidates,
   prospekAssigneeCandidates,
   prospekById,
-  prospekPitchingById,
   prospekWorkItemsForUser,
   stepFor,
   userById,
@@ -170,6 +169,46 @@ function FormRowAssignControl({ row }: { row: FormRow }) {
   );
 }
 
+function FormRowReviewControl({ row }: { row: FormRow }) {
+  const store = usePrototypeStore();
+  const currentUser = userById(store, store.currentUserId);
+  const entry = row.entry;
+  if (
+    !entry ||
+    entry.status !== "submitted" ||
+    !currentUser ||
+    !canReviewFormEntry(store, currentUser, entry)
+  ) {
+    return null;
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <Button
+        size="xs"
+        variant="outline"
+        onClick={() => {
+          store.reviewFormEntry(entry.id, "approved", "");
+          toast.success("Entri form disetujui.");
+        }}
+      >
+        Setujui
+      </Button>
+      <Button
+        size="xs"
+        variant="outline"
+        onClick={() => {
+          const comment = window.prompt("Komentar revisi wajib diisi:");
+          if (!comment?.trim()) return;
+          store.reviewFormEntry(entry.id, "need_revision", comment);
+          toast.success("Revisi diminta.");
+        }}
+      >
+        Minta revisi
+      </Button>
+    </div>
+  );
+}
+
 function FormItem({
   row,
   onOpen,
@@ -205,6 +244,12 @@ function FormItem({
         <span>{formatDate(row.submittedAt)}</span>
       </div>
       <FormRowAssignControl row={row} />
+      <FormRowReviewControl row={row} />
+      {row.entry && isScheduledFormEntry(store, row.entry) ? (
+        <p className="text-[10px] font-medium text-amber-600">
+          Menunggu step aktif
+        </p>
+      ) : null}
       {row.reviewComment ? (
         <p className="text-muted-foreground line-clamp-2 rounded bg-muted/40 p-1.5 text-[10px]">
           {row.reviewComment}
@@ -320,42 +365,6 @@ export function SimproFormsPage() {
       });
     }
 
-    for (const entry of store.formEntries) {
-      if (formEntryScope(entry) !== "prospek") continue;
-      const pitching = prospekPitchingById(store, entry.pitchingId);
-      const prospek = prospekById(store, entry.prospekId);
-      if (!pitching || !prospek) continue;
-      const restricted =
-        currentUser.role === "assignee" || currentUser.role === "finance";
-      if (restricted && entry.assigneeId !== currentUser.id) continue;
-      if (!restricted && !canViewProspek(store, currentUser, prospek)) continue;
-      const template = store.templates.find(
-        (item) => item.id === pitching.templateId,
-      );
-      const stage = template?.stages.find(
-        (item) => item.id === entry.templateStageId,
-      );
-      result.push({
-        kind: "prospek",
-        id: entry.id,
-        prospekId: prospek.id,
-        pitchingId: pitching.id,
-        category: "Prospek" as const,
-        contextName: pitching.title,
-        contextCode: "PROSPEK",
-        formName: stage?.formTemplate?.title ?? stage?.name ?? entry.stepKey,
-        title: entry.title,
-        assigneeId: entry.assigneeId,
-        status: entryDisplayStatus(entry.status),
-        submittedAt: entry.submittedAt,
-        dueDate: entry.dueDate,
-        reviewComment: entry.reviewComment,
-        entry,
-        href: restricted
-          ? `/work/prospek/${pitching.id}/form?entry=${entry.id}`
-          : `/crm/prospek/${prospek.id}/pitching/${pitching.id}`,
-      });
-    }
     for (const item of prospekWorkItemsForUser(store, currentUser.id)) {
       if (item.kind === "form") continue;
       result.push({

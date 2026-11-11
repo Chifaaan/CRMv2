@@ -1,4 +1,4 @@
-export type Role = "admin" | "manager" | "pm" | "finance" | "assignee";
+export type Role = "admin" | "manager" | "pm" | "finance" | "assignee" | "media";
 
 export type Priority = "low" | "medium" | "high" | "critical";
 
@@ -315,10 +315,13 @@ export type Attachment = {
 export type Task = {
   id: string;
   code: string;
-  projectId: string;
+  projectId?: string;
   stepKey: string;
   stageId?: string;
+  scope?: "project" | "pitching";
+  prospekId?: string;
   pitchingId?: string;
+  templateStageId?: string;
   title: string;
   description: string;
   priority: Priority;
@@ -831,6 +834,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   pm: "PM",
   finance: "Finance",
   assignee: "Assignee",
+  media: "Media",
 };
 
 export const FORM_STATUS_LABEL: Record<FormStatus, string> = {

@@ -18,6 +18,7 @@ import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   formatDate,
   isOverdue,
+  isScheduledTask,
   taskTransition,
   userById,
 } from "@/lib/prototype/domain";
@@ -42,10 +43,12 @@ function BoardCard({
   task,
   onClick,
   readOnly,
+  stageLabel,
 }: {
   task: Task;
   onClick: () => void;
   readOnly?: boolean;
+  stageLabel?: string;
 }) {
   const store = usePrototypeStore();
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -59,12 +62,20 @@ function BoardCard({
   const requested = userById(store, task.requestedAssigneeId);
   const currentUser = userById(store, store.currentUserId);
   const project = store.projects.find((item) => item.id === task.projectId);
+  const pitching = task.pitchingId
+    ? store.prospekPitchings.find((item) => item.id === task.pitchingId)
+    : undefined;
+  const prospek = pitching
+    ? store.prospeks.find((item) => item.id === pitching.prospekId)
+    : undefined;
   const canSeeWorkLink = Boolean(
     currentUser &&
       (currentUser.role === "admin" ||
         currentUser.role === "manager" ||
         task.assigneeId === currentUser.id ||
-        (currentUser.role === "pm" && project?.createdById === currentUser.id)),
+        (currentUser.role === "pm" &&
+          (project?.createdById === currentUser.id ||
+            prospek?.createdById === currentUser.id))),
   );
   const stage = store.steps.find(
     (step) =>
@@ -87,13 +98,18 @@ function BoardCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1">
           <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-            {stage?.name ?? "Task"}
+            {stage?.name ?? stageLabel ?? "Task"}
           </span>
           <PriorityBadge priority={task.priority} />
         </div>
         {!readOnly ? <GripVertical className="text-muted-foreground size-3.5 opacity-0 transition-opacity group-hover:opacity-100" /> : null}
       </div>
       <p className="mt-1.5 line-clamp-3 text-xs font-medium leading-snug">{task.title}</p>
+      {isScheduledTask(store, task) ? (
+        <span className="mt-1 inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-medium text-amber-700">
+          Terjadwal
+        </span>
+      ) : null}
       <p className="text-muted-foreground mt-1 text-[10px]">{task.code}</p>
       {task.workUrl && canSeeWorkLink ? (
         task.workUrl.startsWith("http://") || task.workUrl.startsWith("https://") ? (
@@ -147,11 +163,13 @@ function Column({
   tasks,
   onTaskClick,
   readOnly,
+  stageLabel,
 }: {
   status: TaskStatus;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   readOnly?: boolean;
+  stageLabel?: (task: Task) => string;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   return (
@@ -176,6 +194,7 @@ function Column({
             task={task}
             onClick={() => onTaskClick(task)}
             readOnly={readOnly}
+            stageLabel={stageLabel?.(task)}
           />
         ))}
         {tasks.length === 0 ? (
@@ -193,11 +212,13 @@ export function TaskBoard({
   onTaskClick,
   onNewTask,
   readOnly,
+  stageLabel,
 }: {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onNewTask?: () => void;
   readOnly?: boolean;
+  stageLabel?: (task: Task) => string;
 }) {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
@@ -249,6 +270,7 @@ export function TaskBoard({
               tasks={grouped[status]}
               onTaskClick={onTaskClick}
               readOnly={readOnly}
+              stageLabel={stageLabel}
             />
           ))}
         </div>

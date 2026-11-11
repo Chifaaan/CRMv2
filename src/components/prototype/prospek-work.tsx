@@ -9,14 +9,13 @@ import {
   canEditQuotation,
   canManageProspek,
   canViewProspek,
-  formatDate,
   prospekById,
   prospekPitchingById,
   prospekWorkItemsForUser,
   userById,
 } from "@/lib/prototype/domain";
-import { FormEntryPage } from "@/components/prototype/simpro/form-entry-page";
-import { EmptyState, SectionCard } from "@/components/prototype/ui";
+import { PitchingFormBoard } from "@/components/prototype/crm/pitching-form-board";
+import { EmptyState } from "@/components/prototype/ui";
 import {
   ContractPanel,
   QuotationPanel,
@@ -39,11 +38,9 @@ function isWorkSection(value?: string): value is WorkSection {
 export function ProspekWorkPage({
   pitchingId,
   section,
-  entryId,
 }: {
   pitchingId: string;
   section?: string;
-  entryId?: string;
 }) {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
@@ -54,6 +51,14 @@ export function ProspekWorkPage({
         (item) => item.pitchingId === pitchingId,
       )
     : [];
+  const assignedTasks = currentUser
+    ? store.tasks.filter(
+        (task) =>
+          task.pitchingId === pitchingId &&
+          task.assigneeId === currentUser.id &&
+          !task.archivedAt,
+      )
+    : [];
   const canManage = Boolean(
     currentUser && prospek && canManageProspek(currentUser, prospek),
   );
@@ -61,7 +66,10 @@ export function ProspekWorkPage({
     currentUser &&
       prospek &&
       pitching &&
-      (canManage || canViewProspek(store, currentUser, prospek) || assigned.length > 0),
+      (canManage ||
+        canViewProspek(store, currentUser, prospek) ||
+        assigned.length > 0 ||
+        assignedTasks.length > 0),
   );
 
   if (!currentUser || !pitching || !prospek || !canOpen) {
@@ -79,36 +87,19 @@ export function ProspekWorkPage({
     );
   }
 
-  if (section === "form" && entryId) {
-    return (
-      <FormEntryPage
-        entryId={entryId}
-        hideProspekContext
-        onBack={() => {
-          window.location.href = `/work/prospek/${pitchingId}/form`;
-        }}
-      />
-    );
-  }
-
   const activeSection: WorkSection = isWorkSection(section)
     ? section
-    : assigned[0]?.kind === "form"
-      ? "form"
-      : assigned[0]?.kind === "quotation"
-        ? "quotation"
-        : assigned[0]?.kind === "contract"
-          ? "contract"
+    : assigned[0]?.kind === "quotation"
+      ? "quotation"
+      : assigned[0]?.kind === "contract"
+        ? "contract"
+        : assigned[0]?.kind === "form" || assignedTasks.length > 0
+          ? "form"
           : "rab";
   const locked =
     pitching.status === "lost" ||
     Boolean(pitching.projectId) ||
     prospek.status !== "active";
-  const forms = store.formEntries.filter(
-    (entry) =>
-      entry.pitchingId === pitching.id &&
-      (canManage || entry.assigneeId === currentUser.id),
-  );
 
   return (
     <div className="space-y-4">
@@ -131,7 +122,10 @@ export function ProspekWorkPage({
 
       <div className="flex flex-wrap gap-1 rounded-lg border bg-muted/30 p-1">
         {SECTIONS.filter(
-          (item) => canManage || assigned.some((work) => work.kind === item.key),
+          (item) =>
+            canManage ||
+            assigned.some((work) => work.kind === item.key) ||
+            (item.key === "form" && assignedTasks.length > 0),
         ).map((item) => (
           <Link
             key={item.key}
@@ -167,26 +161,7 @@ export function ProspekWorkPage({
         />
       ) : null}
       {activeSection === "form" ? (
-        <SectionCard title="Form Pitching" description="Form yang di-assign kepada Anda.">
-          {forms.length === 0 ? (
-            <p className="text-muted-foreground text-xs">Belum ada Form yang di-assign.</p>
-          ) : (
-            <div className="space-y-2">
-              {forms.map((entry) => (
-                <Link
-                  key={entry.id}
-                  href={`/work/prospek/${pitching.id}/form?entry=${entry.id}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 text-xs hover:bg-muted/40"
-                >
-                  <span className="font-medium">{entry.title}</span>
-                  <span className="text-muted-foreground text-[10px]">
-                    {entry.status} · {formatDate(entry.dueDate)}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </SectionCard>
+        <PitchingFormBoard pitching={pitching} mineOnly />
       ) : null}
     </div>
   );

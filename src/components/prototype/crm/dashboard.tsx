@@ -18,6 +18,7 @@ import {
   calculateJourneyProgress,
   formatDate,
   groupProgress,
+  groupsForUser,
   userById,
   visibleProjects,
 } from "@/lib/prototype/domain";
@@ -136,7 +137,7 @@ export function CrmDashboard() {
     return items.slice(0, 8);
   })();
 
-  const groups = store.groups.filter((group) =>
+  const groups = groupsForUser(store, currentUser).filter((group) =>
     projects.some((project) => project.groupId === group.id),
   );
 
@@ -288,7 +289,7 @@ export function CrmDashboard() {
           {groups.length === 0 ? (
             <EmptyState
               icon={BriefcaseBusiness}
-              title="Belum ada group"
+              title="Belum ada Umbrella"
               description="Manager dapat mengelompokkan minimal 2 proyek."
             />
           ) : (

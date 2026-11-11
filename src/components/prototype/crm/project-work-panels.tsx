@@ -8,11 +8,16 @@ import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
   boardVisibleStages,
+  canAssignFormEntry,
+  canCreateFormEntry,
   canCreateTask,
+  canReviewFormEntry,
   formEntriesForProject,
   formLabel,
   formsFor,
   formatDate,
+  isScheduledFormEntry,
+  operationalAssigneeCandidates,
   tasksForProject,
   tasksForStep,
   userById,
@@ -33,9 +38,10 @@ import {
   UserAvatar,
 } from "../ui";
 import { TaskBoard } from "../simpro/board";
+import { toast } from "sonner";
 
 function visibleTasks(currentUserRole: string, userId: string, tasks: Task[]) {
-  return currentUserRole === "assignee"
+  return currentUserRole === "assignee" || currentUserRole === "media"
     ? tasks.filter((task) => task.assigneeId === userId)
     : tasks;
 }
@@ -285,6 +291,99 @@ export function CrmProjectBacklogTab({
   );
 }
 
+function EntryAssignRow({
+  entryId,
+  projectId,
+}: {
+  entryId: string;
+  projectId: string;
+}) {
+  const store = usePrototypeStore();
+  const currentUser = userById(store, store.currentUserId);
+  const [userId, setUserId] = useState("");
+  const project = store.projects.find((item) => item.id === projectId);
+  const entry = store.formEntries.find((item) => item.id === entryId);
+  if (
+    !currentUser ||
+    !entry ||
+    entry.status !== "unassigned" ||
+    !project ||
+    !canAssignFormEntry(currentUser)
+  ) {
+    return null;
+  }
+  const candidates = operationalAssigneeCandidates(store, currentUser, project);
+  if (candidates.length === 0) return null;
+  return (
+    <div className="flex items-center gap-1.5">
+      <NativeSelect
+        value={userId}
+        onChange={setUserId}
+        className="h-7 w-[130px] text-[10px]"
+      >
+        <option value="">Pilih assignee</option>
+        {candidates.map((user) => (
+          <option key={user.id} value={user.id}>
+            {user.name}
+          </option>
+        ))}
+      </NativeSelect>
+      <Button
+        size="xs"
+        variant="outline"
+        disabled={!userId}
+        onClick={() => {
+          store.assignFormEntry(entryId, userId);
+          toast.success("Entri form di-assign.");
+          setUserId("");
+        }}
+      >
+        Assign
+      </Button>
+    </div>
+  );
+}
+
+function EntryReviewRow({ entryId }: { entryId: string }) {
+  const store = usePrototypeStore();
+  const currentUser = userById(store, store.currentUserId);
+  const entry = store.formEntries.find((item) => item.id === entryId);
+  if (
+    !currentUser ||
+    !entry ||
+    entry.status !== "submitted" ||
+    !canReviewFormEntry(store, currentUser, entry)
+  ) {
+    return null;
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <Button
+        size="xs"
+        variant="outline"
+        onClick={() => {
+          store.reviewFormEntry(entryId, "approved", "");
+          toast.success("Entri form disetujui.");
+        }}
+      >
+        Setujui
+      </Button>
+      <Button
+        size="xs"
+        variant="outline"
+        onClick={() => {
+          const comment = window.prompt("Komentar revisi wajib diisi:");
+          if (!comment?.trim()) return;
+          store.reviewFormEntry(entryId, "need_revision", comment);
+          toast.success("Revisi diminta.");
+        }}
+      >
+        Minta revisi
+      </Button>
+    </div>
+  );
+}
+
 export function CrmProjectFormsTab({ project }: { project: Project }) {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
@@ -297,19 +396,60 @@ export function CrmProjectFormsTab({ project }: { project: Project }) {
     ),
   );
   const entries = formEntriesForProject(store, project.id).filter((entry) =>
-    currentUser.role === "assignee" || currentUser.role === "finance"
+    currentUser.role === "assignee" ||
+    currentUser.role === "media" ||
+    currentUser.role === "finance"
       ? entry.assigneeId === currentUser.id
       : true,
   );
   const visibleForms = forms.filter((form) => {
-    if (currentUser.role === "finance" || currentUser.role === "assignee") {
+    if (
+      currentUser.role === "finance" ||
+      currentUser.role === "assignee" ||
+      currentUser.role === "media"
+    ) {
       return form.assigneeId === currentUser.id;
     }
     return true;
   });
+  const actionable = entries.filter(
+    (entry) => !isScheduledFormEntry(store, entry),
+  );
+  const counts = {
+    unassigned: actionable.filter((entry) => entry.status === "unassigned")
+      .length,
+    todo: actionable.filter((entry) =>
+      ["assigned", "draft", "need_revision"].includes(entry.status),
+    ).length,
+    review: actionable.filter((entry) => entry.status === "submitted").length,
+    revision: actionable.filter((entry) => entry.status === "need_revision")
+      .length,
+  };
+  const creatableSteps = steps.filter(
+    (step) =>
+      step.kind === "form" &&
+      (step.status === "active" || step.status === "pending") &&
+      canCreateFormEntry(store, currentUser, project, step.key),
+  );
 
   return (
     <div className="space-y-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: "Belum di-assign", value: counts.unassigned },
+          { label: "Perlu diisi", value: counts.todo },
+          { label: "Menunggu review", value: counts.review },
+          { label: "Perlu revisi", value: counts.revision },
+        ].map((item) => (
+          <div key={item.label} className="bg-card rounded-lg border p-3">
+            <p className="text-muted-foreground text-[10px] uppercase tracking-wide">
+              {item.label}
+            </p>
+            <p className="mt-1 text-lg font-semibold">{item.value}</p>
+          </div>
+        ))}
+      </div>
+
       <SectionCard
         title="Form Keuangan"
         description="RAB, BAST, Invoice, dan Pembayaran proyek ini."
@@ -326,7 +466,8 @@ export function CrmProjectFormsTab({ project }: { project: Project }) {
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium">{formLabel(form.type)}</p>
                   <p className="text-muted-foreground text-[10px]">
-                    Assignee {userById(store, form.assigneeId)?.name ?? "Belum di-assign"}
+                    Assignee{" "}
+                    {userById(store, form.assigneeId)?.name ?? "Belum di-assign"}
                   </p>
                 </div>
                 <FormStatusBadge status={form.status} />
@@ -343,8 +484,31 @@ export function CrmProjectFormsTab({ project }: { project: Project }) {
 
       <SectionCard
         title="Form Proyek"
-        description="Entri Form dari tahap proyek."
+        description="Entri Form dari tahap proyek. Assign dan review dilakukan di sini."
       >
+        {creatableSteps.length > 0 ? (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {creatableSteps.map((step) => (
+              <Button
+                key={step.id}
+                size="xs"
+                variant="outline"
+                onClick={() => {
+                  const title = window.prompt(
+                    `Judul entri Form untuk ${step.name}:`,
+                  );
+                  if (!title?.trim()) return;
+                  const entryId = store.createFormEntry(project.id, step.key, {
+                    title: title.trim(),
+                  });
+                  if (entryId) toast.success("Entri Form dibuat.");
+                }}
+              >
+                <Plus className="size-3" /> Entri {step.name}
+              </Button>
+            ))}
+          </div>
+        ) : null}
         {entries.length === 0 ? (
           <EmptyState icon={ClipboardList} title="Belum ada entri Form" />
         ) : (
@@ -358,10 +522,17 @@ export function CrmProjectFormsTab({ project }: { project: Project }) {
                   <p className="text-xs font-medium">{entry.title}</p>
                   <p className="text-muted-foreground text-[10px]">
                     {FORM_ENTRY_STATUS_LABEL[entry.status]}
-                    {entry.dueDate ? ` · Tenggat ${formatDate(entry.dueDate)}` : ""}
+                    {entry.dueDate
+                      ? ` · Tenggat ${formatDate(entry.dueDate)}`
+                      : ""}
+                    {isScheduledFormEntry(store, entry)
+                      ? " · Menunggu step aktif"
+                      : ""}
                   </p>
                 </div>
                 <UserAvatar user={userById(store, entry.assigneeId)} size="sm" />
+                <EntryAssignRow entryId={entry.id} projectId={project.id} />
+                <EntryReviewRow entryId={entry.id} />
                 <Link href={`/forms?entry=${entry.id}`}>
                   <Button size="xs" variant="outline">
                     Buka

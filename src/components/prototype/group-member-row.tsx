@@ -82,7 +82,7 @@ export function GroupMemberRow({
         <Button
           variant="ghost"
           size="icon-xs"
-          aria-label={`Keluarkan ${project.name} dari group`}
+          aria-label={`Keluarkan ${project.name} dari Umbrella`}
           onClick={onRemove}
         >
           <X className="size-3.5" />

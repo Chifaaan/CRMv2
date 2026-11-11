@@ -17,10 +17,11 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 
 - Proyek memiliki satu Manager penanggung jawab opsional (`managerId`) yang dipilih PM pemilik atau Admin saat membuat/mengedit proyek.
 - Penunjukan Manager tidak mengubah visibilitas proyek; Manager tetap melihat semua proyek.
-- Manager dan Assignee dapat menjadi assignee task SIMPRO dan entri Form.
-- PM pemilik hanya boleh assign ke Manager proyeknya. Manager/Admin boleh assign ke Assignee atau Manager.
+- Manager dan Assignee dapat menjadi assignee task SIMPRO dan entri Form; Media setara Assignee untuk pekerjaan operasional, termasuk task proyek dan pekerjaan Prospek.
+- PM pemilik hanya boleh assign ke Manager proyeknya. Manager/Admin boleh assign ke Assignee, Media, atau Manager.
 - Manager assignee dapat mengerjakan task/Form miliknya, tetapi tidak mendapat hak review.
 - Task/Form Manager muncul di My Tasks/Forms dan workload Manager.
+- Manager/Admin dapat meng-assign kartu atau entri Form pada step pending. Item tersebut berlabel terjadwal, belum dapat dikerjakan, dan tidak dihitung pada badge/Workload sampai step aktif.
 
 ## Prospek dan Termine
 
@@ -37,7 +38,7 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 - Proyek baru dibuat belum aktif (NEW Project). PM/Admin memulai dari Planning atau langsung Running; Finance tidak bisa menjadi fase awal.
 - Step Planning/Running memakai Kanban SIMPRO di tab Board CRM; step Finance memakai Form Keuangan (BAST, Invoice, Pembayaran).
 - Saat Running selesai, step BAST dan Invoice dibuat otomatis pada fase Finance. Step Finance lain tetap dapat ditambahkan.
-- PM/Admin mengelola step yang belum dimulai; step aktif/selesai hanya boleh mengubah nama, Manager PIC, dan deskripsi.
+- PM/Admin mengelola step yang belum dimulai; step aktif/selesai bersifat read-only.
 - Link Pekerjaan HTTP/HTTPS wajib sebelum card masuk In Progress.
 - Finance selesai hanya setelah minimal satu step Finance selesai; proyek menjadi completed.
 
@@ -46,7 +47,10 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 - Detail proyek CRM memiliki lima tab: Overview, Journey Management, Board, Backlog, dan Forms.
 - Overview berisi Asal Prospek, Penyelesaian Tahap, Distribusi task, Progress overview, lalu Riwayat Aktivitas. Distribusi dan progress hanya menghitung task proyek tersebut.
 - Journey Management sepenuhnya manual untuk proyek langsung; proyek hasil Prospek memakai template Pitching. PM/Admin membuat step bebas pada fase aktif atau fase berikutnya.
-- Journey Management menyediakan pemilih step dari Kelola fase. Card task di bawahnya menampilkan task SIMPRO untuk step terpilih; step pending tampil sebagai belum dimulai dan step non-SIMPRO menampilkan isi tahapnya sendiri.
+- Journey Management hanya mengatur struktur step/fase dan menampilkan ringkasan read-only setiap step beserta tautan ke Board/Forms. Panel isian, assign, dan review tidak lagi berada di Journey.
+- Journey Management tidak lagi memilih step untuk menampilkan card; card SIMPRO dikerjakan di tab Board, form dikerjakan di tab Forms.
+- Tab Forms menampung seluruh Form Keuangan dan entri Form stage, termasuk assign dan review, dengan banner jumlah pekerjaan yang belum di-assign/perlu diisi/menunggu review/perlu revisi.
+- Keputusan Gerbang dicatat dari tab Overview; Journey hanya menampilkan ringkasan dan tautan ke Overview.
 - Board, Backlog, dan Forms memindahkan fungsi Detail Proyek SIMPRO ke dalam CRM. Route SIMPRO lama diarahkan ke tab CRM yang setara.
 - Memilih Planning tidak membuat step Running; Running kosong sampai ditambahkan.
 - Link Pekerjaan wajib non-empty, tanpa validasi URL, dan memiliki tombol Simpan.
@@ -61,7 +65,8 @@ Checklist dihapus. Data checklist lama dimigrasikan menjadi template Form dengan
 ## Pitching
 
 - Tahap Pitching berurutan: RAB → Quotation → Form Pitching → Decision → Kontrak.
-- RAB dan Quotation hanya di-assign kepada Finance; Finance mengisi dan submit, PM mereview dan menandai selesai atau perlu revisi.
+- RAB dan Quotation di-assign oleh Manager/Admin kepada Finance atau Media; Finance/Media mengisi dan submit, PM mereview.
+- Form Pitching dikerjakan sebagai kartu SIMPRO pada board di dalam detail Pitching: satu kartu per form stage template (dibuat on demand) + kartu custom, enam kolom status, assign Manager/Admin, dan review PM pemilik/Admin. Kartu tidak tampil di inbox Forms.
 - Form Pitching harus selesai sebelum Decision; Kontrak hanya terbuka setelah Pitching menang.
 - Tahap selesai, aktif, dan terkunci dibedakan dengan warna.
 - Pitching menang dengan kontrak lengkap otomatis menjadi anak proyek dengan step dari template Pitching.

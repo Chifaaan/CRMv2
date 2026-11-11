@@ -1,15 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { FormEntryPage } from "@/components/prototype/simpro/form-entry-page";
 
 export default function CrmProspekFormEntryPage() {
-  const params = useParams<{ id: string; entryId: string }>();
+  const params = useParams<{ id: string }>();
   const router = useRouter();
-  return (
-    <FormEntryPage
-      entryId={params.entryId}
-      onBack={() => router.push(`/crm/prospek/${params.id}`)}
-    />
-  );
+  useEffect(() => {
+    router.replace(`/crm/prospek/${params.id}`);
+  }, [params.id, router]);
+  return null;
 }

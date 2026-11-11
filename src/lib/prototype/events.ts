@@ -169,7 +169,7 @@ export function maskProjectEventForViewer(
   event: ProjectEvent,
   viewer: User,
 ): ProjectEvent {
-  if (viewer.role === "assignee") {
+  if (viewer.role === "assignee" || viewer.role === "media") {
     return { ...event, metadata: {} };
   }
   return event;

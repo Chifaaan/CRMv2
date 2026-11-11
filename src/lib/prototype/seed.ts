@@ -17,6 +17,7 @@ import {
   type ProspekPitching,
   type StepForm,
   type StepKey,
+  type Task,
 } from "./types";
 
 function iso(date: string): string {
@@ -196,6 +197,13 @@ export function createSeedState(): AppState {
       email: "finance.demo@example.com",
       role: "finance" as const,
       color: "bg-fuchsia-500",
+    },
+    {
+      id: "u-media",
+      name: "Media Demo",
+      email: "media.demo@example.com",
+      role: "media" as const,
+      color: "bg-cyan-500",
     },
   ];
 
@@ -1320,38 +1328,58 @@ export function createSeedState(): AppState {
     },
   ];
 
-  const prospekFormEntries = [
+  const pitchingTasks: Task[] = [
     {
-      id: "fentry-prospek-concept",
-      scope: "prospek" as const,
+      id: "task-pitch-concept",
+      code: "PITCH-1",
+      stepKey: "form-pitching",
+      scope: "pitching",
       prospekId: "prs-alpha",
       pitchingId: "pp-alpha-event",
-      stepKey: "tpl-event-strategy",
       templateStageId: "tpl-event-strategy",
       title: "Concept Deck Grand Launch",
+      description: "Susun concept deck untuk presentasi klien.",
+      priority: "high",
+      status: "in_progress",
       assigneeId: "u-assignee3",
+      reporterId: "u-pm1",
       dueDate: iso("2026-10-10"),
-      status: "assigned" as const,
-      payload: { values: {}, photos: [] },
-      versions: [],
-      createdById: "u-pm1",
       createdAt: iso("2026-10-03"),
+      checklist: [
+        {
+          id: "chk-pitch-concept-1",
+          text: "Susun konsep acara",
+          done: true,
+        },
+      ],
+      comments: [],
+      attachments: [],
     },
     {
-      id: "fentry-prospek-presentasi",
-      scope: "prospek" as const,
+      id: "task-pitch-presentasi",
+      code: "PITCH-2",
+      stepKey: "form-pitching",
+      scope: "pitching",
       prospekId: "prs-beta",
       pitchingId: "pp-beta-kol",
-      stepKey: "tpl-kol-listing",
       templateStageId: "tpl-kol-listing",
       title: "Presentasi KOL Ramadan",
+      description: "Susun daftar KOL kandidat dan presentasi.",
+      priority: "medium",
+      status: "todo",
       assigneeId: "u-assignee2",
+      reporterId: "u-pm2",
       dueDate: iso("2026-11-18"),
-      status: "assigned" as const,
-      payload: { values: {}, photos: [] },
-      versions: [],
-      createdById: "u-pm2",
       createdAt: iso("2026-11-03"),
+      checklist: [
+        {
+          id: "chk-pitch-presentasi-1",
+          text: "Susun daftar KOL kandidat",
+          done: false,
+        },
+      ],
+      comments: [],
+      attachments: [],
     },
   ];
 
@@ -1387,9 +1415,9 @@ export function createSeedState(): AppState {
     templates: SEED_TEMPLATES,
     pitchings,
     pitchingRoles,
-    tasks: tasksWithStages,
+    tasks: [...tasksWithStages, ...pitchingTasks],
     forms,
-    formEntries: prospekFormEntries,
+    formEntries: [],
     groups: [group],
     prospeks,
     prospekPitchings,

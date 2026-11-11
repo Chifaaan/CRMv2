@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  canEditFormEntry,
   canEditPitchingContract,
   canEditPitchingRab,
   canEditQuotation,
-  canReviewFormEntry,
+  canReviewPitchingTask,
+  canWorkPitchingTask,
   formsNeedingAction,
   isProspekAssignee,
   pitchingStageStates,
@@ -12,6 +12,7 @@ import {
   prospekPitchingsFor,
   prospekPaguSummary,
   prospekWorkItemsForUser,
+  tasksForAssignee,
   userById,
   visibleProspeks,
 } from "../src/lib/prototype/domain";
@@ -19,10 +20,10 @@ import { prospekEventPage } from "../src/lib/prototype/prospek-events";
 import { createSeedState } from "../src/lib/prototype/seed";
 import { usePrototypeStore } from "../src/lib/prototype/store";
 import type {
-  FormEntry,
   PitchingContract,
   Prospek,
   ProspekPitching,
+  Task,
 } from "../src/lib/prototype/types";
 import { FORM_STEP_KEYS } from "../src/lib/prototype/types";
 
@@ -61,41 +62,44 @@ const completeContract: PitchingContract = {
 
 function approvePitchingForm(pitchingId: string) {
   const owner = pitching(pitchingId).createdById;
-  const existing = state().formEntries.filter(
-    (entry) => entry.pitchingId === pitchingId,
+  const existing = state().tasks.filter(
+    (task) => task.pitchingId === pitchingId && task.scope === "pitching",
   );
   if (existing.length > 0) {
     usePrototypeStore.setState({
-      formEntries: state().formEntries.map((entry) =>
-        entry.pitchingId === pitchingId
-          ? { ...entry, status: "approved" as const }
-          : entry,
+      tasks: state().tasks.map((task) =>
+        task.pitchingId === pitchingId
+          ? { ...task, status: "completed" as const }
+          : task,
       ),
     });
     return;
   }
-  const entry: FormEntry = {
-    id: `fentry-test-${pitchingId}`,
-    scope: "prospek",
+  const task: Task = {
+    id: `task-test-${pitchingId}`,
+    code: "PITCH-TEST",
+    stepKey: "form-pitching",
+    scope: "pitching",
     prospekId: pitching(pitchingId).prospekId,
     pitchingId,
-    stepKey: "test-form",
-    templateStageId: "test-form",
     title: "Form Pitching Test",
+    description: "",
+    priority: "medium",
+    status: "completed",
     assigneeId: "u-assignee1",
-    status: "approved",
-    payload: { values: {}, photos: [] },
-    versions: [],
-    createdById: owner,
+    reporterId: owner,
     createdAt: new Date().toISOString(),
+    checklist: [],
+    comments: [],
+    attachments: [],
   };
   usePrototypeStore.setState({
-    formEntries: [...state().formEntries, entry],
+    tasks: [...state().tasks, task],
   });
 }
 
 function prepareWinningPitching() {
-  state().setCurrentUser("u-pm2");
+  state().setCurrentUser("u-manager");
   state().assignPitchingRab("pp-beta-kol", "u-finance");
   state().assignPitchingQuotation("pp-beta-kol", "u-finance");
   state().setCurrentUser("u-finance");
@@ -270,7 +274,7 @@ describe("prospek pitching flow", () => {
   });
 
   it("assigns, saves, submits, and versions RAB", () => {
-    state().setCurrentUser("u-pm2");
+    state().setCurrentUser("u-manager");
     state().assignPitchingRab("pp-beta-kol", "u-finance");
     expect(
       state().pitchingRabs.find((rab) => rab.pitchingId === "pp-beta-kol")
@@ -308,7 +312,7 @@ describe("prospek pitching flow", () => {
   });
 
   it("validates quotation mode and limits approval to the owning PM", () => {
-    state().setCurrentUser("u-pm2");
+    state().setCurrentUser("u-manager");
     state().assignPitchingQuotation("pp-beta-kol", "u-finance");
     state().setCurrentUser("u-finance");
     state().savePitchingQuotation("pp-beta-kol", {
@@ -481,14 +485,17 @@ describe("refined prospek pitching flow", () => {
     expect(isProspekAssignee(assignee)).toBe(true);
     expect(isProspekAssignee(manager)).toBe(true);
     expect(
-      prospekAssigneeCandidates(seed, pm1, alpha).map((user) => user.role),
-    ).toEqual(expect.arrayContaining(["finance", "manager", "assignee"]));
+      prospekAssigneeCandidates(seed, manager, alpha).map((user) => user.role),
+    ).toEqual(
+      expect.arrayContaining(["finance", "manager", "assignee", "media"]),
+    );
+    expect(prospekAssigneeCandidates(seed, pm1, alpha)).toEqual([]);
     expect(visibleProspeks(seed, finance)).toEqual([]);
     expect(visibleProspeks(seed, assignee)).toEqual([]);
   });
 
-  it("only Finance can be assigned to RAB and Quotation", () => {
-    state().setCurrentUser("u-pm2");
+  it("only Manager/Admin can assign RAB and Quotation to Finance or Media", () => {
+    state().setCurrentUser("u-manager");
     usePrototypeStore.setState({
       pitchingRabs: state().pitchingRabs.map((rab) =>
         rab.pitchingId === "pp-beta-kol"
@@ -519,6 +526,18 @@ describe("refined prospek pitching flow", () => {
       state().pitchingRabs.find((rab) => rab.pitchingId === "pp-beta-kol")
         ?.assigneeId,
     ).toBe("u-finance");
+    state().assignPitchingRab("pp-beta-kol", "u-media");
+    state().assignPitchingQuotation("pp-beta-kol", "u-media");
+    expect(
+      state().pitchingRabs.find((rab) => rab.pitchingId === "pp-beta-kol")
+        ?.assigneeId,
+    ).toBe("u-media");
+    state().setCurrentUser("u-pm2");
+    state().assignPitchingRab("pp-beta-kol", "u-finance");
+    expect(
+      state().pitchingRabs.find((rab) => rab.pitchingId === "pp-beta-kol")
+        ?.assigneeId,
+    ).toBe("u-media");
   });
 
   it("marks Pitching stages complete in order", () => {
@@ -543,19 +562,18 @@ describe("refined prospek pitching flow", () => {
     ).toEqual(["complete", "complete", "complete", "complete", "active"]);
   });
 
-  it("projects assigned RAB, quotation, contract, and form work into My Tasks items", () => {
+  it("projects assigned RAB, quotation, contract, and pitching cards into My Tasks", () => {
     prepareWinningPitching();
     state().decideProspekPitching("pp-beta-kol", "won");
+    state().setCurrentUser("u-manager");
     state().assignPitchingRab("pp-beta-kol", "u-finance");
     state().assignPitchingQuotation("pp-beta-kol", "u-finance");
     state().assignPitchingContract("pp-beta-kol", "u-finance", "2026-11-20");
-    const formId = state().createProspekFormEntry(
-      "prs-beta",
-      "pp-beta-kol",
-      "tpl-kol-listing",
-      { title: "Presentasi Ramadan" },
-    );
-    state().assignFormEntry(formId, "u-assignee1");
+    const taskId = state().createPitchingTask("pp-beta-kol", {
+      title: "Presentasi Ramadan",
+      templateStageId: "tpl-kol-listing",
+    });
+    state().assignTask(taskId, "u-assignee1");
 
     expect(
       prospekWorkItemsForUser(state(), "u-finance").map((item) => item.kind),
@@ -565,7 +583,12 @@ describe("refined prospek pitching flow", () => {
     ).not.toContain("quotation");
     expect(
       prospekWorkItemsForUser(state(), "u-assignee1").map((item) => item.kind),
-    ).toContain("form");
+    ).not.toContain("form");
+    expect(
+      tasksForAssignee(state(), "u-assignee1").some(
+        (task) => task.id === taskId,
+      ),
+    ).toBe(true);
     expect(
       prospekWorkItemsForUser(state(), "u-finance").every((item) =>
         item.href.startsWith("/work/prospek/pp-beta-kol"),
@@ -647,6 +670,7 @@ describe("refined prospek pitching flow", () => {
     ).toBe(false);
     prepareWinningPitching();
     state().decideProspekPitching("pp-beta-kol", "won");
+    state().setCurrentUser("u-manager");
     state().assignPitchingContract("pp-beta-kol", "u-finance", "2026-11-20");
     expect(pitching("pp-beta-kol").contractAssigneeId).toBe("u-finance");
     expect(
@@ -693,6 +717,9 @@ describe("refined prospek pitching flow", () => {
     const child = state().projects.find((project) => project.id === projectId)!;
     expect(child.groupId).toBe(existing);
     expect(
+      state().groups.find((group) => group.id === existing)?.createdById,
+    ).toBe("u-pm2");
+    expect(
       state().groups.filter(
         (group) =>
           group.name.trim().toLowerCase() === "kampanye ramadan sehat",
@@ -718,6 +745,7 @@ describe("refined prospek pitching flow", () => {
       description: "",
       templateId: "tpl-kol",
     });
+    state().setCurrentUser("u-manager");
     state().assignPitchingRab(secondPitching, "u-finance");
     state().assignPitchingQuotation(secondPitching, "u-finance");
     state().setCurrentUser("u-finance");
@@ -777,90 +805,87 @@ describe("prospek forms and reminders", () => {
     usePrototypeStore.getState().reset();
   });
 
-  it("creates and assigns a form entry scoped to a pitching", () => {
-    const id = state().createProspekFormEntry(
-      "prs-alpha",
-      "pp-alpha-event",
-      "tpl-event-strategy",
-      { title: "Presentasi Grand Launch" },
-    );
+  it("creates and assigns a pitching card", () => {
+    state().setCurrentUser("u-manager");
+    const id = state().createPitchingTask("pp-alpha-event", {
+      title: "Presentasi Grand Launch",
+      templateStageId: "tpl-event-strategy",
+    });
     expect(id).not.toBe("");
-    const entry = state().formEntries.find((item) => item.id === id)!;
-    expect(entry.scope).toBe("prospek");
-    expect(entry.prospekId).toBe("prs-alpha");
-    expect(entry.pitchingId).toBe("pp-alpha-event");
+    const task = state().tasks.find((item) => item.id === id)!;
+    expect(task.scope).toBe("pitching");
+    expect(task.prospekId).toBe("prs-alpha");
+    expect(task.pitchingId).toBe("pp-alpha-event");
+    expect(task.templateStageId).toBe("tpl-event-strategy");
 
-    state().assignFormEntry(id, "u-assignee1");
+    state().setCurrentUser("u-manager");
+    state().assignTask(id, "u-assignee1");
     expect(
-      state().formEntries.find((item) => item.id === id)?.assigneeId,
+      state().tasks.find((item) => item.id === id)?.assigneeId,
     ).toBe("u-assignee1");
-    expect(formsNeedingAction(state(), "u-assignee1")).toBeGreaterThan(0);
+    expect(
+      tasksForAssignee(state(), "u-assignee1").some((item) => item.id === id),
+    ).toBe(true);
+    expect(formsNeedingAction(state(), "u-assignee1")).toBe(
+      state().formEntries.filter(
+        (entry) => entry.assigneeId === "u-assignee1",
+      ).length,
+    );
   });
 
   it("lets an assignee fill and submit, then the owning PM review", () => {
-    const seedEntry = state().formEntries.find(
-      (item) => item.id === "fentry-prospek-concept",
-    )!;
-    state().assignFormEntry(seedEntry.id, "u-assignee1");
-    state().setCurrentUser("u-assignee1");
-    const entry = state().formEntries.find(
-      (item) => item.id === "fentry-prospek-concept",
-    )!;
-    expect(
-      canEditFormEntry(
-        state(),
-        userById(state(), "u-assignee1")!,
-        entry,
-      ),
-    ).toBe(true);
-    state().saveFormEntry(entry.id, {
-      values: {},
-      photos: [],
-      notes: "Siap",
+    state().setCurrentUser("u-manager");
+    const id = state().createPitchingTask("pp-alpha-event", {
+      title: "Concept Deck Review",
+      templateStageId: "tpl-event-strategy",
     });
-    state().submitFormEntry(entry.id);
+    state().setCurrentUser("u-manager");
+    state().assignTask(id, "u-assignee1");
+    state().setCurrentUser("u-assignee1");
     expect(
-      state().formEntries.find((item) => item.id === entry.id)?.status,
-    ).toBe("submitted");
+      canWorkPitchingTask(userById(state(), "u-assignee1")!, state().tasks.find((item) => item.id === id)!),
+    ).toBe(true);
+    state().transitionTask(id, "in_progress", {
+      workUrl: "https://example.com/deck",
+    });
+    state().transitionTask(id, "awaiting_approval");
+    expect(
+      state().tasks.find((item) => item.id === id)?.status,
+    ).toBe("awaiting_approval");
 
     state().setCurrentUser("u-pm1");
-    const submitted = state().formEntries.find((item) => item.id === entry.id)!;
     expect(
-      canReviewFormEntry(state(), userById(state(), "u-pm1")!, submitted),
+      canReviewPitchingTask(
+        state(),
+        userById(state(), "u-pm1")!,
+        state().tasks.find((item) => item.id === id)!,
+      ),
     ).toBe(true);
-    state().reviewFormEntry(entry.id, "approved", "OK");
-    expect(
-      state().formEntries.find((item) => item.id === entry.id)?.status,
-    ).toBe("approved");
+    state().transitionTask(id, "completed");
+    expect(state().tasks.find((item) => item.id === id)?.status).toBe(
+      "completed",
+    );
   });
 
-  it("locks forms for a losing pitching", () => {
-    const base = state().formEntries[0];
-    const lockedEntry: FormEntry = {
-      ...base,
-      id: "locked-entry",
-      scope: "prospek",
-      projectId: undefined,
-      prospekId: "prs-alpha",
-      pitchingId: "pp-alpha-kol",
-      assigneeId: "u-assignee1",
-      status: "assigned",
-    };
+  it("locks pitching cards for a losing pitching", () => {
     expect(
-      canEditFormEntry(
-        state(),
-        userById(state(), "u-assignee1")!,
-        lockedEntry,
-      ),
-    ).toBe(false);
-    expect(
-      state().createProspekFormEntry(
-        "prs-alpha",
-        "pp-alpha-kol",
-        "tpl-kol-listing",
-        { title: "Tidak boleh" },
-      ),
+      state().createPitchingTask("pp-alpha-kol", {
+        title: "Tidak boleh",
+        templateStageId: "tpl-kol-listing",
+      }),
     ).toBe("");
+    state().setCurrentUser("u-manager");
+    const card = state().createPitchingTask("pp-alpha-event", {
+      title: "Kartu Kalah",
+      templateStageId: "tpl-event-strategy",
+    });
+    state().assignTask(card, "u-assignee1");
+    state().setCurrentUser("u-assignee1");
+    expect(
+      state().transitionTask(card, "in_progress", {
+        workUrl: "https://example.com/card",
+      }),
+    ).toBeUndefined();
   });
 
   it("creates overdue reminders once and never sends email", () => {

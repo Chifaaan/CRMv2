@@ -373,11 +373,16 @@ export function GroupDialog({
   initialProjectIds?: string[];
 }) {
   const store = usePrototypeStore();
+  const currentUser = userById(store, store.currentUserId);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const availableProjects = store.projects.filter(isGroupableProject);
+  const availableProjects = store.projects.filter(
+    (project) =>
+      isGroupableProject(project) &&
+      (currentUser?.role !== "pm" || project.createdById === currentUser.id),
+  );
   const toggleProject = (projectId: string) => {
     setSelectedProjects((current) =>
       current.includes(projectId)
@@ -405,11 +410,11 @@ export function GroupDialog({
 
   const save = async () => {
     if (!name.trim()) {
-      toast.error("Nama group wajib diisi.");
+      toast.error("Nama Umbrella wajib diisi.");
       return;
     }
     if (!group && selectedProjects.length < 2) {
-      toast.error("Group minimal berisi 2 proyek.");
+      toast.error("Umbrella minimal berisi 2 proyek.");
       return;
     }
     setSaving(true);
@@ -425,15 +430,17 @@ export function GroupDialog({
         const groupId = store.createGroup({
           name: name.trim(),
           description: description.trim(),
+          projectIds: selectedProjects,
         });
-        for (const projectId of selectedProjects) {
-          store.addProjectToGroup(groupId, projectId);
+        if (!groupId) {
+          toast.error("Gagal membuat Umbrella.");
+          return;
         }
       }
-      toast.success(group ? "Group diperbarui." : "Group dibuat.");
+      toast.success(group ? "Umbrella diperbarui." : "Umbrella dibuat.");
       onOpenChange(false);
     } catch {
-      toast.error("Gagal menyimpan group. Coba lagi.");
+      toast.error("Gagal menyimpan Umbrella. Coba lagi.");
     } finally {
       setSaving(false);
     }
@@ -448,13 +455,13 @@ export function GroupDialog({
     >
       <DialogContent showCloseButton={!saving}>
         <DialogHeader>
-          <DialogTitle>{group ? "Edit Group" : "Group Baru"}</DialogTitle>
+          <DialogTitle>{group ? "Edit Umbrella" : "Umbrella Baru"}</DialogTitle>
           <DialogDescription>
             Group adalah container untuk memantau beberapa proyek. Minimal 2 proyek.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <Field label="Nama group">
+          <Field label="Nama Umbrella">
             <Input value={name} onChange={(event) => setName(event.target.value)} />
           </Field>
           <Field label="Deskripsi">
@@ -465,7 +472,7 @@ export function GroupDialog({
               <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border p-2">
                 {availableProjects.length === 0 ? (
                   <p className="text-muted-foreground text-xs">
-                    Semua proyek sudah berada di group.
+                    Semua proyek sudah berada di Umbrella.
                   </p>
                 ) : (
                   availableProjects.map((project) => (
@@ -501,7 +508,7 @@ export function GroupDialog({
             Batal
           </Button>
           <Button disabled={saving} onClick={save}>
-            {saving ? "Menyimpan…" : group ? "Simpan" : "Buat group"}
+            {saving ? "Menyimpan…" : group ? "Simpan" : "Buat Umbrella"}
           </Button>
         </DialogFooter>
       </DialogContent>

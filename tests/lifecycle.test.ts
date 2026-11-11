@@ -117,7 +117,7 @@ describe("post-prospek project lifecycle", () => {
         name: "Active Renamed",
         managerPicId: "u-manager",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       state().updateProjectStep(projectId, active.id, { phase: "running" }),
     ).toBe(false);

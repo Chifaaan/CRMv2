@@ -50,7 +50,7 @@ const NAV_CRM = [
   { href: "/crm", label: "Dashboard", icon: LayoutDashboard },
   { href: "/crm/projects", label: "Projects", icon: FolderKanban },
   { href: "/crm/prospek", label: "Prospek", icon: Target },
-  { href: "/crm/groups", label: "Groups", icon: Users },
+  { href: "/crm/groups", label: "Umbrella", icon: Users },
   { href: "/crm/templates", label: "Templates", icon: LayoutTemplate },
   { href: "/crm/workload", label: "Workload", icon: Gauge },
 ];
@@ -81,7 +81,7 @@ function titleForPath(pathname: string): string {
   if (pathname === "/crm/prospek") return "Prospek";
   if (pathname.startsWith("/crm/projects/")) return "Detail Proyek";
   if (pathname === "/crm/projects") return "Projects";
-  if (pathname === "/crm/groups") return "Groups";
+  if (pathname === "/crm/groups") return "Umbrella";
   if (pathname === "/crm/templates") return "Templates";
   if (pathname === "/crm/workload") return "Workload";
   if (pathname.startsWith("/crm")) return "CRM";

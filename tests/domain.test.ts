@@ -292,8 +292,8 @@ describe("workload and groups", () => {
     const andi = rows.find((row) => row.user.id === "u-assignee3")!;
 
     expect(assignee1.activeCount).toBe(3);
-    expect(assignee2.activeCount).toBe(2);
-    expect(andi.activeCount).toBe(3);
+    expect(assignee2.activeCount).toBe(3);
+    expect(andi.activeCount).toBe(4);
     expect(assignee1.statusCounts.need_revision).toBe(1);
     expect(assignee1.overdueCount).toBe(1);
   });

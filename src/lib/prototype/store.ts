@@ -7,12 +7,16 @@ import {
   canAssignOperational,
   canAssignKanbanTask,
   canAssignPitchingContract,
+  canAssignPitchingTask,
   canAssignProjectManager,
   canAssignProspekWork,
   canCancelKanbanTask,
   canCancelFormEntry,
+  canAddProjectToGroup,
   canConvertPitching,
   canCreateFormEntry,
+  canCreateGroup,
+  canCreatePitchingTask,
   canCreateProspek,
   canCreateTask,
   canDecidePitching,
@@ -20,10 +24,12 @@ import {
   canEditPitchingContract,
   canEditPitchingRab,
   canEditQuotation,
+  canManageGroup,
   canManageProject,
   canManageProspek,
   canManageTemplates,
   canReviewFormEntry,
+  canWorkPitchingTask,
   canWorkTask,
   contractComplete,
   evaluateGate,
@@ -31,11 +37,13 @@ import {
   groupCompleted,
   isNewLifecycleProject,
   isProspekComplete,
+  isScheduledTask,
   missingFinanceSteps,
   pitchingForFormEntry,
   pitchingFormComplete,
   pitchingQuotationFor,
   pitchingRabFor,
+  pitchingTaskAssignees,
   projectPhase,
   prospekAssigneeCandidates,
   prospekFinanceCandidates,
@@ -145,6 +153,7 @@ type TemplateInput = {
 type GroupInput = {
   name: string;
   description: string;
+  projectIds?: string[];
 };
 
 type ProspekInput = {
@@ -264,6 +273,18 @@ type PrototypeActions = {
     },
   ) => string;
   assignTask: (taskId: string, userId: string) => void;
+  createPitchingTask: (
+    pitchingId: string,
+    input: {
+      title: string;
+      description?: string;
+      priority?: Priority;
+      dueDate?: string;
+      templateStageId?: string;
+    },
+  ) => string;
+  createPitchingTasksFromTemplate: (pitchingId: string) => number;
+  archivePitchingTask: (taskId: string, reason: string) => void;
   transitionTask: (
     taskId: string,
     to: TaskStatus,
@@ -883,12 +904,30 @@ export function migratePersistedState(persisted: unknown): PersistedState {
 
   const tasks = Array.isArray(state.tasks)
     ? (state.tasks as Task[]).map((task) => {
-        if (task.stageId) return task;
-        const step = steps.find(
-          (item) =>
-            item.projectId === task.projectId && item.key === task.stepKey,
-        );
-        return { ...task, stageId: step?.id };
+        const scope =
+          task.scope ??
+          (task.pitchingId && !task.projectId
+            ? ("pitching" as const)
+            : ("project" as const));
+        const pitching =
+          scope === "pitching" && task.pitchingId
+            ? (state.prospekPitchings as AppState["prospekPitchings"] | undefined)?.find(
+                (item) => item.id === task.pitchingId,
+              )
+            : undefined;
+        const step =
+          scope === "project" && task.projectId
+            ? steps.find(
+                (item) =>
+                  item.projectId === task.projectId && item.key === task.stepKey,
+              )
+            : undefined;
+        return {
+          ...task,
+          scope,
+          prospekId: task.prospekId ?? pitching?.prospekId,
+          stageId: task.stageId ?? step?.id,
+        };
       })
     : [];
 
@@ -901,7 +940,9 @@ export function migratePersistedState(persisted: unknown): PersistedState {
     formEntries: Array.isArray(state.formEntries)
       ? (state.formEntries as FormEntry[]).map((entry) => ({
           ...entry,
-          scope: entry.scope ?? ("project" as const),
+          scope:
+            entry.scope ??
+            (entry.pitchingId ? ("prospek" as const) : ("project" as const)),
         }))
       : [],
     prospeks: Array.isArray(state.prospeks) ? state.prospeks : [],
@@ -1447,9 +1488,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           return false;
         }
         if (input.name !== undefined && !input.name.trim()) return false;
-        if (step.status !== "pending") {
-          if (input.phase !== undefined) return false;
-        }
+        if (step.status !== "pending") return false;
         const before = {
           name: step.name,
           description: step.description ?? "",
@@ -2535,8 +2574,15 @@ export const usePrototypeStore = create<PrototypeStore>()(
         if (
           !step ||
           step.kind !== "simpro" ||
-          step.status !== "active" ||
+          (step.status !== "active" && step.status !== "pending") ||
           (isNewLifecycleProject(project) && step.phase === "finance")
+        ) {
+          return "";
+        }
+        if (
+          step.status === "pending" &&
+          actor.role !== "admin" &&
+          !(actor.role === "pm" && project.createdById === actor.id)
         ) {
           return "";
         }
@@ -2589,6 +2635,134 @@ export const usePrototypeStore = create<PrototypeStore>()(
         return taskId;
       },
 
+      createPitchingTask: (pitchingId, input) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        if (!actor || !pitching || !input.title.trim()) return "";
+        if (!canCreatePitchingTask(state, actor, pitching)) return "";
+        const template = state.templates.find(
+          (item) => item.id === pitching.templateId,
+        );
+        const stage = input.templateStageId
+          ? template?.stages.find(
+              (item) =>
+                item.id === input.templateStageId &&
+                item.kind === "form" &&
+                item.phase === "prospek",
+            )
+          : undefined;
+        if (input.templateStageId && !stage) return "";
+        const taskId = uid("task");
+        const checklist =
+          stage?.formTemplate?.fields
+            .find((field) => field.type === "checklist")
+            ?.options?.map((text, index) => ({
+              id: `chk-${taskId}-${index}`,
+              text,
+              done: false,
+            })) ?? [];
+        const task: Task = {
+          id: taskId,
+          code: `PITCH-${state.tasks.filter((item) => item.pitchingId === pitchingId).length + 1}`,
+          stepKey: "form-pitching",
+          scope: "pitching",
+          prospekId: pitching.prospekId,
+          pitchingId,
+          ...(stage ? { templateStageId: stage.id } : {}),
+          title: input.title.trim(),
+          description: input.description?.trim() ?? stage?.description ?? "",
+          priority: input.priority ?? "medium",
+          status: "backlog",
+          reporterId: actor.id,
+          dueDate: input.dueDate,
+          createdAt: now(),
+          checklist,
+          comments: [],
+          attachments: [],
+        };
+        set({
+          tasks: [...state.tasks, task],
+          prospekEvents: recordProspekEvent(state.prospekEvents, {
+            prospekId: pitching.prospekId,
+            pitchingId,
+            eventType: "pitching.task_created",
+            actorId: actor.id,
+            summary: `Kartu Form Pitching ${task.title} dibuat.`,
+            metadata: { taskId, templateStageId: stage?.id ?? null },
+          }),
+        });
+        return taskId;
+      },
+
+      createPitchingTasksFromTemplate: (pitchingId) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const pitching = state.prospekPitchings.find(
+          (item) => item.id === pitchingId,
+        );
+        if (!actor || !pitching || !canCreatePitchingTask(state, actor, pitching)) {
+          return 0;
+        }
+        const template = state.templates.find(
+          (item) => item.id === pitching.templateId,
+        );
+        if (!template) return 0;
+        const existing = new Set(
+          state.tasks
+            .filter((task) => task.pitchingId === pitchingId && !task.archivedAt)
+            .map((task) => task.templateStageId)
+            .filter(Boolean),
+        );
+        const stages = template.stages
+          .filter(
+            (stage) => stage.kind === "form" && stage.phase === "prospek",
+          )
+          .filter((stage) => !existing.has(stage.id));
+        let created = 0;
+        for (const stage of stages) {
+          const id = get().createPitchingTask(pitchingId, {
+            title: stage.name,
+            description: stage.description,
+            templateStageId: stage.id,
+          });
+          if (id) created += 1;
+        }
+        return created;
+      },
+
+      archivePitchingTask: (taskId, reason) => {
+        const state = get();
+        const actor = userById(state, state.currentUserId);
+        const task = state.tasks.find((item) => item.id === taskId);
+        if (!task || !actor || !reason.trim()) return;
+        if (task.scope !== "pitching" && !task.pitchingId) return;
+        if (task.status !== "backlog" && task.status !== "todo") return;
+        const prospek = prospekById(state, task.prospekId);
+        if (!canManageProspek(actor, prospek)) return;
+        set({
+          tasks: state.tasks.map((item) =>
+            item.id === taskId
+              ? {
+                  ...item,
+                  archivedAt: now(),
+                  archiveReason: reason.trim(),
+                }
+              : item,
+          ),
+          prospekEvents: recordProspekEvent(state.prospekEvents, {
+            prospekId: task.prospekId ?? prospek?.id ?? "",
+            pitchingId: task.pitchingId,
+            eventType: "pitching.task_archived",
+            actorId: actor.id,
+            summary: `Kartu Form Pitching ${task.title} dibatalkan: ${reason.trim()}.`,
+            metadata: { taskId, status: task.status },
+          }),
+        });
+      },
+
       assignTask: (taskId, userId) => {
         const state = get();
         const task = state.tasks.find((item) => item.id === taskId);
@@ -2597,9 +2771,23 @@ export const usePrototypeStore = create<PrototypeStore>()(
         const project = state.projects.find(
           (item) => item.id === task.projectId,
         );
+        const pitching = task.pitchingId
+          ? state.prospekPitchings.find((item) => item.id === task.pitchingId)
+          : undefined;
         const user = userById(state, userId);
-        if (!actor || !user || !project) return;
-        if (isNewLifecycleProject(project)) {
+        if (!actor || !user) return;
+        if (task.scope === "pitching" || (!project && pitching)) {
+          if (
+            !canAssignPitchingTask(state, actor, pitching) ||
+            !pitchingTaskAssignees(state, actor, pitching).some(
+              (candidate) => candidate.id === userId,
+            )
+          ) {
+            return;
+          }
+        } else if (!project) {
+          return;
+        } else if (isNewLifecycleProject(project)) {
           if (
             task.status !== "backlog" ||
             !canAssignKanbanTask(actor, project, user)
@@ -2609,10 +2797,15 @@ export const usePrototypeStore = create<PrototypeStore>()(
         } else if (!canAssignOperational(actor, project, user)) {
           return;
         }
+        const scheduled = isScheduledTask(state, task);
         set({
           tasks: state.tasks.map((item) =>
             item.id === taskId
-              ? { ...item, assigneeId: userId, status: "todo" }
+              ? {
+                  ...item,
+                  assigneeId: userId,
+                  status: scheduled ? "backlog" : "todo",
+                }
               : item,
           ),
           notifications: user
@@ -2630,25 +2823,33 @@ export const usePrototypeStore = create<PrototypeStore>()(
           activityLogs: [
             ...state.activityLogs,
             activity(state, {
-              projectId: task.projectId,
+              projectId: task.projectId ?? "",
               taskId,
               actorId: state.currentUserId,
               action: "task_assigned",
               message: `Task di-assign ke ${user?.name ?? "user"}.`,
             }),
           ],
-          projectEvents: projectEvent(state, {
-            projectId: task.projectId,
-            step: task.stepKey,
-            eventType: "task.assigned",
-            summary: `Task ${task.code} di-assign ke ${user?.name ?? "user"}.`,
-            metadata: {
-              taskId,
-              assigneeRole: user.role,
-              before: { assigneeId: task.assigneeId ?? null, status: task.status },
-              after: { assigneeId: userId, status: "todo" },
-            },
-          }),
+          projectEvents: task.projectId
+            ? projectEvent(state, {
+                projectId: task.projectId,
+                step: task.stepKey,
+                eventType: "task.assigned",
+                summary: `Task ${task.code} di-assign ke ${user?.name ?? "user"}.`,
+                metadata: {
+                  taskId,
+                  assigneeRole: user.role,
+                  before: {
+                    assigneeId: task.assigneeId ?? null,
+                    status: task.status,
+                  },
+                  after: {
+                    assigneeId: userId,
+                    status: scheduled ? "backlog" : "todo",
+                  },
+                },
+              })
+            : state.projectEvents,
         });
       },
 
@@ -2683,6 +2884,16 @@ export const usePrototypeStore = create<PrototypeStore>()(
               }
             : {}),
         };
+        const pitching = task.pitchingId
+          ? state.prospekPitchings.find((item) => item.id === task.pitchingId)
+          : undefined;
+        const prospek = pitching
+          ? state.prospeks.find((item) => item.id === pitching.prospekId)
+          : undefined;
+        const ownerId = project?.createdById ?? prospek?.createdById ?? task.reporterId;
+        const boardHref = pitching
+          ? `/crm/prospek/${pitching.prospekId}/pitching/${pitching.id}`
+          : `/projects/${task.projectId}/board`;
         set({
           tasks: state.tasks.map((item) => (item.id === taskId ? nextTask : item)),
           notifications:
@@ -2690,11 +2901,11 @@ export const usePrototypeStore = create<PrototypeStore>()(
               ? [
                   ...state.notifications,
                   notify(state, {
-                    userId: project?.createdById ?? task.reporterId,
+                    userId: ownerId,
                     type: "task_submitted",
                     title: "Task menunggu review",
                     body: task.title,
-                    href: `/projects/${task.projectId}/board`,
+                    href: boardHref,
                   }),
                 ]
               : to === "need_revision" && task.assigneeId
@@ -2705,43 +2916,47 @@ export const usePrototypeStore = create<PrototypeStore>()(
                       type: "task_revision",
                       title: "Task perlu revisi",
                       body: comment || task.title,
-                      href: `/my-tasks`,
+                      href: pitching
+                        ? `/work/prospek/${pitching.id}/form`
+                        : `/my-tasks`,
                     }),
                   ]
                 : state.notifications,
           activityLogs: [
             ...state.activityLogs,
             activity(state, {
-              projectId: task.projectId,
+              projectId: task.projectId ?? "",
               taskId,
               actorId: state.currentUserId,
               action: "task_status",
               message: `Status task menjadi ${TASK_STATUS_LABEL[to]}.`,
             }),
           ],
-          projectEvents: projectEvent(state, {
-            projectId: task.projectId,
-            step: task.stepKey,
-            eventType:
-              to === "completed"
-                ? "task.completed"
-                : to === "need_revision"
-                  ? "task.need_revision"
-                  : "task.status_changed",
-            summary: `Task ${task.code} menjadi ${TASK_STATUS_LABEL[to]}.`,
-            metadata: {
-              taskId,
-              before: {
-                status: task.status,
-                workUrl: task.workUrl ?? null,
-              },
-              after: {
-                status: to,
-                workUrl: nextWorkUrl ?? null,
-                comment: comment ?? null,
-              },
-            },
-          }),
+          projectEvents: task.projectId
+            ? projectEvent(state, {
+                projectId: task.projectId,
+                step: task.stepKey,
+                eventType:
+                  to === "completed"
+                    ? "task.completed"
+                    : to === "need_revision"
+                      ? "task.need_revision"
+                      : "task.status_changed",
+                summary: `Task ${task.code} menjadi ${TASK_STATUS_LABEL[to]}.`,
+                metadata: {
+                  taskId,
+                  before: {
+                    status: task.status,
+                    workUrl: task.workUrl ?? null,
+                  },
+                  after: {
+                    status: to,
+                    workUrl: nextWorkUrl ?? null,
+                    comment: comment ?? null,
+                  },
+                },
+              })
+            : state.projectEvents,
         });
       },
 
@@ -2754,7 +2969,11 @@ export const usePrototypeStore = create<PrototypeStore>()(
           !actor ||
           task.status === "completed" ||
           !validWorkUrl(workUrl) ||
-          !canWorkTask(actor, task)
+          !(
+            task.scope === "pitching" || (!task.projectId && task.pitchingId)
+              ? canWorkPitchingTask(actor, task)
+              : canWorkTask(actor, task)
+          )
         ) {
           return;
         }
@@ -2762,17 +2981,19 @@ export const usePrototypeStore = create<PrototypeStore>()(
           tasks: state.tasks.map((item) =>
             item.id === taskId ? { ...item, workUrl: workUrl.trim() } : item,
           ),
-          projectEvents: projectEvent(state, {
-            projectId: task.projectId,
-            step: task.stepKey,
-            eventType: "task.work_link_changed",
-            summary: `Link Pekerjaan ${task.code} diperbarui.`,
-            metadata: {
-              taskId,
-              before: { workUrl: task.workUrl ?? null },
-              after: { workUrl: workUrl.trim() },
-            },
-          }),
+          projectEvents: task.projectId
+            ? projectEvent(state, {
+                projectId: task.projectId,
+                step: task.stepKey,
+                eventType: "task.work_link_changed",
+                summary: `Link Pekerjaan ${task.code} diperbarui.`,
+                metadata: {
+                  taskId,
+                  before: { workUrl: task.workUrl ?? null },
+                  after: { workUrl: workUrl.trim() },
+                },
+              })
+            : state.projectEvents,
         });
       },
 
@@ -2802,7 +3023,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
           activityLogs: [
             ...state.activityLogs,
             activity(state, {
-              projectId: task.projectId,
+              projectId: task.projectId ?? "",
               taskId,
               actorId: state.currentUserId,
               action: "task_deleted",
@@ -2810,7 +3031,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             }),
           ],
           projectEvents: projectEvent(state, {
-            projectId: task.projectId,
+            projectId: task.projectId ?? "",
             step: task.stepKey,
             eventType: "task.deleted",
             summary: `Task ${task.code} dihapus: ${reason}`,
@@ -2845,7 +3066,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
               : item,
           ),
           projectEvents: projectEvent(state, {
-            projectId: task.projectId,
+            projectId: task.projectId ?? "",
             step: task.stepKey,
             eventType: "task.commented",
             summary: `Komentar baru pada ${task.code}.`,
@@ -2871,7 +3092,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
               : item,
           ),
           projectEvents: projectEvent(state, {
-            projectId: task.projectId,
+            projectId: task.projectId ?? "",
             step: task.stepKey,
             eventType: "task.checklist_updated",
             summary: `Checklist ${task.code} ditambah: ${text}.`,
@@ -2899,7 +3120,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
               : row,
           ),
           projectEvents: projectEvent(state, {
-            projectId: task.projectId,
+            projectId: task.projectId ?? "",
             step: task.stepKey,
             eventType: "task.checklist_updated",
             summary: `Checklist ${task.code} diperbarui.`,
@@ -2923,7 +3144,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
               : item,
           ),
           projectEvents: projectEvent(state, {
-            projectId: task.projectId,
+            projectId: task.projectId ?? "",
             step: task.stepKey,
             eventType: "task.attachment_added",
             summary: `Lampiran ${attachment.fileName} ditambahkan ke ${task.code}.`,
@@ -2949,7 +3170,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
               : item,
           ),
           projectEvents: projectEvent(state, {
-            projectId: task.projectId,
+            projectId: task.projectId ?? "",
             step: task.stepKey,
             eventType: "task.attachment_removed",
             summary: `Lampiran ${attachment?.fileName ?? attachmentId} dihapus dari ${task.code}.`,
@@ -3853,32 +4074,85 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
       createGroup: (input) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
+        if (!actor || !canCreateGroup(actor) || !input.name.trim()) return "";
+        const projectIds = [...new Set(input.projectIds ?? [])];
+        if (projectIds.length > 0 && projectIds.length < 2) return "";
+        const projects = projectIds
+          .map((projectId) =>
+            state.projects.find((item) => item.id === projectId),
+          )
+          .filter((project): project is Project => Boolean(project));
+        if (projects.length !== projectIds.length) return "";
+        if (
+          actor.role === "pm" &&
+          projects.some((project) => project.createdById !== actor.id)
+        ) {
+          return "";
+        }
         const group = {
           id: uid("group"),
-          name: input.name,
-          description: input.description,
+          name: input.name.trim(),
+          description: input.description.trim(),
           status: "active" as const,
           createdById: state.currentUserId,
           createdAt: now(),
         };
-        set({ groups: [...state.groups, group] });
+        let events = state.projectEvents;
+        for (const project of projects) {
+          events = recordProjectEvent(events, {
+            projectId: project.id,
+            step: null,
+            eventType: "project.group_joined",
+            actorId: state.currentUserId,
+            groupId: group.id,
+            summary: `Proyek masuk Umbrella ${group.name}.`,
+            metadata: {
+              before: { groupId: project.groupId ?? null },
+              after: { groupId: group.id },
+            },
+          });
+        }
+        set({
+          groups: [...state.groups, group],
+          projects: state.projects.map((project) =>
+            projectIds.includes(project.id)
+              ? { ...project, groupId: group.id }
+              : project,
+          ),
+          projectEvents: events,
+        });
         return group.id;
       },
 
       updateGroup: (groupId, input) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
+        const group = state.groups.find((item) => item.id === groupId);
+        if (!actor || !group || !canManageGroup(actor, group)) return;
+        const nextName = input.name.trim();
+        if (!nextName) return;
         set({
-          groups: state.groups.map((group) =>
-            group.id === groupId ? { ...group, ...input } : group,
+          groups: state.groups.map((item) =>
+            item.id === groupId
+              ? {
+                  ...item,
+                  name: nextName,
+                  description: input.description.trim(),
+                }
+              : item,
           ),
         });
       },
 
       addProjectToGroup: (groupId, projectId) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
         const project = state.projects.find((item) => item.id === projectId);
         const group = state.groups.find((item) => item.id === groupId);
-        if (!project) return;
+        if (!actor || !project || !canAddProjectToGroup(actor, group, project)) {
+          return;
+        }
         set({
           projects: state.projects.map((item) =>
             item.id === projectId ? { ...item, groupId } : item,
@@ -3888,7 +4162,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             step: null,
             eventType: "project.group_joined",
             groupId,
-            summary: `Proyek masuk group ${group?.name ?? groupId}.`,
+            summary: `Proyek masuk Umbrella ${group?.name ?? groupId}.`,
             metadata: {
               before: { groupId: project.groupId ?? null },
               after: { groupId },
@@ -3899,11 +4173,20 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
       removeProjectFromGroup: (projectId) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
         const project = state.projects.find((item) => item.id === projectId);
-        if (!project) return;
-        const group = project.groupId
+        const group = project?.groupId
           ? state.groups.find((item) => item.id === project.groupId)
           : undefined;
+        if (!actor || !project || !group) return;
+        if (!canAddProjectToGroup(actor, group, project)) return;
+        const members = state.projects.filter(
+          (item) => item.groupId === group.id && item.id !== projectId,
+        );
+        if (members.length <= 1) {
+          get().disbandGroup(group.id);
+          return;
+        }
         set({
           projects: state.projects.map((item) =>
             item.id === projectId ? { ...item, groupId: undefined } : item,
@@ -3913,7 +4196,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             step: null,
             eventType: "project.group_left",
             groupId: project.groupId,
-            summary: `Proyek keluar dari group ${group?.name ?? project.groupId ?? ""}.`,
+            summary: `Proyek keluar dari Umbrella ${group.name}.`,
             metadata: {
               before: { groupId: project.groupId ?? null },
               after: { groupId: null },
@@ -3924,7 +4207,9 @@ export const usePrototypeStore = create<PrototypeStore>()(
 
       disbandGroup: (groupId) => {
         const state = get();
+        const actor = userById(state, state.currentUserId);
         const group = state.groups.find((item) => item.id === groupId);
+        if (!actor || !group || !canManageGroup(actor, group)) return;
         const members = state.projects.filter(
           (project) => project.groupId === groupId,
         );
@@ -3936,7 +4221,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
             eventType: "project.group_left",
             actorId: state.currentUserId,
             groupId,
-            summary: `Group ${group?.name ?? groupId} dibubarkan; proyek keluar dari group.`,
+            summary: `Umbrella ${group.name} dibubarkan; proyek keluar dari Umbrella.`,
             metadata: {
               before: { groupId },
               after: { groupId: null },
@@ -5076,6 +5361,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
               assigneeId?: string;
               dueDate?: string;
               label: string;
+              href?: string;
             }[] = [];
             const rab = pitchingRabFor(state, pitching.id);
             if (rab?.assigneeId) {
@@ -5100,17 +5386,20 @@ export const usePrototypeStore = create<PrototypeStore>()(
                 label: `Kontrak ${pitching.title}`,
               });
             }
-            for (const entry of state.formEntries) {
-              if (entry.pitchingId !== pitching.id || !entry.assigneeId) {
-                continue;
-              }
-              if (!["assigned", "draft", "need_revision"].includes(entry.status)) {
+            for (const task of state.tasks) {
+              if (
+                task.pitchingId !== pitching.id ||
+                task.archivedAt ||
+                !task.assigneeId ||
+                !["todo", "in_progress", "need_revision"].includes(task.status)
+              ) {
                 continue;
               }
               reminders.push({
-                assigneeId: entry.assigneeId,
-                dueDate: entry.dueDate,
-                label: entry.title,
+                assigneeId: task.assigneeId,
+                dueDate: task.dueDate,
+                label: task.title,
+                href: `/work/prospek/${pitching.id}/form`,
               });
             }
             for (const reminder of reminders) {
@@ -5131,7 +5420,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
                     ? "Pekerjaan Prospek overdue"
                     : "Pekerjaan Prospek mendekati due date",
                 body: reminder.label,
-                href,
+                href: reminder.href ?? href,
               });
             }
           }
@@ -5164,7 +5453,7 @@ export const usePrototypeStore = create<PrototypeStore>()(
     }),
     {
       name: "crm-simpro:v1",
-      version: 9,
+      version: 10,
       migrate: (persisted) =>
         migratePersistedState(persisted) as unknown as PrototypeStore,
       partialize: (state) => ({

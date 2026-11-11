@@ -6,8 +6,12 @@ import { Kanban, LayoutList, Rows3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePrototypeStore } from "@/lib/prototype/store";
 import {
+  assignmentQueueForUser,
   formatDate,
   isOverdue,
+  isScheduledTask,
+  operationalAssigneeCandidates,
+  pitchingTaskAssignees,
   prospekWorkItemsForUser,
   tasksForAssignee,
   userById,
@@ -30,6 +34,7 @@ import {
 import { TaskDialog } from "../dialogs";
 import { TaskBoard } from "./board";
 import { ProjectAccordion } from "./project-accordion";
+import { toast } from "sonner";
 
 type View = "board" | "list" | "swimlane";
 
@@ -45,7 +50,12 @@ export function MyTasksPage() {
   const store = usePrototypeStore();
   const currentUser = userById(store, store.currentUserId);
   const tasks = useMemo(
-    () => (currentUser ? tasksForAssignee(store, currentUser.id) : []),
+    () =>
+      currentUser
+        ? tasksForAssignee(store, currentUser.id).filter(
+            (task) => !isScheduledTask(store, task),
+          )
+        : [],
     [store, currentUser],
   );
   const prospekWork = useMemo(
@@ -59,6 +69,11 @@ export function MyTasksPage() {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTask, setActiveTask] = useState<Task | undefined>();
+  const [queueUser, setQueueUser] = useState<Record<string, string>>({});
+  const queue = useMemo(
+    () => (currentUser ? assignmentQueueForUser(store, currentUser) : []),
+    [store, currentUser],
+  );
 
   const projectOptions = useMemo(() => {
     const ids = [...new Set(tasks.map((task) => task.projectId))];
@@ -89,6 +104,7 @@ export function MyTasksPage() {
   const groups = useMemo(() => {
     const map = new Map<string, Task[]>();
     for (const task of filtered) {
+      if (!task.projectId) continue;
       map.set(task.projectId, [...(map.get(task.projectId) ?? []), task]);
     }
     return [...map.entries()]
@@ -103,6 +119,25 @@ export function MyTasksPage() {
       .sort((a, b) => a.project.name.localeCompare(b.project.name));
   }, [filtered, store.projects]);
 
+  const pitchingGroups = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const task of filtered) {
+      if (task.projectId || !task.pitchingId) continue;
+      map.set(task.pitchingId, [
+        ...(map.get(task.pitchingId) ?? []),
+        task,
+      ]);
+    }
+    return [...map.entries()].flatMap(([id, list]) => {
+      const pitching = store.prospekPitchings.find((item) => item.id === id);
+      if (!pitching) return [];
+      const prospek = store.prospeks.find(
+        (item) => item.id === pitching.prospekId,
+      );
+      return [{ pitching, prospek, tasks: sortByStatus(list) }];
+    });
+  }, [filtered, store.prospekPitchings, store.prospeks]);
+
   if (!currentUser) return null;
 
   const openTask = (task: Task) => {
@@ -116,6 +151,33 @@ export function MyTasksPage() {
         ? current.filter((item) => item !== id)
         : [...current, id],
     );
+  };
+
+  const candidatesFor = (item: (typeof queue)[number]) => {
+    if (item.kind === "form") {
+      return operationalAssigneeCandidates(store, currentUser, item.project);
+    }
+    if (item.pitching) {
+      return pitchingTaskAssignees(store, currentUser, item.pitching);
+    }
+    return operationalAssigneeCandidates(store, currentUser, item.project);
+  };
+
+  const assignQueueItem = (item: (typeof queue)[number]) => {
+    const itemId = item.kind === "task" ? item.task.id : item.entry.id;
+    const userId = queueUser[itemId];
+    if (!userId) return;
+    if (item.kind === "task") {
+      store.assignTask(item.task.id, userId);
+    } else {
+      store.assignFormEntry(item.entry.id, userId);
+    }
+    setQueueUser((current) => {
+      const next = { ...current };
+      delete next[itemId];
+      return next;
+    });
+    toast.success("Pekerjaan di-assign.");
   };
 
   return (
@@ -172,6 +234,78 @@ export function MyTasksPage() {
         </NativeSelect>
       </div>
 
+      {queue.length > 0 ? (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Perlu di-assign</h2>
+            <span className="text-muted-foreground text-[11px]">
+              {queue.length} pekerjaan
+            </span>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {queue.map((item) => {
+              const itemId =
+                item.kind === "task" ? item.task.id : item.entry.id;
+              const title =
+                item.kind === "task" ? item.task.title : item.entry.title;
+              const context =
+                item.kind === "task"
+                  ? item.pitching
+                    ? `${item.pitching.title}`
+                    : (item.project?.name ?? "Proyek")
+                  : (item.project?.name ?? "Proyek");
+              const scheduled =
+                item.kind === "task"
+                  ? item.scheduled
+                  : item.scheduled;
+              const candidates = candidatesFor(item);
+              return (
+                <div
+                  key={`${item.kind}-${itemId}`}
+                  className="bg-card rounded-lg border p-3 text-xs shadow-sm"
+                >
+                  <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                    {item.kind === "task" ? "Task" : "Form"} · {context}
+                  </p>
+                  <p className="mt-1 font-semibold">{title}</p>
+                  {scheduled ? (
+                    <p className="mt-1 text-[10px] font-medium text-amber-600">
+                      Terjadwal · menunggu step aktif
+                    </p>
+                  ) : null}
+                  <div className="mt-2 flex items-center gap-2">
+                    <NativeSelect
+                      value={queueUser[itemId] ?? ""}
+                      onChange={(value) =>
+                        setQueueUser((current) => ({
+                          ...current,
+                          [itemId]: value,
+                        }))
+                      }
+                    >
+                      <option value="">Pilih assignee</option>
+                      {candidates.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.name}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                    <button
+                      type="button"
+                      className="bg-primary text-primary-foreground rounded-md px-2.5 py-1.5 text-[11px] font-medium disabled:opacity-50"
+                      disabled={!queueUser[itemId]}
+                      onClick={() => assignQueueItem(item)}
+                    >
+                      Assign
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {prospekWork.length > 0 ? (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -207,7 +341,8 @@ export function MyTasksPage() {
           title="Belum ada task"
           description="Manager/Admin akan meng-assign task kepada Anda."
         />
-      ) : tasks.length === 0 ? null : groups.length === 0 ? (
+      ) : tasks.length === 0 ? null : groups.length === 0 &&
+        pitchingGroups.length === 0 ? (
         <EmptyState
           icon={LayoutList}
           title="Tidak ada task yang cocok"
@@ -317,10 +452,51 @@ export function MyTasksPage() {
               </ProjectAccordion>
             );
           })}
+          {pitchingGroups.map(({ pitching, prospek, tasks: pitchingTasks }) => {
+            const open = !collapsed.includes(pitching.id);
+            return (
+              <ProjectAccordion
+                key={pitching.id}
+                projectId={pitching.id}
+                name={prospek?.name ?? pitching.title}
+                code="PITCHING"
+                color="#0f766e"
+                count={pitchingTasks.length}
+                unit="task"
+                open={open}
+                onToggle={() => toggleGroup(pitching.id)}
+              >
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {pitchingTasks.map((task) => (
+                    <button
+                      key={task.id}
+                      type="button"
+                      onClick={() => {
+                        window.location.href = `/work/prospek/${pitching.id}/form`;
+                      }}
+                      className="bg-card hover:border-primary/40 rounded-lg border p-3 text-left text-xs shadow-sm"
+                    >
+                      <p className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide">
+                        Form Pitching · {pitching.title}
+                      </p>
+                      <p className="mt-1 font-semibold">{task.title}</p>
+                      <p className="text-muted-foreground mt-1 text-[10px]">
+                        {TASK_STATUS_LABEL[task.status]}
+                        {task.dueDate ? ` · Due ${formatDate(task.dueDate)}` : ""}
+                        {isScheduledTask(store, task)
+                          ? " · Terjadwal"
+                          : ""}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </ProjectAccordion>
+            );
+          })}
         </div>
       )}
 
-      {activeTask ? (
+      {activeTask?.projectId ? (
         <TaskDialog
           open={dialogOpen}
           onOpenChange={setDialogOpen}

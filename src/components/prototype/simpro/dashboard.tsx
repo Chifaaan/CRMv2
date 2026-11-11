@@ -37,8 +37,9 @@ export function SimproDashboard() {
   const tasks = store.tasks.filter(
     (task) =>
       !task.archivedAt &&
-      projectIds.has(task.projectId) &&
-      (currentUser?.role !== "assignee" || task.assigneeId === currentUser.id),
+      projectIds.has(task.projectId ?? "") &&
+      (currentUser?.role !== "assignee" && currentUser?.role !== "media" ||
+        task.assigneeId === currentUser.id),
   );
   const completed = tasks.filter((task) => task.status === "completed").length;
   const openTasks = tasks.length - completed;

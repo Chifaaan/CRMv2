@@ -18,6 +18,7 @@ import {
   type PitchingRab,
   type Priority,
   type Project,
+  type ProjectGroup,
   type ProjectTemplate,
   type ProjectStep,
   type Prospek,
@@ -50,8 +51,30 @@ export function stepFor(
   );
 }
 
-export function formFor(
+export function stepById(
   state: AppState,
+  stepId?: string,
+): ProjectStep | undefined {
+  return stepId ? state.steps.find((step) => step.id === stepId) : undefined;
+}
+
+export function isScheduledTask(state: AppState, task: Task): boolean {
+  if (!task.projectId) return false;
+  return stepById(state, task.stageId)?.status === "pending";
+}
+
+export function isScheduledFormEntry(
+  state: AppState,
+  entry: FormEntry,
+): boolean {
+  if (!entry.projectId) return false;
+  const step =
+    stepById(state, entry.templateStageId) ??
+    stepFor(state, entry.projectId, entry.stepKey);
+  return step?.status === "pending";
+}
+
+export function formFor(  state: AppState,
   projectId: string,
   key: string,
 ): StepForm | undefined {
@@ -588,7 +611,7 @@ export function canViewProject(
     );
   }
   if (user.role === "pm") return project.createdById === user.id;
-  if (user.role === "assignee") {
+  if (user.role === "assignee" || user.role === "media") {
     const hasTask = state.tasks.some(
       (task) =>
         task.projectId === project.id &&
@@ -691,7 +714,9 @@ export function canCancelKanbanTask(
   user: User,
   task: Task,
 ): boolean {
-  const project = projectById(state, task.projectId);
+  const project = task.projectId
+    ? projectById(state, task.projectId)
+    : undefined;
   if (!project) return false;
   if (!canManageProject(user, project)) return false;
   return task.status === "backlog" || task.status === "todo";
@@ -709,14 +734,19 @@ export function canAssignProjectManager(
 }
 
 export function isOperationalAssignee(user: User): boolean {
-  return user.role === "assignee" || user.role === "manager";
+  return (
+    user.role === "assignee" ||
+    user.role === "manager" ||
+    user.role === "media"
+  );
 }
 
 export function isProspekAssignee(user: User): boolean {
   return (
     user.role === "assignee" ||
     user.role === "manager" ||
-    user.role === "finance"
+    user.role === "finance" ||
+    user.role === "media"
   );
 }
 
@@ -827,7 +857,8 @@ export function canAssignProspekWork(
   user: User,
   prospek?: Prospek,
 ): boolean {
-  return canManageProspek(user, prospek);
+  if (!prospek) return false;
+  return user.role === "admin" || user.role === "manager";
 }
 
 export function prospekAssigneeCandidates(
@@ -856,15 +887,70 @@ export function prospekFinanceCandidates(
   prospek?: Prospek,
 ): User[] {
   if (!canAssignProspekWork(user, prospek)) return [];
-  return state.users.filter((candidate) => candidate.role === "finance");
+  return state.users.filter(
+    (candidate) =>
+      candidate.role === "finance" || candidate.role === "media",
+  );
 }
 
-export function pitchingFormEntries(
+export function pitchingTasksFor(
   state: AppState,
   pitchingId: string,
-): FormEntry[] {
-  return state.formEntries.filter(
-    (entry) => entry.pitchingId === pitchingId && entry.status !== "cancelled",
+): Task[] {
+  return state.tasks.filter(
+    (task) =>
+      task.pitchingId === pitchingId &&
+      !task.archivedAt &&
+      (task.scope === "pitching" || !task.projectId),
+  );
+}
+
+export function canCreatePitchingTask(
+  state: AppState,
+  user: User,
+  pitching?: ProspekPitching,
+): boolean {
+  if (!pitching) return false;
+  const prospek = prospekById(state, pitching.prospekId);
+  if (!prospek || pitchingWorkLocked(state, pitching)) return false;
+  return user.role === "admin" || user.role === "manager";
+}
+
+export function canAssignPitchingTask(
+  state: AppState,
+  user: User,
+  pitching?: ProspekPitching,
+): boolean {
+  if (!pitching) return false;
+  if (pitchingWorkLocked(state, pitching)) return false;
+  return user.role === "admin" || user.role === "manager";
+}
+
+export function canWorkPitchingTask(user: User, task: Task): boolean {
+  if (task.assigneeId !== user.id) return false;
+  return isOperationalAssignee(user) || user.role === "finance";
+}
+
+export function canReviewPitchingTask(
+  state: AppState,
+  user: User,
+  task: Task,
+): boolean {
+  if (user.role === "admin") return true;
+  if (user.role !== "pm") return false;
+  const prospek = prospekById(state, task.prospekId);
+  return Boolean(prospek && prospek.createdById === user.id);
+}
+
+export function pitchingTaskAssignees(
+  state: AppState,
+  user: User,
+  pitching?: ProspekPitching,
+): User[] {
+  if (!canAssignPitchingTask(state, user, pitching)) return [];
+  return state.users.filter(
+    (candidate) =>
+      isOperationalAssignee(candidate) || candidate.role === "finance",
   );
 }
 
@@ -872,8 +958,8 @@ export function pitchingFormComplete(
   state: AppState,
   pitchingId: string,
 ): boolean {
-  const entries = pitchingFormEntries(state, pitchingId);
-  return entries.length > 0 && entries.every((entry) => entry.status === "approved");
+  const tasks = pitchingTasksFor(state, pitchingId);
+  return tasks.length > 0 && tasks.every((task) => task.status === "completed");
 }
 
 export type PitchingStageKey =
@@ -1096,24 +1182,6 @@ export function prospekWorkItemsForUser(
         status: pitching.contractStatus ?? "assigned",
         dueDate: pitching.contractDueDate,
         href: `/work/prospek/${pitching.id}/contract`,
-      });
-    }
-    for (const entry of state.formEntries) {
-      if (
-        entry.pitchingId !== pitching.id ||
-        entry.assigneeId !== userId ||
-        !["assigned", "draft", "need_revision"].includes(entry.status)
-      ) {
-        continue;
-      }
-      items.push({
-        ...base,
-        id: `work-form-${entry.id}`,
-        kind: "form",
-        title: entry.title,
-        status: entry.status,
-        dueDate: entry.dueDate,
-        href: `/work/prospek/${pitching.id}/form?entry=${entry.id}`,
       });
     }
   }
@@ -1378,6 +1446,10 @@ export function canReviewTask(
 ): boolean {
   if (user.role === "admin") return true;
   if (user.role !== "pm") return false;
+  if (!task.projectId) {
+    const prospek = prospekById(state, task.prospekId);
+    return Boolean(prospek && prospek.createdById === user.id);
+  }
   const project = projectById(state, task.projectId);
   return project?.createdById === user.id;
 }
@@ -1389,7 +1461,12 @@ export function canCreateTask(
 ): boolean {
   if (!canManageProject(user, project)) return false;
   if (project.status !== "active") return false;
-  return activeSteps(state, project.id).some((step) => step.kind === "simpro");
+  return state.steps.some(
+    (step) =>
+      step.projectId === project.id &&
+      step.kind === "simpro" &&
+      (step.status === "active" || step.status === "pending"),
+  );
 }
 
 export function taskTransition(
@@ -1402,8 +1479,81 @@ export function taskTransition(
   if (task.status === "completed") {
     return { ok: false, reason: "Task Completed terkunci." };
   }
+  if (isScheduledTask(state, task)) {
+    return { ok: false, reason: "Step belum aktif; card masih terjadwal." };
+  }
 
-  const project = projectById(state, task.projectId);
+  if (task.scope === "pitching" || (!task.projectId && task.pitchingId)) {
+    const pitching = prospekPitchingById(state, task.pitchingId);
+    if (!pitching) return { ok: false, reason: "Pitching tidak ditemukan." };
+    if (pitchingWorkLocked(state, pitching)) {
+      return { ok: false, reason: "Pitching sudah dikunci." };
+    }
+    if (to === "todo") {
+      if (task.status !== "backlog") {
+        return { ok: false, reason: "Hanya card Backlog yang bisa di-assign." };
+      }
+      if (!task.assigneeId) {
+        return { ok: false, reason: "Pilih assignee terlebih dahulu." };
+      }
+      if (
+        !canAssignPitchingTask(state, user, pitching) ||
+        !pitchingTaskAssignees(state, user, pitching).some(
+          (candidate) => candidate.id === task.assigneeId,
+        )
+      ) {
+        return {
+          ok: false,
+          reason: "Hanya Manager/Admin yang dapat meng-assign card.",
+        };
+      }
+      return { ok: true };
+    }
+    if (to === "in_progress") {
+      if (task.status !== "todo" && task.status !== "need_revision") {
+        return { ok: false, reason: "Card harus To Do atau Need Revision." };
+      }
+      if (!canWorkPitchingTask(user, task)) {
+        return { ok: false, reason: "Hanya assignee card ini yang bisa mulai." };
+      }
+      if (!validWorkUrl(options?.workUrl ?? task.workUrl)) {
+        return {
+          ok: false,
+          reason: "Link Pekerjaan wajib diisi sebelum In Progress.",
+        };
+      }
+      return { ok: true };
+    }
+    if (to === "awaiting_approval") {
+      if (task.status !== "in_progress") {
+        return { ok: false, reason: "Card harus In Progress." };
+      }
+      if (!canWorkPitchingTask(user, task)) {
+        return { ok: false, reason: "Hanya assignee card ini yang bisa submit." };
+      }
+      return { ok: true };
+    }
+    if (to === "completed" || to === "need_revision") {
+      if (task.status !== "awaiting_approval") {
+        return { ok: false, reason: "Card harus Awaiting Approval." };
+      }
+      if (!canReviewPitchingTask(state, user, task)) {
+        return {
+          ok: false,
+          reason: "Hanya PM pemilik Prospek/Admin yang dapat review.",
+        };
+      }
+      if (to === "need_revision" && !options?.comment?.trim()) {
+        return { ok: false, reason: "Komentar revisi wajib diisi." };
+      }
+      return { ok: true };
+    }
+    return { ok: false, reason: "Transisi status tidak diizinkan." };
+  }
+
+  const project = task.projectId
+    ? projectById(state, task.projectId)
+    : undefined;
   if (!project) return { ok: false, reason: "Proyek tidak ditemukan." };
 
   if (!isNewLifecycleProject(project)) {
@@ -1565,7 +1715,12 @@ export function canEditForm(
   if (form.status === "approved") return false;
   if (user.role === "admin") return true;
   if (form.assigneeId !== user.id) return false;
-  if (form.type === "survey" && user.role !== "assignee") return false;
+  if (
+    form.type === "survey" &&
+    user.role !== "assignee" &&
+    user.role !== "media"
+  )
+    return false;
   if (form.type !== "survey" && user.role !== "finance") return false;
   return true;
 }
@@ -1598,7 +1753,10 @@ export function canCreateFormEntry(
   if (project.status !== "active") return false;
   if (!canManageProject(user, project)) return false;
   const step = stepFor(state, project.id, stepKey);
-  return step?.kind === "form" && step.status === "active";
+  return (
+    step?.kind === "form" &&
+    (step.status === "active" || step.status === "pending")
+  );
 }
 
 export function canAssignFormEntry(user: User): boolean {
@@ -1681,7 +1839,8 @@ export function activeFormEntriesForAssignee(
     (entry) =>
       entry.assigneeId === userId &&
       ["assigned", "draft", "need_revision"].includes(entry.status) &&
-      activeFormEntry(state, entry),
+      activeFormEntry(state, entry) &&
+      !isScheduledFormEntry(state, entry),
   );
 }
 
@@ -1713,7 +1872,10 @@ export function formEntriesNeedingReview(
 
 export function workloadRows(state: AppState): WorkloadRow[] {
   const candidates = state.users.filter(
-    (user) => user.role === "assignee" || user.role === "manager",
+    (user) =>
+      user.role === "assignee" ||
+      user.role === "manager" ||
+      user.role === "media",
   );
   return candidates
     .map((user) => {
@@ -1722,7 +1884,15 @@ export function workloadRows(state: AppState): WorkloadRow[] {
           task.assigneeId === user.id &&
           !task.archivedAt &&
           ACTIVE_TASK_STATUSES.includes(task.status) &&
-          projectById(state, task.projectId)?.status === "active",
+          !isScheduledTask(state, task) &&
+          (task.projectId
+            ? projectById(state, task.projectId)?.status === "active"
+            : Boolean(
+                state.prospeks.find(
+                  (prospek) =>
+                    prospek.id === task.prospekId && prospek.status === "active",
+                ),
+              )),
       );
       const statusCounts: Record<string, number> = {};
       const priorityCounts: Record<string, number> = {};
@@ -1731,8 +1901,14 @@ export function workloadRows(state: AppState): WorkloadRow[] {
         statusCounts[task.status] = (statusCounts[task.status] ?? 0) + 1;
         priorityCounts[task.priority] =
           (priorityCounts[task.priority] ?? 0) + 1;
-        const project = projectById(state, task.projectId);
+        const project = task.projectId
+          ? projectById(state, task.projectId)
+          : undefined;
         if (project) projectNames.add(project.name);
+        else {
+          const prospek = prospekById(state, task.prospekId);
+          if (prospek) projectNames.add(prospek.name);
+        }
       }
       const activeFormCount = activeFormEntriesForAssignee(state, user.id).length;
       return {
@@ -1748,6 +1924,7 @@ export function workloadRows(state: AppState): WorkloadRow[] {
     .filter(
       (row) =>
         row.user.role === "assignee" ||
+        row.user.role === "media" ||
         row.activeCount + row.activeFormCount > 0,
     )
     .sort(
@@ -1799,6 +1976,108 @@ export function groupCompleted(state: AppState, groupId: string): boolean {
     (project) => project.groupId === groupId && project.status !== "cancelled",
   );
   return members.length > 0 && members.every((project) => project.status === "completed");
+}
+
+export function canCreateGroup(user: User): boolean {
+  return (
+    user.role === "admin" || user.role === "manager" || user.role === "pm"
+  );
+}
+
+export function canViewGroup(user: User, group?: ProjectGroup): boolean {
+  if (!group) return false;
+  if (user.role === "admin" || user.role === "manager") return true;
+  return user.role === "pm" && group.createdById === user.id;
+}
+
+export function canManageGroup(user: User, group?: ProjectGroup): boolean {
+  if (!group) return false;
+  if (user.role === "admin" || user.role === "manager") return true;
+  return user.role === "pm" && group.createdById === user.id;
+}
+
+export function canAddProjectToGroup(
+  user: User,
+  group: ProjectGroup | undefined,
+  project: Project | undefined,
+): boolean {
+  if (!group || !project) return false;
+  if (!canManageGroup(user, group)) return false;
+  if (project.status === "cancelled") return false;
+  if (user.role === "admin" || user.role === "manager") return true;
+  return project.createdById === user.id;
+}
+
+export function groupsForUser(state: AppState, user?: User): ProjectGroup[] {
+  if (!user) return [];
+  return state.groups.filter((group) => canViewGroup(user, group));
+}
+
+export type AssignmentQueueItem =
+  | {
+      kind: "task";
+      task: Task;
+      project?: Project;
+      prospek?: Prospek;
+      pitching?: ProspekPitching;
+      scheduled: boolean;
+    }
+  | {
+      kind: "form";
+      entry: FormEntry;
+      project?: Project;
+      scheduled: boolean;
+    };
+
+export function assignmentQueueForUser(
+  state: AppState,
+  user: User,
+): AssignmentQueueItem[] {
+  if (user.role !== "admin" && user.role !== "manager") return [];
+  const items: AssignmentQueueItem[] = [];
+  for (const task of state.tasks) {
+    if (task.archivedAt || task.assigneeId || task.status !== "backlog") {
+      continue;
+    }
+    if (task.scope === "pitching" || (!task.projectId && task.pitchingId)) {
+      const pitching = prospekPitchingById(state, task.pitchingId);
+      if (!pitching || !canAssignPitchingTask(state, user, pitching)) continue;
+      items.push({
+        kind: "task",
+        task,
+        prospek: prospekById(state, pitching.prospekId),
+        pitching,
+        scheduled: false,
+      });
+      continue;
+    }
+    const project = task.projectId
+      ? projectById(state, task.projectId)
+      : undefined;
+    if (!project || project.status !== "active") continue;
+    if (!canAssignKanbanTask(user, project, user)) continue;
+    items.push({
+      kind: "task",
+      task,
+      project,
+      scheduled: isScheduledTask(state, task),
+    });
+  }
+  for (const entry of state.formEntries) {
+    if (entry.status !== "unassigned" || !entry.projectId) continue;
+    if (formEntryScope(entry) !== "project") continue;
+    const project = projectById(state, entry.projectId);
+    if (!project || project.status !== "active") continue;
+    const step = stepById(state, entry.templateStageId);
+    if (step && step.kind !== "form") continue;
+    items.push({
+      kind: "form",
+      entry,
+      project,
+      scheduled: isScheduledFormEntry(state, entry),
+    });
+  }
+  return items;
 }
 
 export function projectTasksForUser(state: AppState, userId: string): Task[] {
@@ -1912,7 +2191,7 @@ export function allFormKeys(): FormStepKey[] {
 }
 
 export function roleCanAccessCrm(role: Role): boolean {
-  return role !== "assignee";
+  return role !== "assignee" && role !== "media";
 }
 
 export function roleCanAccessSimpro(role: Role): boolean {
@@ -1920,5 +2199,5 @@ export function roleCanAccessSimpro(role: Role): boolean {
 }
 
 export function landingForRole(role: Role): string {
-  return role === "assignee" ? "/my-tasks" : "/crm";
+  return role === "assignee" || role === "media" ? "/my-tasks" : "/crm";
 }
